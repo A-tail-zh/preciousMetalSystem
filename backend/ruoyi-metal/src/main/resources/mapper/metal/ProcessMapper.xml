@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.metal.mapper.ProcessMapper">
+<resultMap id="Record" type="com.ruoyi.metal.catalog.ProcessRecord">
+<id property="id" column="process_id"/>
+<result property="name" column="process_name"/>
+<result property="description" column="description"/>
+<result property="processType" column="process_type"/>
+<result property="createBy" column="create_by"/><result property="createTime" column="create_time"/><result property="updateTime" column="update_time"/><result property="version" column="version"/>
+</resultMap>
+<sql id="columns">r.process_id,r.process_name,r.description,r.process_type,r.create_by,r.create_time,r.update_by,r.update_time,r.version</sql>
+<select id="list" resultMap="Record">SELECT <include refid="columns"/> FROM metal_process r WHERE r.del_flag='0' ORDER BY r.process_id ASC</select>
+<select id="detail" resultMap="Record">SELECT <include refid="columns"/> FROM metal_process r WHERE r.del_flag='0' AND r.process_id=#{id}</select>
+<select id="lock" resultMap="Record">SELECT <include refid="columns"/> FROM metal_process r WHERE r.del_flag='0' AND r.process_id=#{id} FOR UPDATE</select>
+<insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="process_id">INSERT INTO metal_process(process_name,description,process_type,create_by,create_time,update_by,update_time) VALUES(#{name},#{description},#{processType},#{createBy},NOW(),#{updateBy},NOW())</insert>
+<update id="update">UPDATE metal_process SET process_name=#{name},description=#{description},process_type=#{processType},version=version+1,update_by=#{updateBy},update_time=NOW() WHERE process_id=#{id} AND version=#{version} AND del_flag='0'</update>
+<update id="delete">UPDATE metal_process SET del_flag='2',version=version+1,update_by=#{actor},update_time=NOW() WHERE process_id=#{id} AND del_flag='0'</update>
+</mapper>

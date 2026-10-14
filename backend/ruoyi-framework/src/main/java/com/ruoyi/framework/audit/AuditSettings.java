@@ -1,0 +1,5 @@
+package com.ruoyi.framework.audit;
+import org.springframework.stereotype.Component;import org.springframework.scheduling.annotation.Scheduled;import org.springframework.jdbc.core.JdbcTemplate;import org.slf4j.LoggerFactory;
+@Component public class AuditSettings{public static volatile long slowRequest=2000,slowSql=1000;private final JdbcTemplate jdbc;public AuditSettings(JdbcTemplate j){jdbc=j;}
+ @Scheduled(fixedDelay=10000) public void refresh(){try{var c=jdbc.queryForMap("SELECT * FROM audit_log_config WHERE id=1");slowRequest=((Number)c.get("slow_request_ms")).longValue();slowSql=((Number)c.get("slow_sql_ms")).longValue();var ctx=(ch.qos.logback.classic.LoggerContext)LoggerFactory.getILoggerFactory();var root=ctx.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);var it=root.iteratorForAppenders();while(it.hasNext()){var a=it.next();if(a instanceof ch.qos.logback.core.rolling.RollingFileAppender<?> r&&r.getRollingPolicy() instanceof ch.qos.logback.core.rolling.TimeBasedRollingPolicy<?> policy)policy.setMaxHistory(((Number)c.get("file_days")).intValue());}}catch(Exception ignored){}}
+}

@@ -1,0 +1,6 @@
+package com.ruoyi.framework.audit;
+import org.junit.jupiter.api.Test;import static org.junit.jupiter.api.Assertions.*;import static org.mockito.Mockito.*;import java.util.*;import org.aspectj.lang.ProceedingJoinPoint;import org.springframework.transaction.support.TransactionSynchronizationManager;
+class AuditServiceAspectTest{
+ @Test void auditFailurePropagatesBeforeTransactionCommit()throws Throwable{AuditRecorder recorder=mock(AuditRecorder.class);ProceedingJoinPoint p=mock(ProceedingJoinPoint.class);when(p.getArgs()).thenReturn(new Object[]{Map.of("customer","test")});when(p.proceed()).thenReturn("1");AuditContext c=new AuditContext();c.path="/metal/work-order";c.verb="POST";c.title="工单";AuditContext.CURRENT.set(c);TransactionSynchronizationManager.setActualTransactionActive(true);doThrow(new IllegalStateException("outbox unavailable")).when(recorder).success(eq(c),any());try{assertThrows(IllegalStateException.class,()->new AuditServiceAspect(recorder).around(p));assertFalse(c.logged);assertFalse(c.inside);}finally{AuditContext.CURRENT.remove();TransactionSynchronizationManager.clear();}}
+ @Test void snapshotsDoNotRecordNestedCredentialSentinel(){String text=AuditRedactor.text("{\"nested\":{\"Authorization\":\"Bearer secret-sentinel\",\"password\":\"secret-sentinel\"}}");assertFalse(text.contains("secret-sentinel"));}
+}

@@ -1,0 +1,47 @@
+<template>
+ <WorkOrderDetail v-if="detailId" :id="detailId" @back="back"/>
+ <section v-else class="work-order-page">
+  <div class="order-toolbar"><el-button v-hasPermi="['metal:work-order:add']" class="blue" @click="formRef?.open()">添加</el-button><el-button v-hasPermi="['metal:work-order:edit']" class="orange" :disabled="selected.length!==1||!orderEditable(selected[0])" @click="formRef?.open(selected[0])">编辑</el-button><el-button v-hasPermi="['metal:work-order:remove']" class="red" :disabled="!selected.length||selected.some(row=>!orderEditable(row))||deleting" @click="remove(selected)">删除</el-button></div>
+  <el-table ref="tableRef" v-loading="loading" :data="rows" border class="order-table" @selection-change="selected=$event">
+   <el-table-column v-if="canOperate||can('metal:work-order:edit')||can('metal:work-order:remove')" type="selection" width="50" align="center"/><el-table-column label="工单号" prop="orderNo" min-width="150" align="center"/><el-table-column label="客户" prop="customer" min-width="75" align="center"/><el-table-column label="工厂名称" prop="factoryName" min-width="90" align="center"/><el-table-column label="产线名称" prop="lineName" min-width="90" align="center"/><el-table-column label="负责人" prop="ownerName" min-width="75" align="center"/>
+   <el-table-column label="状态" min-width="130" align="center"><template #default="{row}">{{orderStatus[row.status]}}<template v-if="row.status==='REJECTED'">，原因：{{row.rejectReason}}</template></template></el-table-column>
+   <el-table-column label="创建人" prop="creatorName" min-width="65" align="center"/><el-table-column label="创建时间" prop="createTime" width="140" align="center"/><el-table-column v-if="canOperate||can('metal:work-order:edit')||can('metal:work-order:remove')" class-name="order-actions" label="标题" min-width="264" align="center"><template #default="{row}"><el-button v-hasPermi="['metal:work-order:query']" class="blue row-button" @click="view(row)">查看</el-button><el-button v-if="canOperate" class="green row-button" @click="openOperation(row)">{{row.status==='PENDING'?'操作':'已操作'}}</el-button><el-button v-hasPermi="['metal:work-order:edit']" class="orange row-button" :disabled="!orderEditable(row)" @click="formRef?.open(row)">编辑</el-button><el-button v-hasPermi="['metal:work-order:remove']" class="red row-button" :disabled="!orderEditable(row)||deleting" @click="remove([row])">删除</el-button></template></el-table-column>
+  </el-table>
+  <div v-if="failed" class="load-error">列表加载失败 <el-button link type="primary" @click="load">重试</el-button></div>
+  <div class="order-pagination"><el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :page-sizes="[16,32,64]" :total="total" layout="total, sizes, prev, pager, next, jumper" @current-change="load" @size-change="sizeChanged"/></div>
+  <WorkOrderForm ref="formRef" @saved="saved"/>
+  <el-dialog v-model="operationOpen" title="工单操作" width="min(650px,94vw)" :close-on-click-modal="false" :show-close="!operating" :close-on-press-escape="!operating"><template v-if="operation"><p>工单号：{{operation.orderNo}}</p><p>客户：{{operation.customer}}</p><p>状态：{{orderStatus[operation.status??'']}}</p><p v-if="operation.rejectReason">驳回原因：{{operation.rejectReason}}</p><el-input v-if="operation.status==='PENDING'&&can('metal:work-order:reject')" v-model="reason" type="textarea" :rows="3" maxlength="500" placeholder="填写原因" :disabled="operating"/><p v-if="operation.status==='IN_PROGRESS'">本期尚未接入领料、回料操作。</p><div v-if="operation.reviews?.length" class="audit-history"><div v-for="review in operation.reviews" :key="review.id">{{review.createTime}}　{{review.actorName}}　{{actionNames[review.action]||review.action}}　{{review.reason||''}}</div></div></template><template #footer><el-button :disabled="operating" @click="operationOpen=false">关闭</el-button><template v-if="operation?.status==='PENDING'"><el-button v-hasPermi="['metal:work-order:reject']" type="danger" :loading="operating" @click="act('reject')">驳回</el-button><el-button v-hasPermi="['metal:work-order:approve']" type="success" :loading="operating" @click="act('approve')">审核通过</el-button></template><el-button v-if="operation?.status==='REJECTED'" v-hasPermi="['metal:work-order:resubmit']" type="primary" :loading="operating" @click="act('resubmit')">重新提交审核</el-button></template></el-dialog>
+ </section>
+</template>
+<script setup lang="ts">
+import {ref,reactive,computed,onMounted,watch} from 'vue'
+import {useRoute,useRouter} from 'vue-router'
+import {ElMessage,ElMessageBox} from 'element-plus'
+import type {TableInstance} from 'element-plus'
+import useUserStore from '@/store/modules/user'
+import {orderList,orderDetail,orderDelete,orderAction,orderStatus,orderEditable} from '@/api/metal/work-order'
+import type {WorkOrder} from '@/api/metal/work-order'
+import WorkOrderForm from './WorkOrderForm.vue'
+import WorkOrderDetail from './WorkOrderDetail.vue'
+const user=useUserStore(),route=useRoute(),router=useRouter(),detailId=computed(()=>typeof route.query.id==='string'?route.query.id:'')
+const can=(permission:string)=>user.permissions.some((v:string)=>v==='*:*:*'||v===permission),canOperate=computed(()=>['query','approve','reject','resubmit'].some(v=>can('metal:work-order:'+v)))
+const query=reactive({pageNum:1,pageSize:16}),rows=ref<WorkOrder[]>([]),selected=ref<WorkOrder[]>([]),total=ref(0),loading=ref(false),failed=ref(false),deleting=ref(false)
+const formRef=ref<InstanceType<typeof WorkOrderForm>>(),tableRef=ref<TableInstance>(),operationOpen=ref(false),operating=ref(false),operation=ref<WorkOrder>(),reason=ref('')
+const actionNames:Record<string,string>={SUBMIT:'提交审核',EDIT:'编辑',DELETE:'删除',APPROVE:'审核通过',REJECT:'驳回',RESUBMIT:'重新提交审核'}
+let epoch=0
+async function load(){if(detailId.value)return;const current=++epoch;loading.value=true;try{const response=await orderList(query);if(current!==epoch)return;rows.value=response.rows;total.value=response.total;selected.value=[];tableRef.value?.clearSelection();failed.value=false}catch{if(current===epoch)failed.value=true}finally{if(current===epoch)loading.value=false}}
+function sizeChanged(){query.pageNum=1;load()}
+async function saved(added:boolean){if(added)query.pageNum=Math.max(1,Math.ceil((total.value+1)/query.pageSize));await load()}
+function view(row:WorkOrder){router.push({path:'/metal/work-order',query:{id:row.id}})}
+function back(){router.push({path:'/metal/work-order'})}
+async function remove(targets:WorkOrder[]){if(deleting.value||!targets.length||targets.some(row=>!orderEditable(row)))return;try{await ElMessageBox.confirm('确认删除选中的'+targets.length+'张工单？','删除确认',{type:'warning',confirmButtonText:'确定',cancelButtonText:'取消'})}catch{return}deleting.value=true;try{await orderDelete(targets.map(r=>r.id!));ElMessage.success('删除成功');query.pageNum=Math.min(query.pageNum,Math.max(1,Math.ceil((total.value-targets.length)/query.pageSize)));await load()}catch{}finally{deleting.value=false}}
+async function openOperation(row:WorkOrder){try{operation.value=can('metal:work-order:query')?(await orderDetail(row.id!)).data:row;reason.value='';operationOpen.value=true}catch{}}
+async function act(action:string){if(operating.value||!operation.value)return;if(action==='reject'&&!reason.value.trim()){ElMessage.error('请填写驳回原因');return}try{await ElMessageBox.confirm(action==='approve'?'通过后工单将锁定，确认审核通过？':action==='reject'?'确认驳回工单？':'确认重新提交审核？','确认操作',{confirmButtonText:'确定',cancelButtonText:'取消'})}catch{return}operating.value=true;try{await orderAction(operation.value.id!,action,operation.value.version!,reason.value.trim());ElMessage.success('操作成功');operationOpen.value=false;await load()}catch{}finally{operating.value=false}}
+watch(detailId,(value)=>{if(!value)load()});onMounted(load)
+</script>
+<style scoped>
+.work-order-page{min-height:calc(var(--design-height,100vh) - 82px);background:#f8fbff;padding:9px 23px 24px 6px;display:flex;flex-direction:column}.order-toolbar{display:flex;gap:18px;margin-bottom:30px}.order-toolbar .el-button{width:89px;height:35px;margin:0;font-size:14px}.blue{--el-button-bg-color:#577bef;--el-button-border-color:#577bef;--el-button-text-color:#fff}.orange{--el-button-bg-color:#ee9b58;--el-button-border-color:#ee9b58;--el-button-text-color:#fff}.red{--el-button-bg-color:#ee6658;--el-button-border-color:#ee6658;--el-button-text-color:#fff}.green{--el-button-bg-color:#39a052;--el-button-border-color:#39a052;--el-button-text-color:#fff}.order-toolbar .el-button:disabled,.row-button:disabled{background:var(--el-button-bg-color);border-color:var(--el-button-border-color);color:white;opacity:.6}.order-table{width:100%;font-size:14px;--el-table-header-bg-color:#f4f4f4;--el-table-border-color:#e8ebf0}.order-table :deep(th.el-table__cell){height:56px}.order-table :deep(.cell){white-space:pre-wrap;overflow-wrap:anywhere;line-height:18px;font-size:14px;padding:10px 5px}.order-table :deep(td.el-table__cell){padding:0}.order-table :deep(.row-button){height:25px;font-size:13px;padding:0 8px;border-radius:2px;margin:2px}.order-pagination{margin-top:auto;padding-top:30px;display:flex;justify-content:center}.load-error{padding:15px;text-align:center}.audit-history{margin-top:20px;border-top:1px solid #e8ebf0;padding-top:15px;font-size:13px;line-height:2}
+
+.order-table :deep(td.order-actions .cell){display:flex;align-items:center;justify-content:center;gap:4px;flex-wrap:nowrap;white-space:nowrap;padding:10px 8px}
+.order-table :deep(td.order-actions .row-button){width:58px;height:25px;flex:0 0 58px;margin:0;padding:0}
+</style>

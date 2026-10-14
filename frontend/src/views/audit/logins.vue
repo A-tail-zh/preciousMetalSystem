@@ -1,0 +1,1 @@
+<template><LogPage kind="login"/></template><script setup lang="ts">import LogPage from './LogPage.vue'</script>
