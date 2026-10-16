@@ -21,7 +21,7 @@ public class WorkOrderController extends BaseController {
  /**
   * 查询列表并补充关联资料。
   */
- @GetMapping("/list") @PreAuthorize("@ss.hasPermi('metal:work-order:list')") public TableDataInfo list(@RequestParam(defaultValue="1") @Min(1) int pageNum,@RequestParam(defaultValue="16") @Min(1) @Max(100) int pageSize){PageHelper.startPage(pageNum,pageSize);return getDataTable(service.list());}
+ @GetMapping("/list") @PreAuthorize("@ss.hasPermi('metal:work-order:list')") public TableDataInfo list(@RequestParam(defaultValue="1") @Min(1) int pageNum,@RequestParam(defaultValue="16") @Min(1) @Max(100) int pageSize){return com.ruoyi.common.utils.PageUtils.withPage(pageNum,pageSize,()->getDataTable(service.list()));}
  /**
   * 查询指定记录详情。
   */

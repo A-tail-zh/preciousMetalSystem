@@ -1,11 +1,11 @@
 <template>
  <span class="business-filter-controls">
-  <el-popover v-model:visible="open" trigger="click" placement="bottom-start" :width="'min(900px,92vw)'">
-   <template #reference><el-button class="filter-toggle">筛选条件<span v-if="activeCount">（{{activeCount}}）</span></el-button></template>
+  <el-popover :visible="open" trigger="click" placement="bottom-start" :width="'min(900px,92vw)'">
+   <template #reference><el-button class="filter-toggle" :aria-expanded="open" @click="open=!open">筛选条件<span v-if="activeCount">（{{activeCount}}）</span></el-button></template>
    <section class="business-filter-panel" aria-label="筛选条件面板">
     <el-form label-position="top" @submit.prevent="apply">
      <el-form-item v-for="field in fields" :key="field.key" :label="field.label">
-      <el-input v-if="!field.options&&!field.remote" v-model="draft[field.key]" clearable :placeholder="field.label" @keyup.enter="apply"/>
+      <el-autocomplete v-if="!field.options&&!field.remote" v-model="draft[field.key]" clearable :placeholder="field.label" :fetch-suggestions="(keyword:string,callback:SuggestionCallback)=>{void suggest(field,keyword,callback)}" :trigger-on-focus="false" :debounce="300" @keydown.enter.capture="textEnter($event)"/>
       <el-select v-else v-model="draft[field.key]" clearable filterable :remote="!!field.remote" :remote-method="(keyword:string)=>search(field,keyword)" :loading="busy[field.key]" :placeholder="field.label" @visible-change="v=>v&&field.remote&&search(field,'')" @change="field.key==='factoryId'&&factoryChanged()">
        <el-option v-for="option in field.options??choices[field.key]??[]" :key="option.id" :label="option.name" :value="option.id"/>
        <template v-if="more[field.key]" #footer><el-button link type="primary" @click="search(field,keywords[field.key]??'',true)">加载更多</el-button></template>
@@ -20,11 +20,12 @@
  </span>
 </template>
 <script setup lang="ts">
-import {computed,reactive,ref,watch} from 'vue'
+import {computed,reactive,ref,watch,onBeforeUnmount} from 'vue'
 import {ElMessage} from 'element-plus'
 import request from '@/utils/request'
 import {productDimensions,processTypes,materialTypes} from '@/views/metal/master-config'
 import {orderTypeNames} from '@/api/metal/warehouse'
+type SuggestionCallback=(rows:{value:string}[])=>void
 type Option={id:string;name:string};type Field={key:string;label:string;remote?:string;options?:Option[]}
 const props=defineProps<{kind:string;allowExport?:boolean;exporting?:boolean;orderKind?:string}>()
 const emit=defineEmits<{apply:[Record<string,string>];export:[Record<string,string>]}>()
@@ -43,6 +44,18 @@ const fields=computed<Field[]>(()=>{
  default:{const types=props.orderKind==='IN'?['RAW_IN','SEMI_IN','FINISHED_IN','OPENING']:props.orderKind==='RET'?['RAW_RETURN','PRODUCT_RETURN']:['PRODUCTION_OUT','PRODUCT_OUT','EXCHANGE_OUT','SEMI_OUT'];return [text('orderNo','单据编号'),text('workOrderNo','生产工单号'),remote('warehouseId','仓库','warehouses'),{key:'type',label:'类型',options:types.map(id=>({id,name:orderTypeNames[id]}))},remote('operatorId','经办人','people'),remote('recipientId','领用人','people'),remote('keeperId','仓管人','people')]}
  }
 })
+const suggestionEpochs:Record<string,number>={},pendingSuggestions:Record<string,SuggestionCallback>={}
+function cancelSuggestions(){for(const key of Object.keys(pendingSuggestions)){suggestionEpochs[key]=(suggestionEpochs[key]??0)+1;pendingSuggestions[key]([]);delete pendingSuggestions[key]}}
+async function suggest(field:Field,keyword:string,callback:SuggestionCallback){
+ const key=field.key,current=suggestionEpochs[key]=(suggestionEpochs[key]??0)+1
+ pendingSuggestions[key]?.([]);pendingSuggestions[key]=callback
+ if(!keyword.trim()){callback([]);delete pendingSuggestions[key];return}
+ try{const response=await request({url:'/metal/filter-options/suggestions',params:{module:props.kind,field:key,keyword,factoryId:draft.factoryId}}) as unknown as {rows:{value:string}[]};if(current===suggestionEpochs[key])callback(response.rows)}catch{if(current===suggestionEpochs[key])callback([])}finally{if(current===suggestionEpochs[key])delete pendingSuggestions[key]}
+}
+function textEnter(event:KeyboardEvent){const input=event.target as HTMLInputElement;if(input.getAttribute('aria-activedescendant'))return;apply()}
+watch(open,value=>{if(!value)cancelSuggestions()})
+watch(()=>draft.factoryId,()=>cancelSuggestions())
+onBeforeUnmount(cancelSuggestions)
 function values(){const result=Object.fromEntries(Object.entries(draft).filter(([,v])=>v!=null&&String(v).trim()!=='').map(([k,v])=>[k,String(v).trim()]));if(range.value?.length===2){result.startDate=range.value[0];result.endDate=range.value[1]}return result}
 const canonical=(v:Record<string,string>)=>JSON.stringify(Object.entries(v).sort(([a],[b])=>a.localeCompare(b)))
 const activeCount=computed(()=>Object.keys(applied.value).filter(k=>k!=='endDate').length)
@@ -55,5 +68,5 @@ watch(()=>props.orderKind,()=>{delete draft.type;delete applied.value.type;emit(
 defineExpose({reset})
 </script>
 <style scoped>
-.business-filter-controls{display:inline-flex;align-items:center;gap:12px;flex-shrink:0}.business-filter-controls .el-button{margin:0;min-width:89px;height:35px}.business-filter-panel{max-height:65vh;overflow:auto;padding:8px}.business-filter-panel .el-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:0 16px}.business-filter-panel .el-form-item{min-width:0;margin-bottom:16px}.business-filter-panel .el-select{width:100%}.filter-date{grid-column:1/-1}.filter-date :deep(.el-date-editor){max-width:100%;width:100%}.filter-panel-actions{display:flex;justify-content:flex-end;gap:10px}.filter-panel-actions .el-button{margin:0}
+.business-filter-controls{display:inline-flex;align-items:center;gap:12px;flex-shrink:0}.business-filter-controls .el-button{margin:0;min-width:89px;height:35px}.business-filter-panel{max-height:65vh;overflow:auto;padding:8px}.business-filter-panel .el-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:0 16px}.business-filter-panel .el-form-item{min-width:0;margin-bottom:16px}.business-filter-panel .el-autocomplete{width:100%}.business-filter-panel .el-select{width:100%}.filter-date{grid-column:1/-1}.filter-date :deep(.el-date-editor){max-width:100%;width:100%}.filter-panel-actions{display:flex;justify-content:flex-end;gap:10px}.filter-panel-actions .el-button{margin:0}
 </style>

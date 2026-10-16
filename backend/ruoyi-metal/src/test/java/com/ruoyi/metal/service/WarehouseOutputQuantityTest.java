@@ -18,5 +18,10 @@ class WarehouseOutputQuantityTest {
   verify(j,never()).update(any(PreparedStatementCreator.class),any(KeyHolder.class));
   assertEquals(0L,stock.get("quantity"));
  }
+ @Test void cumulativeWeightIncludesOutputsAndReturnsAndUsesExactDecimals(){
+  assertDoesNotThrow(()->WarehouseService.validateProductionWeight(new BigDecimal("10"),new BigDecimal("10.000000")));
+  assertThrows(com.ruoyi.common.exception.ServiceException.class,()->WarehouseService.validateProductionWeight(BigDecimal.ZERO,BigDecimal.ONE));
+  assertThrows(com.ruoyi.common.exception.ServiceException.class,()->WarehouseService.validateProductionWeight(new BigDecimal("10"),new BigDecimal("10.000001")));
+ }
  @Test void cumulativeQuantityAllowsPartialOutputsAndRejectsOverflow(){assertDoesNotThrow(()->WarehouseService.validateOutputQuantity(5,2,3));assertThrows(com.ruoyi.common.exception.ServiceException.class,()->WarehouseService.validateOutputQuantity(5,2,4));}
 }

@@ -25,6 +25,14 @@ public class PageUtils extends PageHelper
         PageHelper.startPage(pageNum, pageSize, orderBy).setReasonable(reasonable);
     }
 
+    /** Always remove paging context, including validation failures before any MyBatis query. */
+    public static <T> T withPage(int pageNum, int pageSize, java.util.function.Supplier<T> query)
+    {
+        PageHelper.startPage(pageNum, pageSize);
+        try { return query.get(); }
+        finally { PageHelper.clearPage(); }
+    }
+
     /**
      * 清理分页的线程变量
      */

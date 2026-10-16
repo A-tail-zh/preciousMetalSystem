@@ -1,10 +1,10 @@
 import request from '@/utils/request'
 export interface WorkOrderPlan {processId:string;processName:string;loss:string;startTime:string|null;endTime:string|null;actualStartTime?:string|null;actualEndTime?:string|null}
 export interface WorkOrderItem {id?:string;productId:string;quantity:number|null;snapshot?:{name:string;code:string;category:string;[key:string]:unknown};plans:WorkOrderPlan[];key?:string}
-export interface WorkOrder {id?:string;version?:number;requestId?:string;orderNo?:string;customer:string;factoryId:string;productionLineId:string;ownerId:string;factoryName?:string;lineName?:string;ownerName?:string;orderDate:string;status?:string;rejectReason?:string;creatorName?:string;createTime?:string;items:WorkOrderItem[];reviews?:{id:string;action:string;actorName:string;createTime:string;reason?:string}[]}
-export interface OrderOption {id:string;name:string;category?:string;hasProcesses?:boolean|number}
-export const orderStatus:Record<string,string>={PENDING:'待审核',REJECTED:'驳回',APPROVED:'审核通过，待领料',IN_PROGRESS:'进行中',COMPLETED:'已完成'}
-export const orderEditable=(row:WorkOrder)=>row.status==='PENDING'||row.status==='REJECTED'
+export interface WorkOrder {id?:string;version?:number;requestId?:string;orderNo?:string;customer:string;factoryId:string;productionLineId:string;ownerId:string;factoryName?:string;lineName?:string;ownerName?:string;orderDate:string;status?:string;canEdit?:boolean;canDelete?:boolean;operationDisabledReason?:string;rejectReason?:string;creatorName?:string;createTime?:string;items:WorkOrderItem[];reviews?:{id:string;action:string;actorName:string;createTime:string;reason?:string}[]}
+export interface OrderOption {id:string;name:string;roleNames?:string;phone?:string;category?:string;hasProcesses?:boolean|number}
+export const orderStatus:Record<string,string>={PENDING:'旧流程：待审核',REJECTED:'旧流程：已驳回',APPROVED:'旧流程：已通过',WAITING_MATERIAL:'待领料',IN_PROGRESS:'生产中',COMPLETED:'已完成'}
+export const orderEditable=(row:WorkOrder)=>row.canEdit===true
 const root='/metal/work-order'
 export const orderList=(params:{pageNum:number;pageSize:number}):Promise<{rows:WorkOrder[];total:number}>=>request({url:root+'/list',params})
 export const orderDetail=(id:string):Promise<{data:WorkOrder}>=>request({url:root+'/'+id})

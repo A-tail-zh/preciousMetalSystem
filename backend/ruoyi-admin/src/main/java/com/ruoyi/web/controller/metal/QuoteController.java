@@ -16,9 +16,18 @@ import com.ruoyi.metal.service.QuoteRuleService;
 @RestController
 public class QuoteController extends BaseController {
     private final QuoteRuleService service;
+    private final com.ruoyi.metal.service.ProductDimensionImage images;
 
-    public QuoteController(QuoteRuleService service) {
+    public QuoteController(QuoteRuleService service, com.ruoyi.metal.service.ProductDimensionImage images) {
         this.service = service;
+        this.images = images;
+    }
+
+    /** Uses exactly the same renderer as the downloaded quotation workbook. */
+    @PostMapping("/metal/quotation/image")
+    @PreAuthorize("@ss.hasPermi('metal:quotation:list')")
+    public AjaxResult image(@Valid @RequestBody com.ruoyi.metal.catalog.CalculationRequest input) {
+        return success((Object) ("data:image/png;base64," + java.util.Base64.getEncoder().encodeToString(images.render(input.category(), input.dimensions()))));
     }
 
     /**

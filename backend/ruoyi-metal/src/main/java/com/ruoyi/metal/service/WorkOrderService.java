@@ -24,7 +24,7 @@ import com.ruoyi.metal.security.FactoryScope;
 public class WorkOrderService {
  private final JdbcTemplate jdbc;private final WorkOrderMapper mapper;private final FactoryScope scope;private final ProductService products;
  private static final DateTimeFormatter TIME=DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
- private static final String HEADER="SELECT CAST(work_order_id AS CHAR) id,order_no orderNo,customer,CAST(factory_id AS CHAR) factoryId,CAST(production_line_id AS CHAR) productionLineId,CAST(owner_id AS CHAR) ownerId,factory_name factoryName,line_name lineName,owner_name ownerName,DATE_FORMAT(order_date,'%Y-%m-%d') orderDate,status,reject_reason rejectReason,create_by createBy,creator_name creatorName,DATE_FORMAT(create_time,'%Y-%m-%d %H:%i:%s') createTime,version FROM metal_work_order WHERE work_order_id=? AND del_flag='0'";
+ private static final String HEADER="SELECT CAST(work_order_id AS CHAR) id,order_no orderNo,customer,CAST(factory_id AS CHAR) factoryId,CAST(production_line_id AS CHAR) productionLineId,CAST(owner_id AS CHAR) ownerId,factory_name factoryName,line_name lineName,owner_name ownerName,DATE_FORMAT(order_date,'%Y-%m-%d') orderDate,status,reject_reason rejectReason,create_by createBy,creator_name creatorName,DATE_FORMAT(create_time,'%Y-%m-%d %H:%i:%s') createTime,version,(EXISTS(SELECT 1 FROM metal_process_batch b WHERE b.work_order_id=metal_work_order.work_order_id) OR EXISTS(SELECT 1 FROM metal_warehouse_order o WHERE o.work_order_id=metal_work_order.work_order_id) OR EXISTS(SELECT 1 FROM metal_work_report r JOIN metal_work_order_item i ON i.item_id=r.item_id WHERE i.work_order_id=metal_work_order.work_order_id)) hasBusinessReferences FROM metal_work_order WHERE work_order_id=? AND del_flag='0'";
  public WorkOrderService(JdbcTemplate jdbc,WorkOrderMapper mapper,FactoryScope scope,ProductService products){this.jdbc=jdbc;this.mapper=mapper;this.scope=scope;this.products=products;}
  private static Long id(Object value){return Long.valueOf(value.toString());}
  private static String text(Map<String,Object> row,String key){return row.get(key)==null?null:row.get(key).toString();}
@@ -35,11 +35,11 @@ public class WorkOrderService {
  /**
   * 查询列表并补充关联资料。
   */
- public List<Map<String,Object>> list(){return mapper.list(scope.currentFactory());}
+ public List<Map<String,Object>> list(){var rows=mapper.list(scope.currentFactory());rows.forEach(WorkOrderService::capabilities);return rows;}
  /**
   * 查询指定记录详情；业务层执行相应的访问权限检查。
   */
- public Map<String,Object> detail(Long id){var order=header(id,false);access(order);order.put("items",items(id));order.put("reviews",jdbc.queryForList("SELECT CAST(review_id AS CHAR) id,action,from_status fromStatus,to_status toStatus,reason,CAST(actor_id AS CHAR) actorId,actor_name actorName,DATE_FORMAT(create_time,'%Y-%m-%d %H:%i:%s') createTime FROM metal_work_order_review WHERE work_order_id=? ORDER BY review_id",id));order.put("reports",List.of());order.put("reportingAvailable",false);return order;}
+ public Map<String,Object> detail(Long id){var order=header(id,false);access(order);capabilities(order);order.put("items",items(id));order.put("reviews",jdbc.queryForList("SELECT CAST(review_id AS CHAR) id,action,from_status fromStatus,to_status toStatus,reason,CAST(actor_id AS CHAR) actorId,actor_name actorName,DATE_FORMAT(create_time,'%Y-%m-%d %H:%i:%s') createTime FROM metal_work_order_review WHERE work_order_id=? ORDER BY review_id",id));order.put("reports",List.of());order.put("reportingAvailable",false);return order;}
  private List<Map<String,Object>> items(Long orderId){var result=jdbc.queryForList("SELECT CAST(item_id AS CHAR) id,CAST(product_id AS CHAR) productId,sequence_no sequenceNo,quantity,CAST(product_snapshot AS CHAR) snapshot FROM metal_work_order_item WHERE work_order_id=? ORDER BY sequence_no",orderId);for(var item:result){item.put("snapshot",JSON.parseObject(text(item,"snapshot")));item.put("plans",jdbc.queryForList("SELECT CAST(process_id AS CHAR) processId,sequence_no sequenceNo,process_name processName,CAST(theoretical_loss AS CHAR) loss,DATE_FORMAT(start_time,'%Y-%m-%d %H:%i:%s') startTime,DATE_FORMAT(end_time,'%Y-%m-%d %H:%i:%s') endTime,DATE_FORMAT(actual_start_time,'%Y-%m-%d %H:%i:%s') actualStartTime,DATE_FORMAT(actual_end_time,'%Y-%m-%d %H:%i:%s') actualEndTime FROM metal_work_order_step WHERE item_id=? ORDER BY sequence_no",id(item.get("id"))));}return result;}
  private Map<String,Object> line(Long lineId,Long factoryId,boolean lock){var rows=jdbc.queryForList("SELECT factory_id,production_line_name name FROM metal_production_line WHERE production_line_id=?"+(lock?" FOR UPDATE":""),lineId);if(rows.isEmpty()||rows.get(0).get("factory_id")==null)throw invalid("请选择已分配工厂的有效产线");var line=rows.get(0);Long actual=id(line.get("factory_id"));scope.check(actual);if(factoryId!=null&&!factoryId.equals(actual))throw invalid("产线必须属于所选工厂");return line;}
  private void lockLines(Collection<Long> ids){for(Long lineId:ids.stream().distinct().sorted().toList())line(lineId,null,true);}
@@ -53,7 +53,12 @@ public class WorkOrderService {
   for(Long key:processIds)jdbc.queryForList("SELECT process_id FROM metal_process WHERE process_id=? FOR UPDATE",key);
   jdbc.queryForList("SELECT user_id FROM sys_user WHERE user_id=? FOR UPDATE",ownerId);
  }
- private void editable(Map<String,Object> order){if(!Set.of("PENDING","REJECTED").contains(text(order,"status")))throw invalid("审核通过或进行中的工单不能修改或删除");}
+ static void capabilities(Map<String,Object> order){
+  boolean referenced=Boolean.TRUE.equals(order.get("hasBusinessReferences"))||order.get("hasBusinessReferences") instanceof Number n&&n.longValue()!=0;
+  String status=text(order,"status");String reason=Set.of("PENDING","APPROVED","REJECTED").contains(status)?"旧流程工单仅可查看":!"WAITING_MATERIAL".equals(status)?"仅待领料工单允许编辑或删除":referenced?"工单已有业务引用，不能编辑或删除":"";
+  order.put("canEdit",reason.isEmpty());order.put("canDelete",reason.isEmpty());order.put("operationDisabledReason",reason);
+ }
+ private void editable(Map<String,Object> order){capabilities(order);if(!Boolean.TRUE.equals(order.get("canEdit")))throw invalid(text(order,"operationDisabledReason"));}
  private void version(Map<String,Object> order,Integer expected){if(expected==null||((Number)order.get("version")).intValue()!=expected)throw invalid("工单已被修改，请刷新后重试");}
  private long insert(String sql,Object... args){KeyHolder key=new GeneratedKeyHolder();jdbc.update(connection->{var statement=connection.prepareStatement(sql,Statement.RETURN_GENERATED_KEYS);for(int i=0;i<args.length;i++)statement.setObject(i+1,args[i]);return statement;},key);return Objects.requireNonNull(key.getKey()).longValue();}
  private String nextNumber(){LocalDate date=LocalDate.now(ZoneId.of("Asia/Shanghai"));jdbc.update("INSERT INTO metal_work_order_sequence(business_date,sequence_value) VALUES(?,0) ON DUPLICATE KEY UPDATE sequence_value=sequence_value",java.sql.Date.valueOf(date));Integer number=jdbc.queryForObject("SELECT sequence_value FROM metal_work_order_sequence WHERE business_date=? FOR UPDATE",Integer.class,java.sql.Date.valueOf(date));if(number>=999999)throw invalid("当天工单编号已达到上限");jdbc.update("UPDATE metal_work_order_sequence SET sequence_value=sequence_value+1 WHERE business_date=?",java.sql.Date.valueOf(date));return "WO"+date.format(DateTimeFormatter.BASIC_ISO_DATE)+String.format("%06d",number+1);}
@@ -111,7 +116,7 @@ public class WorkOrderService {
   String reservedNumber=reserveNumber(request.requestId());String fingerprint=hash(request);var existing=jdbc.queryForList("SELECT work_order_id,request_actor,request_hash,del_flag FROM metal_work_order WHERE request_id=? FOR UPDATE",request.requestId());
   if(!existing.isEmpty()){var row=existing.get(0);if(!SecurityUtils.getUserId().equals(id(row.get("request_actor")))||!fingerprint.equals(row.get("request_hash")))throw invalid("请求标识已使用，不能提交不同内容");if(!"0".equals(row.get("del_flag")))throw invalid("原工单已删除，不能重复创建");return row.get("work_order_id").toString();}
   var prepared=prepare(request,List.of());String factory=jdbc.queryForObject("SELECT factory_name FROM metal_factory WHERE factory_id=?",String.class,request.factoryId());String lineName=text(line(request.productionLineId(),request.factoryId(),true),"name");String ownerName=text(owner(request.factoryId(),request.ownerId(),true),"name");
-  long orderId=insert("INSERT INTO metal_work_order(order_no,request_id,request_hash,request_actor,customer,factory_id,production_line_id,owner_id,factory_name,line_name,owner_name,order_date,create_by,creator_name,update_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",reservedNumber,request.requestId(),fingerprint,SecurityUtils.getUserId(),request.customer().strip(),request.factoryId(),request.productionLineId(),request.ownerId(),factory,lineName,ownerName,java.sql.Date.valueOf(request.orderDate()),SecurityUtils.getUsername(),actorName(),SecurityUtils.getUsername());writeItems(orderId,prepared);review(orderId,"SUBMIT",null,"PENDING",null);return Long.toString(orderId);
+  long orderId=insert("INSERT INTO metal_work_order(order_no,request_id,request_hash,request_actor,customer,factory_id,production_line_id,owner_id,factory_name,line_name,owner_name,order_date,create_by,creator_name,update_by,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'WAITING_MATERIAL')",reservedNumber,request.requestId(),fingerprint,SecurityUtils.getUserId(),request.customer().strip(),request.factoryId(),request.productionLineId(),request.ownerId(),factory,lineName,ownerName,java.sql.Date.valueOf(request.orderDate()),SecurityUtils.getUsername(),actorName(),SecurityUtils.getUsername());writeItems(orderId,prepared);review(orderId,"CREATE",null,"WAITING_MATERIAL",null);return Long.toString(orderId);
  }
  @Transactional(rollbackFor=Exception.class,isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
  /**
@@ -123,18 +128,12 @@ public class WorkOrderService {
   if(jdbc.update("UPDATE metal_work_order SET customer=?,factory_id=?,production_line_id=?,owner_id=?,factory_name=?,line_name=?,owner_name=?,order_date=?,version=version+1,update_by=?,update_time=NOW() WHERE work_order_id=? AND version=? AND del_flag='0'",request.customer().strip(),request.factoryId(),request.productionLineId(),request.ownerId(),factory,lineName,ownerName,java.sql.Date.valueOf(request.orderDate()),SecurityUtils.getUsername(),request.id(),request.version())!=1)throw invalid("工单已被修改，请刷新后重试");
   jdbc.update("DELETE s FROM metal_work_order_step s JOIN metal_work_order_item i ON i.item_id=s.item_id WHERE i.work_order_id=?",request.id());jdbc.update("DELETE FROM metal_work_order_item WHERE work_order_id=?",request.id());writeItems(request.id(),prepared);review(request.id(),"EDIT",text(current,"status"),text(current,"status"),null);
  }
- @SuppressWarnings("unchecked")
- private LocalDateTime parseActual(Map<String,Object> step,String key){String value=text(step,key);if(value==null)throw invalid("请先编辑工单补充计划开始和结束时间");return LocalDateTime.parse(value,TIME);}
- private WorkOrderRequest storedRequest(Map<String,Object> order){List<WorkOrderRequest.Item> values=new ArrayList<>();for(var item:items(id(order.get("id")))){List<WorkOrderRequest.Plan> plans=new ArrayList<>();for(var step:(List<Map<String,Object>>)item.get("plans"))plans.add(new WorkOrderRequest.Plan(id(step.get("processId")),parseActual(step,"startTime"),parseActual(step,"endTime")));values.add(new WorkOrderRequest.Item(id(item.get("id")),id(item.get("productId")),((Number)item.get("quantity")).intValue(),plans));}return new WorkOrderRequest(id(order.get("id")),((Number)order.get("version")).intValue(),null,text(order,"customer"),id(order.get("factoryId")),id(order.get("productionLineId")),id(order.get("ownerId")),LocalDate.parse(text(order,"orderDate")),values);}
  @Transactional(rollbackFor=Exception.class,isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
  /**
   * 校验版本及当前状态后执行工单审核、驳回或重新提交。
   */
  public void transition(Long orderId,WorkOrderRequest.Action input,String action){
-  var order=lockOrder(orderId);version(order,input.version());String from=text(order,"status"),to,reason=null;
-  switch(action){case "approve":if(!"PENDING".equals(from))throw invalid("只有待审核工单可以通过");to="APPROVED";break;case "reject":if(!"PENDING".equals(from))throw invalid("只有待审核工单可以驳回");if(input.reason()==null||input.reason().isBlank())throw invalid("请填写驳回原因");reason=input.reason().strip();to="REJECTED";break;case "resubmit":if(!"REJECTED".equals(from))throw invalid("只有驳回工单可以重新提交");to="PENDING";break;default:throw invalid("不支持的状态操作");}
-  if(!"reject".equals(action)){var request=storedRequest(order);prepare(request,items(orderId));}
-  if(jdbc.update("UPDATE metal_work_order SET status=?,reject_reason=?,version=version+1,update_by=?,update_time=NOW() WHERE work_order_id=? AND version=? AND del_flag='0'",to,reason,SecurityUtils.getUsername(),orderId,input.version())!=1)throw invalid("工单已被修改，请刷新后重试");review(orderId,action.toUpperCase(Locale.ROOT),from,to,reason);
+  access(header(orderId,false));throw new ServiceException("工单审批流程已停用，新建工单可直接领料",410);
  }
  @Transactional(rollbackFor=Exception.class,isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
  /**
@@ -154,7 +153,7 @@ public class WorkOrderService {
  /**
   * 获取指定工厂的负责人选项。
   */
- public List<Map<String,Object>> owners(Long factoryId){scope.check(factoryId);return jdbc.queryForList("SELECT CAST(user_id AS CHAR) id,COALESCE(NULLIF(nick_name,''),user_name) name FROM sys_user WHERE factory_id=? AND del_flag='0' AND status='0' ORDER BY user_id",factoryId);}
+ public List<Map<String,Object>> owners(Long factoryId){scope.check(factoryId);return jdbc.queryForList("SELECT CAST(u.user_id AS CHAR) id,COALESCE(NULLIF(u.nick_name,''),u.user_name) name,COALESCE(u.phonenumber,'') phone,COALESCE((SELECT GROUP_CONCAT(DISTINCT r.role_name ORDER BY r.role_name SEPARATOR '、') FROM sys_user_role ur JOIN sys_role r ON r.role_id=ur.role_id WHERE ur.user_id=u.user_id AND r.factory_id=u.factory_id AND r.del_flag='0' AND r.status='0'),'') roleNames FROM sys_user u WHERE u.factory_id=? AND u.del_flag='0' AND u.status='0' ORDER BY u.user_id",factoryId);}
  /**
   * 查询所选产线关联的有效产品。
   */

@@ -21,7 +21,7 @@ public class StaffManagementController extends BaseController {
  /**
   * 查询列表并补充关联资料。
   */
- @GetMapping("/list") @PreAuthorize("@ss.hasPermi('system:user:list')") public TableDataInfo list(@RequestParam(defaultValue="1") @Min(1) int pageNum,@RequestParam(defaultValue="16") @Min(1) @Max(100) int pageSize, @ModelAttribute com.ruoyi.metal.catalog.ListQuery query){PageHelper.startPage(pageNum,pageSize);return getDataTable(service.list(query));}
+ @GetMapping("/list") @PreAuthorize("@ss.hasPermi('system:user:list')") public TableDataInfo list(@RequestParam(defaultValue="1") @Min(1) int pageNum,@RequestParam(defaultValue="16") @Min(1) @Max(100) int pageSize, @ModelAttribute com.ruoyi.metal.catalog.ListQuery query){return com.ruoyi.common.utils.PageUtils.withPage(pageNum,pageSize,()->getDataTable(service.list(query)));}
  /**
   * 查询指定记录详情。
   */

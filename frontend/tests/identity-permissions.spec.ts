@@ -38,13 +38,15 @@ test('角色页面：授权树新增、权限回显、修改和删除',async({pa
   const name=`权限页面角色_${f.suffix}`
   await authenticated(page,f.admin,'/system/role');await page.getByRole('button',{name:'添加',exact:true}).click()
   const dialog=page.getByRole('dialog');await dialog.getByLabel('角色名称',{exact:true}).fill(name);await select(page,'所属工厂',f.factoryName)
-  for(const id of f.selected){const m=f.menus.find((m:any)=>m.id===id);await dialog.locator('.el-tree-node__content').filter({has:page.getByText(m.name,{exact:true})}).locator('.el-checkbox__inner').click()}
+  const depth=(m:any)=>{let n=0,parent=m.parentId;const visited=new Set();while(parent&&parent!=='0'&&!visited.has(parent)){visited.add(parent);n++;parent=f.menus.find((x:any)=>x.id===parent)?.parentId}return n};
+  for(const m of [...f.menus].sort((a:any,b:any)=>depth(a)-depth(b))){const node=dialog.locator('.el-tree-node[data-key="'+m.id+'"] > .el-tree-node__content');if(await node.locator('input[type="checkbox"]').isChecked()!==f.selected.has(m.id))await node.locator('.el-checkbox__inner').click()}
+
   const saved=page.waitForResponse(r=>r.url().endsWith('/system/role')&&r.request().method()==='POST')
   await dialog.getByRole('button',{name:'确定',exact:true}).click();const response=await(await saved).json()
   if(response.id)f.track('/system/role',String(response.id));expect(response.code,response.msg).toBe(200);const id=String(response.id)
   await expect(dialog).not.toBeVisible();await page.reload()
   let row=page.getByRole('row').filter({hasText:name});await row.getByRole('button',{name:'编辑',exact:true}).click()
-  for(const menu of f.selected){const m=f.menus.find((m:any)=>m.id===menu);await expect(dialog.locator('.el-tree-node__content').filter({has:page.getByText(m.name,{exact:true})}).locator('.el-checkbox')).toHaveClass(/is-checked/)}
+  for(const menu of f.selected){await expect(dialog.locator('.el-tree-node[data-key="'+menu+'"] > .el-tree-node__content .el-checkbox')).toHaveClass(/is-checked/)}
   await dialog.getByLabel('角色名称',{exact:true}).fill(name+'_修改');await dialog.getByRole('button',{name:'确定',exact:true}).click();await expect(dialog).not.toBeVisible()
   const d=await detail('/system/role',id,f.admin);expect(new Set(d.menuIds)).toEqual(f.selected);expect(d.roleName).toBe(name+'_修改')
   row=page.getByRole('row').filter({hasText:name+'_修改'});await row.getByRole('button',{name:'删除',exact:true}).click();await page.getByRole('button',{name:'确定',exact:true}).click();await expect(row).toHaveCount(0)
@@ -85,7 +87,7 @@ test('只读工作人员：角色和人员页面隐藏写入按钮，账号状�
   const token=await login(phone,password);f.sessions.add(token)
   for(const path of ['/system/user','/system/role']){
    await authenticated(page,token,path);await expect(page.locator('.master-table .el-table__body-wrapper tbody tr')).toHaveCount(1)
-   await expect(page.locator('.master-toolbar button')).toHaveCount(0);await expect(page.locator('.master-table button')).toHaveCount(0)
+   for(const name of ['添加','编辑','删除','导出'])await expect(page.locator('.master-toolbar').getByRole('button',{name,exact:true})).toHaveCount(0);await expect(page.locator('.master-toolbar').getByRole('button',{name:'筛选条件',exact:true})).toBeVisible();await expect(page.locator('.master-table button')).toHaveCount(0)
    await expect(page.locator('.master-table .el-switch')).toHaveClass(/is-disabled/)
   }
   expect((await api(`/system/user/${user}`,token,'DELETE')).code).toBe(403)

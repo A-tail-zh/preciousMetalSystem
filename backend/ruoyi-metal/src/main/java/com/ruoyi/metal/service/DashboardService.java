@@ -52,16 +52,21 @@ public class DashboardService {
      * 获取当前用户可访问的首页概览数据。
      */
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
-    public Map<String, Object> dashboard() {
+    public Map<String, Object> dashboard() { return dashboard(null); }
+
+    /** A selected factory narrows the existing server-side scope. */
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public Map<String, Object> dashboard(Long selectedFactory) {
         Long factory = scope.currentFactory();
+        if(selectedFactory!=null){scope.check(selectedFactory);factory=selectedFactory;}
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Shanghai")), month = today.withDayOfMonth(1), start = today.minusDays(29);
         String w = filter(factory, "w"), r = filter(factory, "r"), q = filter(factory, "q");
         var work = data("SELECT COUNT(*) total,COALESCE(SUM(w.status='IN_PROGRESS'),0) inProgress,COALESCE(SUM(w.status='COMPLETED'),0) completed FROM metal_work_order w WHERE w.del_flag='0'" + w).get(0);
         var warnings = data("SELECT COALESCE(SUM(w.status='PENDING'),0) pending,COALESCE(SUM(DATE(w.trigger_time)=?),0) newToday,COALESCE(SUM(DATE(w.handled_time)=? AND w.status='HANDLED'),0) handledToday FROM metal_warning_record w WHERE w.source_void=FALSE AND w.del_flag='0'" + w, today, today).get(0);
         Long quoteCount = jdbc.queryForObject("SELECT COUNT(*) FROM metal_saved_quotation q WHERE q.create_time>=? AND q.create_time<?" + q, Long.class, month, today.plusDays(1));
-        var cats = data("SELECT q.category_labels categories FROM metal_saved_quotation q WHERE q.create_time>=? AND q.create_time<?" + q, month, today.plusDays(1));
-        var categories = new LinkedHashSet<String>();
-        for (var row : cats) categories.addAll(Arrays.asList(row.get("categories").toString().split("、")));
+        var cats = data("SELECT q.category_labels categories,COUNT(*) quoteCount FROM metal_saved_quotation q WHERE q.create_time>=? AND q.create_time<?" + q + " GROUP BY q.category_labels ORDER BY MIN(q.quote_id)", month, today.plusDays(1));
+        var categoryCounts = quotationCategoryCounts(cats);
+        var categories = categoryCounts.keySet();
         var trend = data("SELECT DATE_FORMAT(r.create_time,'%Y-%m-%d') day,CAST(SUM(r.loss_weight) AS DECIMAL(20,6)) loss FROM metal_work_report r WHERE r.voided=FALSE AND r.create_time>=? AND r.create_time<?" + r + " GROUP BY DATE_FORMAT(r.create_time,'%Y-%m-%d') ORDER BY DATE_FORMAT(r.create_time,'%Y-%m-%d')", start, today.plusDays(1));
         var byDay = new HashMap<String, String>();
         trend.forEach(x -> byDay.put(x.get("day").toString(), x.get("loss").toString()));
@@ -72,7 +77,26 @@ public class DashboardService {
         var factories = data("SELECT CAST(f.factory_id AS CHAR) factoryId,f.factory_name factoryName,CAST(COALESCE((SELECT SUM(r.loss_weight) FROM metal_work_report r WHERE r.factory_id=f.factory_id AND r.voided=FALSE AND r.create_time>=? AND r.create_time<?),0) AS DECIMAL(20,6)) loss FROM metal_factory f WHERE f.del_flag='0'" + (factory == null ? "" : " AND f.factory_id=" + factory) + " ORDER BY f.factory_id", month, today.plusDays(1));
         var distribution = data("SELECT CAST(w.factory_id AS CHAR) factoryId,f.factory_name factoryName,COUNT(*) count FROM metal_warning_record w JOIN metal_factory f ON f.factory_id=w.factory_id WHERE w.source_void=FALSE AND w.del_flag='0' AND w.trigger_time>=? AND w.trigger_time<?" + w + " GROUP BY w.factory_id,f.factory_name ORDER BY w.factory_id", month, today.plusDays(1));
         var center = data("SELECT CAST(w.warning_id AS CHAR) id,CAST(w.factory_id AS CHAR) factoryId,DATE_FORMAT(w.trigger_time,'%Y-%m-%d %H:%i:%s') triggerTime,f.factory_name factoryName,w.process_name processName,CAST(w.threshold_value AS CHAR) thresholdValue,w.status FROM metal_warning_record w JOIN metal_factory f ON f.factory_id=w.factory_id WHERE w.source_void=FALSE AND w.del_flag='0'" + w + " ORDER BY w.trigger_time DESC,w.warning_id DESC LIMIT 6");
-        return Map.of("workOrders", work, "warnings", warnings, "quotations", Map.of("count", quoteCount, "categories", categories), "trend", completeTrend, "ranking", ranking, "factories", factories, "distribution", distribution, "warningCenter", center, "asOf", today.toString(), "metal", "铱Ir");
+        return Map.of("workOrders", work, "warnings", warnings, "quotations", Map.of("count", quoteCount, "categories", categories, "categoryCounts", categoryCounts), "trend", completeTrend, "ranking", ranking, "factories", factories, "distribution", distribution, "warningCenter", center, "asOf", today.toString(), "metal", "铱Ir");
+    }
+
+    /** Count quotation documents per category, not rows or product quantities. */
+    static Map<String,Long> quotationCategoryCounts(List<Map<String,Object>> grouped){
+        var counts=new LinkedHashMap<String,Long>();
+        for(var row:grouped){
+            Object labels=row.get("categories");if(labels==null)continue;
+            long documents=((Number)row.get("quoteCount")).longValue();
+            Arrays.stream(labels.toString().split("、")).map(String::trim).filter(label->!label.isEmpty()).distinct()
+                .forEach(label->counts.merge(label,documents,Long::sum));
+        }
+        return counts;
+    }
+
+    public Map<String,Object> dashboardFactories(){
+        Long own=scope.currentFactory();
+        var factories=own==null?data("SELECT CAST(factory_id AS CHAR) id,factory_name name FROM metal_factory WHERE del_flag='0' ORDER BY factory_id"):
+            data("SELECT CAST(factory_id AS CHAR) id,factory_name name FROM metal_factory WHERE del_flag='0' AND factory_id=?",own);
+        return Map.of("canSelectAll",scope.isAdmin(),"factories",factories);
     }
 
     @Transactional(rollbackFor = Exception.class, isolation = Isolation.READ_COMMITTED)

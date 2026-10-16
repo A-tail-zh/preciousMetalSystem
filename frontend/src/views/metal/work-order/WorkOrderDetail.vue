@@ -10,6 +10,7 @@
    <div class="detail-columns"><div class="detail-card reports"><div class="section-title">&gt;&gt;报工记录</div><el-table :data="currentReports" border empty-text="暂无报工记录"><el-table-column label="工序名称" prop="processName"/><el-table-column label="损耗重量（g）" prop="lossWeight"/><el-table-column label="平均损耗（每件产品的损耗重量）" prop="averageLoss"/><el-table-column label="状态"><template #default="{row}">{{row.status==='ABNORMAL'?'异常':'正常'}}</template></el-table-column><el-table-column v-if="showReportActions" label="操作" width="132" align="center"><template #default="{row}"><div class="report-actions"><el-button v-hasPermi="['metal:work-report:query']" type="primary" size="small" @click="reportDialog?.open(row.itemId,row.processId,row.processName)">查看</el-button><el-button v-if="canEditReport" type="primary" size="small" @click="reportDialog?.open(row.itemId,row.processId,row.processName)">编辑</el-button></div></template></el-table-column></el-table><p v-if="!currentReports.length" class="empty-note">加工批次结算后自动生成报工记录</p></div>
     <div class="detail-card progress"><div class="section-title">&gt;&gt;工序进程</div><el-tabs v-model="activeItem" type="card"><el-tab-pane v-for="(item,index) in order.items" :key="item.id||index" :name="String(index)" :label="(item.snapshot?.name??'产品')+' '+(index+1)+'（'+item.quantity+'件）'"/></el-tabs><el-table :data="plans" border><el-table-column label="工序名称" prop="processName"/><el-table-column label="开始时间"><template #default="{row}">{{row.startTime||'—'}}</template></el-table-column><el-table-column label="结束时间"><template #default="{row}">{{row.endTime||'—'}}</template></el-table-column></el-table></div>
    </div>
+   <div v-if="order.reviews?.length" class="detail-card"><div class="section-title">操作记录</div><el-table :data="order.reviews" border><el-table-column prop="createTime" label="时间"/><el-table-column prop="actorName" label="操作人"/><el-table-column label="操作"><template #default="{row}">{{reviewNames[row.action]||row.action}}</template></el-table-column><el-table-column prop="reason" label="说明"/></el-table></div>
   </template>
   <div v-if="failed" class="detail-error">工单加载失败 <el-button link type="primary" @click="load">重试</el-button></div>
  <WorkReportDialog ref="reportDialog" @changed="loadReports"/>
@@ -23,6 +24,7 @@ import WorkReportDialog from '../warehouse-common/WorkReportDialog.vue'
 import {reportSummary,type Row} from '@/api/metal/warehouse'
 import {orderDetail,orderStatus} from '@/api/metal/work-order'
 import type {WorkOrder} from '@/api/metal/work-order'
+const reviewNames:Record<string,string>={CREATE:'创建',EDIT:'修改',DELETE:'删除',SUBMIT:'旧流程：提交审核',APPROVE:'旧流程：审核通过',REJECT:'旧流程：驳回',RESUBMIT:'旧流程：重新提交'}
 const props=defineProps<{id:string}>();defineEmits<{back:[]}>()
 const reports=ref<Row[]>([]),reportDialog=ref<InstanceType<typeof WorkReportDialog>>(),currentReports=computed(()=>reports.value.filter(r=>r.itemId===order.value?.items[Number(activeItem.value)]?.id))
 async function loadReports(){reports.value=(await reportSummary(props.id)).data}

@@ -22,7 +22,8 @@ public class DashboardController extends BaseController {
  /**
   * 获取当前用户可访问的首页概览数据。
   */
- @GetMapping("/dashboard") @PreAuthorize("isAuthenticated()") public AjaxResult dashboard(){return success(service.dashboard());}
+ @GetMapping("/dashboard") @PreAuthorize("isAuthenticated()") public AjaxResult dashboard(@RequestParam(required=false) Long factoryId){return success(service.dashboard(factoryId));}
+ @GetMapping("/dashboard/factories") @PreAuthorize("isAuthenticated()") public AjaxResult dashboardFactories(){return success(service.dashboardFactories());}
  /**
   * 获取当前用户可访问的工厂选项。
   */

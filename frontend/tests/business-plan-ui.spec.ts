@@ -9,10 +9,12 @@ async function setup(page:Page,authenticated=true,fault=false){
  else if(path==='/getRouters')response.data=[{path:'/metal',component:'Layout',children:['factory','product','production-line','material','process','quotation','warehouse-order'].map(p=>({path:p,component:'metal/'+p+'/index',name:p,meta:{title:p,noCache:true}}))},{path:'/system',component:'Layout',children:[{path:'user',component:'metal/staff/index',name:'User'},{path:'role',component:'metal/role/index',name:'Role'}]},{path:'/audit',component:'Layout',children:[{path:'operations',component:'audit/operations',name:'Operations'}]}];
  else if(path==='/metal/factory/list'&&fault)response={code:500,msg:'模拟业务错误',traceId:'fictional-business-trace'};
  else if(path.startsWith('/metal/options/'))response.data=path.endsWith('factories')?[{id:'1',name:'测试工厂'}]:[];
- else if(path.startsWith('/metal/filter-options/'))response={code:200,rows:[{id:'1',name:path.endsWith('roles')?'测试角色':'测试选项'}],hasMore:false};
+ else if(path==='/metal/filter-options/suggestions')response={code:200,rows:[{value:'西安贵金属工厂'},{value:'西安精密制造厂'}]};
+  else if(path.startsWith('/metal/filter-options/'))response={code:200,rows:[{id:'1',name:path.endsWith('roles')?'测试角色':'测试选项'}],hasMore:false};
  else if(path==='/metal/quotation/context')response.data={rule:{piValue:'3.141593'}};
  else if(path==='/metal/quotation/factories')response.data=[{id:'1',name:'测试工厂'}];
- else if(path==='/metal/quotation/calculate')response.data={volume:'15.000000',unitPrice:'10.123456',totalPrice:body.quantity===2?'20.246912':'30.370368'};
+ else if(path==='/metal/quotation/image')response.data='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a4XkAAAAASUVORK5CYII=';
+  else if(path==='/metal/quotation/calculate')response.data={volume:'15.000000',unitPrice:'10.123456',totalPrice:body.quantity===2?'20.246912':'30.370368'};
  else if(path.endsWith('/export')){await route.fulfill({contentType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',body:Buffer.from('PK UI download mock')});return;}
  await route.fulfill({json:response});});return calls
 }
@@ -40,6 +42,23 @@ test('staff export includes applied role filter and blocks unqueried edits',asyn
 test('quotation calculation shows ordered result table and exact total',async({page})=>{
  await setup(page);await page.goto('/metal/quotation');
  const fill=async(index:number,quantity:string)=>{const item=page.locator('.goods-item').nth(index);await item.locator('.el-select__wrapper').click();await item.getByRole('option',{name:'铱杆实心',exact:true}).click();await item.getByLabel('商品数量',{exact:true}).fill(quantity);await item.getByLabel('直径：',{exact:true}).fill('2');await item.getByLabel('长度：',{exact:true}).fill('3')};
- await fill(0,'2');await page.getByRole('button',{name:'添加商品',exact:true}).click();await fill(1,'3');await page.getByRole('button',{name:'开始计算',exact:true}).click();const table=page.locator('.quotation-results-table');await expect(table.locator('.el-table__body .el-table__row')).toHaveCount(2);await expect(table).toContainText('20.246912');await expect(table).toContainText('30.370368');await expect(page.getByText('总报价：50.617280 元',{exact:true})).toBeVisible();await page.locator('.goods-item').first().getByLabel('长度：',{exact:true}).fill('4');await expect(table).toHaveCount(0);
+ await fill(0,'2');await page.getByRole('button',{name:'添加商品',exact:true}).click();await fill(1,'3');await page.getByRole('button',{name:'开始计算',exact:true}).click();const table=page.locator('.quotation-results-table');await expect(table.locator('.el-table__body .el-table__row')).toHaveCount(2);await expect(table.getByRole('columnheader',{name:'产品图片',exact:true})).toBeVisible();await expect(table.locator('.quotation-product-image img')).toHaveCount(2);await table.locator('.quotation-product-image').first().click();await expect(page.locator('.el-image-viewer__wrapper')).toBeVisible();await page.keyboard.press('Escape');await expect(table).toContainText('20.246912');await expect(table).toContainText('30.370368');await expect(page.getByText('总报价：50.617280 元',{exact:true})).toBeVisible();await page.locator('.goods-item').first().getByLabel('长度：',{exact:true}).fill('4');await expect(table).toHaveCount(0);
 })
 test('log toolbar keeps filter query and export together',async({page})=>{await setup(page);await page.goto('/audit/operations');await expect(page.locator('.log-toolbar').getByRole('button')).toHaveText(['筛选条件','查询','导出']);await page.getByRole('button',{name:'筛选条件',exact:true}).click();await expect(page.getByPlaceholder('追踪ID')).toBeVisible()})
+
+test('text filters suggest matching labels and retain manual keyword queries',async({page})=>{
+ const calls=await setup(page);await page.goto('/metal/factory');await page.getByRole('button',{name:'筛选条件',exact:true}).click();
+ const input=page.getByPlaceholder('工厂名称',{exact:true});await input.fill('西');
+ await expect(page.getByRole('option',{name:'西安贵金属工厂',exact:true})).toBeVisible();
+ await page.getByRole('option',{name:'西安贵金属工厂',exact:true}).click();await expect(input).toHaveValue('西安贵金属工厂');
+ await page.getByRole('button',{name:'查询',exact:true}).click();await expect.poll(()=>calls.filter(c=>c.path==='/metal/factory/list').at(-1)?.query.get('name')).toBe('西安贵金属工厂');
+ await page.getByRole('button',{name:/筛选条件/}).click();await input.fill('任意手动关键词');await page.getByRole('button',{name:'查询',exact:true}).click();await expect.poll(()=>calls.filter(c=>c.path==='/metal/factory/list').at(-1)?.query.get('name')).toBe('任意手动关键词');
+})
+
+test('filter panel stays open across suggestions, mouse movement and date popups',async({page})=>{
+ await setup(page);await page.goto('/metal/factory');const toggle=page.getByRole('button',{name:'筛选条件',exact:true});await toggle.click();const panel=page.locator('.business-filter-panel:visible');
+ await panel.getByPlaceholder('工厂名称',{exact:true}).fill('西');await page.getByRole('option',{name:'西安贵金属工厂',exact:true}).click();
+ await page.mouse.move(5,5);await expect(panel).toBeVisible();await panel.getByPlaceholder('详细地址',{exact:true}).fill('长安');
+ await panel.getByPlaceholder('开始日期').click();const calendar=page.locator('.el-date-range-picker:visible');await expect(calendar).toBeVisible();await calendar.locator('.available').first().click();await expect(panel).toBeVisible();await calendar.locator('.available').nth(3).click();await page.mouse.move(5,5);await expect(panel).toBeVisible();
+ await panel.getByRole('button',{name:'收起',exact:true}).click();await expect(panel).toHaveCount(0);await toggle.click();await expect(page.getByPlaceholder('工厂名称',{exact:true})).toHaveValue('西安贵金属工厂');await page.locator('.business-filter-panel:visible').getByRole('button',{name:'查询',exact:true}).click();await expect(page.locator('.business-filter-panel:visible')).toHaveCount(0);
+})

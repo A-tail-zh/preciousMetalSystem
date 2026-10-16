@@ -6,7 +6,7 @@
    <el-form-item label="工厂" prop="factoryId"><el-select :model-value="form.factoryId" :disabled="!isAdmin" fit-input-width :teleported="false" @visible-change="resetSelectScroll" @change="changeFactory"><el-option v-for="option in factories" :key="option.id" :value="option.id" :label="option.name"/></el-select></el-form-item>
    <el-form-item label="产线" prop="productionLineId"><el-select :model-value="form.productionLineId" fit-input-width :teleported="false" :disabled="!form.factoryId" @visible-change="resetSelectScroll" @change="changeLine"><el-option v-for="option in lines" :key="option.id" :value="option.id" :label="option.name"/></el-select></el-form-item>
    <el-form-item label="开单日期" prop="orderDate"><el-date-picker v-model="form.orderDate" type="date" value-format="YYYY-MM-DD" format="YYYY-MM-DD" :teleported="true" placeholder="请选择日期"/></el-form-item>
-   <el-form-item label="负责人" prop="ownerId"><el-select v-model="form.ownerId" fit-input-width :teleported="false" :disabled="!form.factoryId" @visible-change="resetSelectScroll"><el-option v-for="option in owners" :key="option.id" :value="option.id" :label="option.name"/></el-select></el-form-item>
+   <el-form-item label="负责人" prop="ownerId"><el-select v-model="form.ownerId" filterable fit-input-width :teleported="false" :disabled="!form.factoryId" @visible-change="resetSelectScroll"><el-option v-for="option in owners" :key="option.id" :value="option.id" :label="ownerLabel(option)"/></el-select></el-form-item>
    <el-button class="add-product" :disabled="!form.productionLineId||form.items.length>=100" @click="form.items.push(blankItem())">添加产品</el-button>
    <div v-for="(item,index) in form.items" :key="item.key||item.id||index" class="order-item">
     <el-form-item :label="'选择产品'+(form.items.length>1?' '+(index+1):'')"><el-select :model-value="item.productId" fit-input-width :teleported="false" :disabled="!form.productionLineId" @visible-change="resetSelectScroll" @change="value=>changeProduct(item,value)"><el-option v-for="option in availableProducts" :key="option.id" :value="option.id" :label="option.name+(option.hasProcesses?'':'（未配置工序）')" :disabled="!option.hasProcesses"/></el-select><el-button v-if="form.items.length>1" link type="danger" @click="form.items.splice(index,1)">移除</el-button></el-form-item>
@@ -29,6 +29,7 @@ import {reserveOrderNumber,orderDetail,orderOptions,orderProductPlans,orderSave}
 import type {WorkOrder,WorkOrderItem,OrderOption} from '@/api/metal/work-order'
 const emit=defineEmits<{saved:[added:boolean]}>(),user=useUserStore(),isAdmin=computed(()=>String(user.id)==='1')
 const opened=ref(false),saving=ref(false),optionsLoading=ref(false),formRef=ref<FormInstance>()
+const ownerLabel=(option:OrderOption)=>`${option.roleNames||'未分配角色'}｜${option.name}｜${option.phone||'未填写手机号'}`
 const blankItem=():WorkOrderItem=>({key:createUUID(),productId:'',quantity:1,plans:[]})
 const today=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date())
 const blank=():WorkOrder=>({requestId:createUUID(),customer:'',factoryId:'',productionLineId:'',ownerId:'',orderDate:today(),items:[blankItem()]})
