@@ -94,7 +94,7 @@ const props = defineProps({
   }
 })
 
-const { proxy } = getCurrentInstance()
+const proxy = getCurrentInstance()!.proxy!
 const emit = defineEmits()
 const number = ref(0)
 const uploadList = ref<UploadFileItem[]>([])
@@ -110,7 +110,7 @@ watch(() => props.modelValue, (val: any) => {
   if (val) {
     let temp = 1
     // 首先将值转为数组
-    const list = Array.isArray(val) ? val : props.modelValue.split(',')
+    const list = Array.isArray(val) ? val : String(props.modelValue ?? '').split(',')
     // 然后将数组转为对象数组
     fileList.value = list.map((item: any) => {
       if (typeof item === "string") {
@@ -175,7 +175,7 @@ function handleUploadSuccess(res: UploadFileResult, file: any): void {
     number.value--
     proxy.$modal.closeLoading()
     proxy.$modal.msgError(res.msg)
-    proxy.$refs.fileUpload.handleRemove(file)
+    ;(proxy.$refs.fileUpload as import('element-plus').UploadInstance).handleRemove(file)
     uploadedSuccessfully()
   }
 }
@@ -223,7 +223,7 @@ function listToString(list: UploadFileItem[], separator?: string): string {
 onMounted(() => {
   if (props.drag && !props.disabled) {
     nextTick(() => {
-      const element = proxy.$refs.uploadFileList?.$el || proxy.$refs.uploadFileList as HTMLElement
+      const element = proxy.$refs.uploadFileList as HTMLElement
       if (element) {
         Sortable.create(element, {
           ghostClass: 'file-upload-darg',

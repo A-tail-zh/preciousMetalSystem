@@ -50,7 +50,7 @@ import { Search } from "@element-plus/icons-vue"
 import { listNoticeReadUsers } from "@/api/system/notice"
 import type { NoticeReadUser, NoticeReadUserQueryParams, SysNotice } from "@/types/api/system/notice"
 
-const { proxy } = getCurrentInstance()
+const proxy = getCurrentInstance()!.proxy!
 
 const visible = ref(false)
 const loading = ref(false)

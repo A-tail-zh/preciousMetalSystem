@@ -7,9 +7,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build:prod": "vite build",
-    "build:stage": "vite build --mode staging",
-    "preview": "vite preview"
+    "build:prod": "npm run typecheck && vite build",
+    "build:stage": "npm run typecheck && vite build --mode staging",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit"
   },
   "repository": {
     "type": "git",

@@ -17,6 +17,7 @@
         <el-input
           v-model="loginForm.password"
           type="password"
+          show-password
           size="large"
           auto-complete="off"
           placeholder="密码"
@@ -78,7 +79,7 @@ const footerContent = defaultSettings.footerContent
 const userStore = useUserStore()
 const route = useRoute()
 const router = useRouter()
-const { proxy } = getCurrentInstance()
+const proxy = getCurrentInstance()!.proxy!
 
 const loginForm = ref<LoginForm>({
   username: "admin",
@@ -107,7 +108,7 @@ watch(route, (newRoute: any) => {
 }, { immediate: true })
 
 function handleLogin(): void {
-  proxy.$refs.loginRef.validate((valid: boolean) => {
+  ;(proxy.$refs.loginRef as import('element-plus').FormInstance).validate((valid: boolean) => {
     if (valid) {
       loading.value = true
       // 勾选了需要记住密码设置在 cookie 中设置记住用户名和密码
@@ -157,8 +158,9 @@ function getCookie(): void {
   const password = Cookies.get("password")
   const rememberMe = Cookies.get("rememberMe")
   loginForm.value = {
+    code:'',uuid:'',
     username: username === undefined ? loginForm.value.username : username,
-    password: password === undefined ? loginForm.value.password : decrypt(password),
+    password: password === undefined ? loginForm.value.password : decrypt(password) || '',
     rememberMe: rememberMe === undefined ? false : Boolean(rememberMe)
   }
 }

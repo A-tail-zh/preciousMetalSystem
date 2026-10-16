@@ -85,7 +85,7 @@ import type { RegisterForm } from '@/types/api/login'
 const title = import.meta.env.VITE_APP_TITLE
 const footerContent = defaultSettings.footerContent
 const router = useRouter()
-const { proxy } = getCurrentInstance()
+const proxy = getCurrentInstance()!.proxy!
 const { registerPwdValidator } = usePasswordRule()
 
 const registerForm = ref<RegisterForm>({
@@ -121,7 +121,7 @@ const loading = ref<boolean>(false)
 const captchaEnabled = ref<boolean>(true)
 
 function handleRegister(): void {
-  proxy.$refs.registerRef.validate((valid: boolean) => {
+  ;(proxy.$refs.registerRef as import('element-plus').FormInstance).validate((valid: boolean) => {
     if (valid) {
       loading.value = true
       register(registerForm.value).then(() => {

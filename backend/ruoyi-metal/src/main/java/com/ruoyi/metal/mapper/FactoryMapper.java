@@ -17,6 +17,7 @@ public interface FactoryMapper {
     /**
      * 查询未删除的工厂记录。
      */
+    List<Factory> selectFiltered(@Param("scopeId") Long scopeId,@Param("q") com.ruoyi.metal.catalog.ListQuery q);
     Factory selectById(@Param("id") Long id);
     /**
      * 查询并锁定未删除的工厂记录。

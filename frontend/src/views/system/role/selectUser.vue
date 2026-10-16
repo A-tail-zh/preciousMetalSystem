@@ -70,7 +70,7 @@ const props = defineProps({
   }
 })
 
-const { proxy } = getCurrentInstance()
+const proxy = getCurrentInstance()!.proxy!
 const { sys_normal_disable } = useDict("sys_normal_disable")
 
 const userList = ref<SysUser[]>([])
@@ -88,14 +88,14 @@ const queryParams = reactive<UserQueryParams>({
 
 // 显示弹框
 function show() {
-  queryParams.roleId = props.roleId
+  queryParams.roleId = Number(props.roleId)
   getList()
   visible.value = true
 }
 
 /**选择行 */
 function clickRow(row: SysUser) {
-  proxy.$refs["refTable"].toggleRowSelection(row)
+  ;(proxy.$refs["refTable"] as import('element-plus').TableInstance).toggleRowSelection(row)
 }
 
 // 多选框选中数据

@@ -51,7 +51,7 @@ import type { SysRole } from '@/types/api/system/role'
 import type { SysUser } from '@/types/api/system/user'
 
 const route = useRoute()
-const { proxy } = getCurrentInstance()
+const proxy = getCurrentInstance()!.proxy!
 
 interface SysRoleWithFlag extends SysRole {
   /** 用户是否存在此角色标识 */
@@ -73,7 +73,7 @@ const form = ref<SysUser>({
 /** 单击选中行数据 */
 function clickRow(row: SysRole) {
   if (checkSelectable(row)) {
-    proxy.$refs["roleRef"].toggleRowSelection(row)
+    ;(proxy.$refs["roleRef"] as import('element-plus').TableInstance).toggleRowSelection(row)
   }
 }
 
@@ -83,8 +83,8 @@ function handleSelectionChange(selection: SysRole[]) {
 }
 
 /** 保存选中的数据编号 */
-function getRowKey(row: SysRole): number {
-  return row.roleId!
+function getRowKey(row: SysRole): string {
+  return String(row.roleId)
 }
 
 // 检查角色状态
@@ -114,12 +114,12 @@ function submitForm() {
     loading.value = true
     getAuthRole(userId).then(response => {
       form.value = response.user
-      roles.value = response.roles
+      roles.value = response.roles.map(role => ({...role,flag:!!(role as SysRole & {flag?:boolean}).flag}))
       total.value = roles.value.length
       nextTick(() => {
         roles.value.forEach((row: SysRoleWithFlag) => {
           if (row.flag) {
-            proxy.$refs["roleRef"].toggleRowSelection(row)
+            ;(proxy.$refs["roleRef"] as import('element-plus').TableInstance).toggleRowSelection(row)
           }
         })
       })

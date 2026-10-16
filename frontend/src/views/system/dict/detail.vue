@@ -50,7 +50,7 @@
           <div class="dict-cell">
             <div class="dict-cell-key">标签</div>
             <div class="dict-cell-val">
-              <el-tag v-if="item.listClass && item.listClass !== 'default'" :type="item.listClass === 'primary' ? undefined : item.listClass" size="small">{{ item.dictLabel }}</el-tag>
+              <el-tag v-if="item.listClass && item.listClass !== 'default'" :type="(['primary','success','warning','info','danger'].includes(item.listClass) ? item.listClass : 'info') as 'primary'|'success'|'warning'|'info'|'danger'" size="small">{{ item.dictLabel }}</el-tag>
               <span v-else>{{ item.dictLabel }}</span>
             </div>
           </div>

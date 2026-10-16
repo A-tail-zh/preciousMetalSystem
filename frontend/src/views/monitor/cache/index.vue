@@ -68,10 +68,10 @@
 import { getCache } from '@/api/monitor/cache'
 import * as echarts from 'echarts'
 
-const cache = ref([])
+const cache = ref<{info:Record<string,string>;commandStats:{name:string;value:string}[];dbSize:number}>({info:{},commandStats:[],dbSize:0})
 const commandstats = ref(null)
 const usedmemory = ref(null)
-const { proxy } = getCurrentInstance()
+const proxy = getCurrentInstance()!.proxy!
 
 function getList(): void {
   proxy.$modal.loading("正在加载缓存监控数据，请稍候！")

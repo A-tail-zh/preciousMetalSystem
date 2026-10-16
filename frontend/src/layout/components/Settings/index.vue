@@ -129,7 +129,7 @@ import useSettingsStore from '@/store/modules/settings'
 import usePermissionStore from '@/store/modules/permission'
 import { handleThemeStyle } from '@/utils/theme'
 
-const { proxy } = getCurrentInstance()
+const proxy = getCurrentInstance()!.proxy!
 const appStore = useAppStore()
 const settingsStore = useSettingsStore()
 const permissionStore = usePermissionStore()
@@ -146,12 +146,13 @@ function dynamicTitleChange(): void {
   useSettingsStore().setTitle(useSettingsStore().title)
 }
 
-function tagsViewPersistChange(val: boolean): void {
-  settingsStore.tagsViewPersist = val
-  tagsViewPersist.value = val
+function tagsViewPersistChange(val: string|number|boolean): void {
+  settingsStore.tagsViewPersist = val === true
+  tagsViewPersist.value = val === true
 }
 
-function themeChange(val: string): void {
+function themeChange(val: string|null): void {
+  if (!val) return
   settingsStore.theme = val
   handleThemeStyle(val)
 }
@@ -204,7 +205,7 @@ function saveSetting(): void {
     "theme": storeSettings.value.theme
   }
   localStorage.setItem("layout-setting", JSON.stringify(layoutSetting))
-  setTimeout(proxy.$modal.closeLoading(), 1000)
+  setTimeout(() => proxy.$modal.closeLoading(), 1000)
 }
 
 function resetSetting(): void {

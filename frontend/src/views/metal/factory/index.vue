@@ -4,6 +4,7 @@
       <el-button v-hasPermi="['metal:factory:add']" class="add-button" @click="openAdd">添加</el-button>
       <el-button v-hasPermi="['metal:factory:edit']" class="edit-button" :disabled="selected.length !== 1" @click="openEdit(selected[0])">编辑</el-button>
       <el-button v-hasPermi="['metal:factory:remove']" class="delete-button" :disabled="!selected.length || deleting" @click="remove(selected)">删除</el-button>
+      <BusinessFilters kind="factory" @apply="applyFilters"/>
     </div>
     <el-table ref="tableRef" v-loading="loading" :data="rows" border class="factory-table" @selection-change="selected = $event">
       <el-table-column v-if="showActions" type="selection" width="54" align="center" />
@@ -61,11 +62,14 @@ import type { FormInstance, FormRules, TableInstance } from 'element-plus'
 import { listFactories, getFactory, lineOptions, saveFactory, deleteFactories } from '@/api/metal/factory'
 import type { Factory, FactoryForm, ProductionLine } from '@/api/metal/factory'
 
+import BusinessFilters from '@/components/BusinessFilters/index.vue'
 import useUserStore from '@/store/modules/user'
 const user=useUserStore(),showActions=computed(()=>user.permissions.some((p:string)=>['*:*:*','metal:factory:edit','metal:factory:remove'].includes(p)))
 const rows = ref<Factory[]>([]), selected = ref<Factory[]>([]), options = ref<ProductionLine[]>([])
 const total = ref(0), loading = ref(false), loadFailed = ref(false), dialogOpen = ref(false), saving = ref(false), deleting = ref(false)
 const updateTime = ref(''), tableRef = ref<TableInstance>(), formRef = ref<FormInstance>()
+const appliedFilters=ref<Record<string,string>>({})
+function applyFilters(filters:Record<string,string>){appliedFilters.value=filters;query.pageNum=1;selected.value=[];tableRef.value?.clearSelection();load()}
 const query = reactive({pageNum: 1, pageSize: 16})
 const blank = (): FactoryForm => ({factoryName: '', area: '', address: '', introduction: '', productionLineIds: []})
 const form = reactive<FactoryForm>(blank())
@@ -84,7 +88,7 @@ async function load() {
   const sequence = ++loadSequence
   loading.value = true
   try {
-    const response = await listFactories(query)
+    const response = await listFactories({...query,...appliedFilters.value})
     if (sequence !== loadSequence) return
     rows.value = response.rows; total.value = response.total; loadFailed.value = false
     selected.value = []; tableRef.value?.clearSelection()
@@ -138,7 +142,8 @@ onMounted(load)
 
 <style scoped>
 .factory-page { background:#f8fbff; min-height:calc(var(--design-height,100vh) - 82px); padding:9px 23px 24px 6px; display:flex; flex-direction:column; }
-.factory-toolbar { display:flex; gap:18px; margin-bottom:30px; }
+.factory-toolbar { display:flex;align-items:center;gap:18px;margin-bottom:30px;flex-wrap:nowrap;overflow-x:auto;flex-shrink:0; }
+.factory-toolbar>*{flex-shrink:0}
 .factory-toolbar .el-button { width:89px; height:35px; padding:0; margin:0; font-size:14px; }
 .add-button { --el-button-bg-color:#577bef; --el-button-border-color:#577bef; --el-button-text-color:white; --el-button-hover-bg-color:#7795ff; --el-button-hover-text-color:white; }
 .edit-button { --el-button-bg-color:#ee9b58; --el-button-border-color:#ee9b58; --el-button-text-color:white; --el-button-hover-bg-color:#f8b47f; --el-button-hover-text-color:white; }

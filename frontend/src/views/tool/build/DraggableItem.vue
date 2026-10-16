@@ -1,6 +1,6 @@
 <template>
   <el-col :span="element.span" :class="className" @click.stop="activeItem(element)">
-    <el-form-item :label="element.label" :label-width="element.labelWidth ? element.labelWidth + 'px' : null"
+    <el-form-item :label="element.label" :label-width="element.labelWidth ? element.labelWidth + 'px' : undefined"
       :required="element.required" v-if="element.layout === 'colFormItem'">
       <render :key="element.tag" :conf="element" v-model="element.defaultValue" />
     </el-form-item>
@@ -29,25 +29,25 @@ import draggable from "vuedraggable/dist/vuedraggable.common"
 import render from '@/utils/generator/render'
 
 const props = defineProps({
-  element: Object,
-  index: Number,
+  element: {type: Object, required:true},
+  index: {type:Number, required:true},
   drawingList: Array,
   activeId: {
     type: [String, Number]
   },
-  formConf: Object
+  formConf: {type:Object,required:true}
 })
 const className = ref('')
 const draggableItemRef = ref(null)
 const emits = defineEmits(['activeItem', 'copyItem', 'deleteItem'])
 
-function activeItem(item: Element): void {
+function activeItem(item: Record<string,any>): void {
   emits('activeItem', item)
 }
-function copyItem(item: Element, parent?: Element[]): void {
+function copyItem(item: Record<string,any>, parent?: Record<string,any>[]): void {
   emits('copyItem', item, parent ?? props.drawingList)
 }
-function deleteItem(item: number | Element, parent?: Element[]): void {
+function deleteItem(item: number | Record<string,any>, parent?: Record<string,any>[]): void {
   emits('deleteItem', item, parent ?? props.drawingList)
 }
 
@@ -59,7 +59,7 @@ function getComponentData(): Record<string, any> {
   }
 }
 
-watch(() => props.activeId, (val: string) => {
+watch(() => props.activeId, (val) => {
   className.value = (props.element.layout === 'rowFormItem' ? 'drawing-row-item' : 'drawing-item') + (val === props.element.formId ? ' active-from-item' : '')
   if (props.formConf.unFocusedComponentBorder) {
     className.value += ' unfocus-bordered'

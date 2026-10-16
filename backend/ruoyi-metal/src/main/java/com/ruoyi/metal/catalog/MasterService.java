@@ -53,6 +53,7 @@ public abstract class MasterService<T extends MasterRecord> {
     /**
      * 查询指定记录详情；业务层执行相应的访问权限检查。
      */
+    public List<T> list(ListQuery q){q.validate();Long factory=scoped()?scope.currentFactory():null;if(factory!=null&&q.getFactoryId()!=null&&!factory.equals(q.getFactoryId()))throw new ServiceException("不能查询其他工厂",403);List<T> rows=mapper.listFiltered(factory,q);hydrate(rows);return rows;}
     public T detail(Long id){T row=required(mapper.detail(id));access(row);hydrate(List.of(row));return row;}
     private T required(T value){if(value==null)throw new ServiceException("记录不存在或已删除");return value;}
     @Transactional(rollbackFor=Exception.class)

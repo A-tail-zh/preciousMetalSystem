@@ -14,6 +14,7 @@ public interface MasterMapper<T extends MasterRecord> {
     /**
      * 查询指定记录详情；业务层执行相应的访问权限检查。
      */
+    List<T> listFiltered(@Param("factoryId") Long factoryId,@Param("q") ListQuery q);
     T detail(@Param("id") Long id);
     /**
      * 查询并锁定记录，供当前事务执行并发校验。

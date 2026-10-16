@@ -32,9 +32,9 @@
   </div>
 </template>
 <script setup lang="ts">
-const open = defineModel()
-const emit = defineEmits(['confirm'])
-const formData = ref({
+const open = defineModel<boolean>({default:false})
+const emit = defineEmits(['commit'])
+const formData = ref<{label?:string;value?:string|number;id?:number}>({
   label: undefined,
   value: undefined
 })

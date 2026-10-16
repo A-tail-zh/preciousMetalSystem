@@ -1,8 +1,9 @@
+import type {DataResult} from '@/types/api/common'
 import request from '@/utils/request'
 import type { JobQueryParams, SysJob, AjaxResult, TableDataInfo } from '@/types'
 
 // 查询定时任务调度列表
-export function listJob(query: JobQueryParams): Promise<TableDataInfo<SysJob[]>> {
+export function listJob(query: JobQueryParams): Promise<TableDataInfo<SysJob>> {
   return request({
     url: '/monitor/job/list',
     method: 'get',
@@ -11,7 +12,7 @@ export function listJob(query: JobQueryParams): Promise<TableDataInfo<SysJob[]>>
 }
 
 // 查询定时任务调度详细
-export function getJob(jobId: number): Promise<AjaxResult<SysJob>> {
+export function getJob(jobId: number): Promise<DataResult<SysJob>> {
   return request({
     url: '/monitor/job/' + jobId,
     method: 'get'

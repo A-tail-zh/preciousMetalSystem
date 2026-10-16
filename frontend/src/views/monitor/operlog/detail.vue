@@ -19,7 +19,7 @@
           <el-col :span="12">
             <div class="detail-item">
               <span class="detail-label">执行状态</span>
-              <el-tag v-if="form.status === 0" type="success" size="small">正常</el-tag>
+              <el-tag v-if="form.status === '0'" type="success" size="small">正常</el-tag>
               <el-tag v-else type="danger" size="small">异常</el-tag>
             </div>
           </el-col>
@@ -100,7 +100,7 @@
       </div>
 
       <!-- 异常信息 -->
-      <div class="detail-card" v-if="form.status !== 0">
+      <div class="detail-card" v-if="form.status !== '0'">
         <div class="detail-card-title error-title"><el-icon><Warning /></el-icon> 异常信息</div>
         <div class="error-body">
           <div class="error-msg">{{ form.errorMsg }}</div>
@@ -112,7 +112,8 @@
 </template>
 
 <script setup lang="ts">
-const { proxy } = getCurrentInstance()
+import {CopyDocument} from '@element-plus/icons-vue'
+const proxy = getCurrentInstance()!.proxy!
 import type { SysOperLog } from '@/types/api/monitor/operlog'
 
 const props = defineProps<{
@@ -140,7 +141,7 @@ function formatJson(str?: string): string {
 function copyText(str?: string): void {
   const text = formatJson(str)
   if (navigator.clipboard) {
-    navigator.clipboard.writeText(text).then(() => proxy.$modal.msgSuccess({ message: '已复制', type: 'success', duration: 1500 }))
+    navigator.clipboard.writeText(text).then(() => proxy.$modal.msgSuccess('已复制'))
   } else {
     const ta = document.createElement('textarea')
     ta.value = text
@@ -148,7 +149,7 @@ function copyText(str?: string): void {
     ta.select()
     document.execCommand('copy')
     document.body.removeChild(ta)
-    proxy.$modal.msgSuccess({ message: '已复制', type: 'success', duration: 1500 })
+    proxy.$modal.msgSuccess('已复制')
   }
 }
 </script>

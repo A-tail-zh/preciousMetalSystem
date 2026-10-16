@@ -65,7 +65,7 @@
                plain
                icon="Edit"
                :disabled="single"
-               @click="handleUpdate"
+               @click="handleUpdate()"
                v-hasPermi="['system:role:edit']"
             >修改</el-button>
          </el-col>
@@ -75,7 +75,7 @@
                plain
                icon="Delete"
                :disabled="multiple"
-               @click="handleDelete"
+               @click="handleDelete()"
                v-hasPermi="['system:role:remove']"
             >删除</el-button>
          </el-col>
@@ -169,9 +169,9 @@
                </el-radio-group>
             </el-form-item>
             <el-form-item label="菜单权限">
-               <el-checkbox v-model="menuExpand" @change="handleCheckedTreeExpand($event, 'menu')">展开/折叠</el-checkbox>
-               <el-checkbox v-model="menuNodeAll" @change="handleCheckedTreeNodeAll($event, 'menu')">全选/全不选</el-checkbox>
-               <el-checkbox v-model="form.menuCheckStrictly" @change="handleCheckedTreeConnect($event, 'menu')">父子联动</el-checkbox>
+               <el-checkbox v-model="menuExpand" @change="handleCheckedTreeExpand($event === true, 'menu')">展开/折叠</el-checkbox>
+               <el-checkbox v-model="menuNodeAll" @change="handleCheckedTreeNodeAll($event === true, 'menu')">全选/全不选</el-checkbox>
+               <el-checkbox v-model="form.menuCheckStrictly" @change="handleCheckedTreeConnect($event === true, 'menu')">父子联动</el-checkbox>
                <el-tree
                   class="tree-border"
                   :data="menuOptions"
@@ -214,10 +214,10 @@
                   ></el-option>
                </el-select>
             </el-form-item>
-            <el-form-item label="数据权限" v-show="form.dataScope == 2">
-               <el-checkbox v-model="deptExpand" @change="handleCheckedTreeExpand($event, 'dept')">展开/折叠</el-checkbox>
-               <el-checkbox v-model="deptNodeAll" @change="handleCheckedTreeNodeAll($event, 'dept')">全选/全不选</el-checkbox>
-               <el-checkbox v-model="form.deptCheckStrictly" @change="handleCheckedTreeConnect($event, 'dept')">父子联动</el-checkbox>
+            <el-form-item label="数据权限" v-show="form.dataScope == '2'">
+               <el-checkbox v-model="deptExpand" @change="handleCheckedTreeExpand($event === true, 'dept')">展开/折叠</el-checkbox>
+               <el-checkbox v-model="deptNodeAll" @change="handleCheckedTreeNodeAll($event === true, 'dept')">全选/全不选</el-checkbox>
+               <el-checkbox v-model="form.deptCheckStrictly" @change="handleCheckedTreeConnect($event === true, 'dept')">父子联动</el-checkbox>
                <el-tree
                   class="tree-border"
                   :data="deptOptions"
@@ -250,7 +250,7 @@ import type { RoleDeptTreeResult } from '@/types/api/system/role'
 import type { RoleMenuTreeselectResult } from '@/types/api/system/menu'
 
 const router = useRouter()
-const { proxy } = getCurrentInstance()
+const proxy = getCurrentInstance()!.proxy!
 const { sys_normal_disable } = useDict("sys_normal_disable")
 
 const roleList = ref<SysRole[]>([])
@@ -472,12 +472,12 @@ function handleCheckedTreeExpand(value: boolean, type: string) {
   if (type == "menu") {
     let treeList = menuOptions.value
     for (let i = 0; i < treeList.length; i++) {
-      menuRef.value.store.nodesMap[treeList[i].id].expanded = value
+      menuRef.value.store.nodesMap[treeList[i].id!].expanded = value
     }
   } else if (type == "dept") {
     let treeList = deptOptions.value
     for (let i = 0; i < treeList.length; i++) {
-      deptRef.value.store.nodesMap[treeList[i].id].expanded = value
+      deptRef.value.store.nodesMap[treeList[i].id!].expanded = value
     }
   }
 }
@@ -512,7 +512,7 @@ function getMenuAllCheckedKeys(): number[] {
 
 /** 提交按钮 */
 function submitForm() {
-  proxy.$refs["roleRef"].validate((valid: boolean) => {
+  ;(proxy.$refs["roleRef"] as import('element-plus').FormInstance).validate((valid: boolean) => {
     if (valid) {
       if (form.value.roleId != undefined) {
         form.value.menuIds = getMenuAllCheckedKeys()

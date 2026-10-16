@@ -1,0 +1,42 @@
+{
+  "image": "iridium-crucible-flat-bottom.png",
+  "width": 1536,
+  "height": 1024,
+  "unit": "cm",
+  "coordinateOrigin": "top-left",
+  "note": "Inner value rectangles at original resolution. Center and fit text.",
+  "fields": [
+    {
+      "key": "innerDiameter",
+      "label": "内径",
+      "x": 1045,
+      "y": 536,
+      "width": 332,
+      "height": 54
+    },
+    {
+      "key": "innerHeight",
+      "label": "内高",
+      "x": 1045,
+      "y": 644,
+      "width": 332,
+      "height": 54
+    },
+    {
+      "key": "wallThickness",
+      "label": "壁厚",
+      "x": 1045,
+      "y": 755,
+      "width": 332,
+      "height": 54
+    },
+    {
+      "key": "bottomThickness",
+      "label": "底厚",
+      "x": 1045,
+      "y": 865,
+      "width": 332,
+      "height": 53
+    }
+  ]
+}

@@ -40,7 +40,7 @@ import useSettingsStore from '@/store/modules/settings'
 import usePermissionStore from '@/store/modules/permission'
 
 // 顶部栏初始数
-const visibleNumber = ref<number | null>(null)
+const visibleNumber = ref<number>(0)
 // 当前激活菜单的 index
 const currentIndex = ref<string | null>(null)
 // 隐藏侧边栏路由
@@ -91,7 +91,7 @@ const childrenMenus = computed(() => {
       childrenMenus.push(router.children[item])
     }
   })
-  return constantRoutes.concat(childrenMenus)
+  return (constantRoutes as Array<(typeof constantRoutes)[number] & {query?: string}>).concat(childrenMenus)
 })
 
 // 默认激活的菜单

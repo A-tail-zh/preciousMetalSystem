@@ -7,7 +7,7 @@
                   v-for="item in typeOptions"
                   :key="item.dictId"
                   :label="item.dictName"
-                  :value="item.dictType"
+                  :value="item.dictType!"
                />
             </el-select>
          </el-form-item>
@@ -52,7 +52,7 @@
                plain
                icon="Edit"
                :disabled="single"
-               @click="handleUpdate"
+               @click="handleUpdate()"
                v-hasPermi="['system:dict:edit']"
             >修改</el-button>
          </el-col>
@@ -62,7 +62,7 @@
                plain
                icon="Delete"
                :disabled="multiple"
-               @click="handleDelete"
+               @click="handleDelete()"
                v-hasPermi="['system:dict:remove']"
             >删除</el-button>
          </el-col>
@@ -186,7 +186,7 @@ interface ListClassOption {
   label: string
 }
 
-const { proxy } = getCurrentInstance()
+const proxy = getCurrentInstance()!.proxy!
 const { sys_normal_disable } = useDict("sys_normal_disable")
 
 const dataList = ref<SysDictData[]>([])
@@ -323,7 +323,7 @@ function handleUpdate(row?: SysDictData) {
 
 /** 提交按钮 */
 function submitForm() {
-  proxy.$refs["dataRef"].validate((valid: boolean) => {
+  ;(proxy.$refs["dataRef"] as import('element-plus').FormInstance).validate((valid: boolean) => {
     if (valid) {
       if (form.value.dictCode != undefined) {
         updateData(form.value).then(() => {

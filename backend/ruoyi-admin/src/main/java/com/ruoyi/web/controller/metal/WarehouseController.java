@@ -44,7 +44,7 @@ public class WarehouseController extends BaseController {
  /**
   * 分页查询仓储单据列表。
   */
- @GetMapping("/warehouse-order/list") @PreAuthorize("@ss.hasPermi('metal:warehouse-order:list')") public Map<String,Object> warehouseOrderList(@RequestParam(defaultValue="1") @Min(1) int pageNum,@RequestParam(defaultValue="16") @Min(1) @Max(100) int pageSize,@RequestParam(required=false) String filter,@RequestParam(required=false) Long factoryId){return service.list("warehouse-order",pageNum,pageSize,filter,factoryId);}
+ @GetMapping("/warehouse-order/list") @PreAuthorize("@ss.hasPermi('metal:warehouse-order:list')") public Map<String,Object> warehouseOrderList(@RequestParam(defaultValue="1") @Min(1) int pageNum,@RequestParam(defaultValue="16") @Min(1) @Max(100) int pageSize,@ModelAttribute com.ruoyi.metal.catalog.OrderListQuery query){return service.listOrders(pageNum,pageSize,query);}
  /**
   * 查询仓储单据详情。
   */

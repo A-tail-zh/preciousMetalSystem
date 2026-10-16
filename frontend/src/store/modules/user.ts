@@ -8,6 +8,7 @@ import useLockStore from '@/store/modules/lock'
 import defAva from '@/assets/images/profile.jpg'
 
 interface UserState {
+  sessionReady: boolean
   token: string | undefined
   id: string | number
   name: string
@@ -21,6 +22,7 @@ const useUserStore = defineStore(
   'user',
   {
     state: (): UserState => ({
+      sessionReady: false,
       token: getToken(),
       id: '',
       name: '',
@@ -32,6 +34,7 @@ const useUserStore = defineStore(
     actions: {
       // 登录
       login(userInfo: { username: string; password: string; code: string; uuid: string }) {
+        this.sessionReady=false
         const username = userInfo.username.trim()
         const password = userInfo.password
         const code = userInfo.code
@@ -66,7 +69,8 @@ const useUserStore = defineStore(
             this.name = user.userName || ''
             this.nickName = user.nickName || ''
             this.avatar = avatar
-            cache.session.set('pwrChrtype', res.pwdChrtype)
+            this.sessionReady=true
+            cache.session.set('pwrChrtype', res.pwdChrtype || '')
             /* 初始密码提示 */
             if(res.isDefaultModifyPwd) {
               ElMessageBox.confirm('您的密码还是初始密码，请修改密码！',  '安全提示', {  confirmButtonText: '确定',  cancelButtonText: '取消',  type: 'warning' }).then(() => {
@@ -85,11 +89,14 @@ const useUserStore = defineStore(
           })
         })
       },
-      clearSession() { this.token=''; this.roles=[]; this.permissions=[]; removeToken() },
+      clearSession() { this.sessionReady=false; this.id=''; cache.session.remove('sessionObj'); this.token=''; this.roles=[]; this.permissions=[]; removeToken() },
       // 退出系统
       logOut() {
         return new Promise<void>((resolve, reject) => {
           logout().then(() => {
+            cache.session.remove('sessionObj')
+            this.sessionReady=false
+            this.id=''
             this.token = ''
             this.roles = []
             this.permissions = []

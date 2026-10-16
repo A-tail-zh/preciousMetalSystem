@@ -22,8 +22,10 @@ public class FactoryService {
     /**
      * 查询列表并补充关联资料。
      */
-    public List<Factory> list() {
-        List<Factory> factories = mapper.selectList(scope.currentFactory());
+    public List<Factory> list() { return listInternal(null); }
+    public List<Factory> list(com.ruoyi.metal.catalog.ListQuery q) {q.validate();return listInternal(q);}
+    private List<Factory> listInternal(com.ruoyi.metal.catalog.ListQuery q) {
+        List<Factory> factories = q==null?mapper.selectList(scope.currentFactory()):mapper.selectFiltered(scope.currentFactory(),q);
         if (!factories.isEmpty()) {
             Map<String, List<ProductionLine>> lines = mapper.selectLines(factories.stream()
                 .map(f -> Long.valueOf(f.getFactoryId())).toList()).stream()

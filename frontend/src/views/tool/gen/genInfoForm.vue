@@ -118,7 +118,7 @@
           <el-tree-select
             v-model="info.parentMenuId"
             :data="menuOptions"
-            :props="{ value: 'menuId', label: 'menuName', children: 'children' }"
+            :props="{ label: 'menuName', children: 'children' }"
             placeholder="请选择系统菜单"
             check-strictly
           />
@@ -168,7 +168,7 @@
                 v-for="(column, index) in info.columns"
                 :key="index"
                 :label="column.columnName + '：' + column.columnComment"
-                :value="column.columnName"
+                :value="column.columnName!"
               ></el-option>
             </el-select>
           </el-form-item>
@@ -186,7 +186,7 @@
                 v-for="(column, index) in info.columns"
                 :key="index"
                 :label="column.columnName + '：' + column.columnComment"
-                :value="column.columnName"
+                :value="column.columnName!"
               ></el-option>
             </el-select>
           </el-form-item>
@@ -204,7 +204,7 @@
                 v-for="(column, index) in info.columns"
                 :key="index"
                 :label="column.columnName + '：' + column.columnComment"
-                :value="column.columnName"
+                :value="column.columnName!"
               ></el-option>
             </el-select>
           </el-form-item>
@@ -228,7 +228,7 @@
                 v-for="(table, index) in tables"
                 :key="index"
                 :label="table.tableName + '：' + table.tableComment"
-                :value="table.tableName"
+                :value="table.tableName!"
               ></el-option>
             </el-select>
           </el-form-item>
@@ -246,7 +246,7 @@
                 v-for="(column, index) in subColumns"
                 :key="index"
                 :label="column.columnName + '：' + column.columnComment"
-                :value="column.columnName"
+                :value="column.columnName!"
               ></el-option>
             </el-select>
           </el-form-item>
@@ -260,9 +260,9 @@
 <script setup lang="ts">
 import { listMenu } from "@/api/system/menu"
 
-const subColumns = ref([])
-const menuOptions = ref([])
-const { proxy } = getCurrentInstance()
+const subColumns = ref<import('@/types/api/tool/gen').GenTableColumn[]>([])
+const menuOptions = ref<import('@/types/api/system/menu').SysMenu[]>([])
+const proxy = getCurrentInstance()!.proxy!
 
 const props = defineProps({
   info: {
@@ -270,7 +270,7 @@ const props = defineProps({
     default: null
   },
   tables: {
-    type: Array,
+    type: Array as import('vue').PropType<import('@/types/api/tool/gen').GenTable[]>,
     default: null
   }
 })

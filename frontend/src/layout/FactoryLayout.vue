@@ -20,7 +20,7 @@
         <button class="logout" @click="logout">⇥　登出</button>
       </aside>
       <div class="prototype-main">
-        <header class="prototype-header"><span class="avatar"><i></i><b></b></span><span>{{ user.nickName || user.name || '管理员' }}</span></header>
+        <header class="prototype-header"><el-dropdown trigger="click" placement="bottom-end" @command="logout"><button class="profile-menu-trigger" type="button" aria-label="账户菜单"><span class="avatar"><i></i><b></b></span><span>{{ user.nickName || user.name || '管理员' }}</span></button><template #dropdown><el-dropdown-menu><el-dropdown-item command="logout">退出登录</el-dropdown-item></el-dropdown-menu></template></el-dropdown></header>
         <main><slot /></main>
       </div>
     </div>
@@ -52,6 +52,8 @@ async function logout() {
 }
 </script>
 <style scoped>
+.profile-menu-trigger{display:flex;align-items:center;gap:10px;border:0;background:transparent;cursor:pointer;color:inherit;font:inherit;padding:4px}
+
 .prototype-frame { background:#f8fbff; min-height:var(--design-height,100vh); padding:0; font-family:Arial,'Microsoft YaHei',sans-serif; }
 .prototype-shell { display:flex; min-height:var(--design-height,100vh); background:#f8fbff; }
 .prototype-sidebar { background:#fff; width:247px; padding:0; margin:0; border-radius:0; line-height:normal; font-family:inherit; height:var(--design-height,100vh); position:sticky; top:0; flex-shrink:0; display:flex; flex-direction:column; border:1px solid #ebeef3; }

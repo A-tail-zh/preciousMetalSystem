@@ -1,3 +1,4 @@
+import type {DataResult} from '@/types/api/common'
 import request from '@/utils/request'
 import type { GenQueryParams, GenTable, GenTableInfoResult, AjaxResult, TableDataInfo } from '@/types'
 
@@ -20,7 +21,7 @@ export function listDbTable(query: GenQueryParams): Promise<TableDataInfo<GenTab
 }
 
 // 查询表详细信息
-export function getGenTable(tableId: number): Promise<AjaxResult<GenTableInfoResult>> {
+export function getGenTable(tableId: number): Promise<DataResult<GenTableInfoResult>> {
   return request({
     url: '/tool/gen/' + tableId,
     method: 'get'
@@ -55,7 +56,7 @@ export function createTable(data: any): Promise<AjaxResult> {
 }
 
 // 预览生成代码
-export function previewTable(tableId: number): Promise<AjaxResult<any>> {
+export function previewTable(tableId: number): Promise<DataResult<any>> {
   return request({
     url: '/tool/gen/preview/' + tableId,
     method: 'get'

@@ -48,7 +48,8 @@ const props = defineProps({
   }
 })
 
-const onlyOneChild = ref({})
+interface MenuNode {path:string;hidden?:boolean;noShowingChildren?:boolean;query?:string;children?:MenuNode[];meta?:{icon?:string;title:string}}
+const onlyOneChild = ref<MenuNode>({path:''})
 
 function hasOneShowingChild(children: any[] = [], parent: any) {
   if (!children) {
@@ -76,6 +77,8 @@ function hasOneShowingChild(children: any[] = [], parent: any) {
   return false
 }
 
+function resolvePath(routePath:string): string
+function resolvePath(routePath:string, routeQuery:string|undefined): string | {path:string;query:Record<string,unknown>}
 function resolvePath(routePath: string, routeQuery?: string): string | { path: string; query: Record<string, any> } {
   if (isExternal(routePath)) {
     return routePath

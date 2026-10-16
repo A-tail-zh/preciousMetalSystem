@@ -33,19 +33,19 @@ interface Props {
 
 const props = defineProps<Props>()
 
-const { proxy } = getCurrentInstance()
+const proxy = getCurrentInstance()!.proxy!
 const session=useUserStore(),router=useRouter()
 
 const form = ref<SysUser>({})
 const rules = {
   nickName: [{ required: true, message: "用户昵称不能为空", trigger: "blur" }],
-  email: [{ required: true, message: "邮箱地址不能为空", trigger: "blur" }, { type: "email", message: "请输入正确的邮箱地址", trigger: ["blur", "change"] }],
+  email: [{ required: true, message: "邮箱地址不能为空", trigger: "blur" }, { type: "email" as const, message: "请输入正确的邮箱地址", trigger: ["blur", "change"] }],
   phonenumber: [{ required: true, message: "手机号码不能为空", trigger: "blur" }, { pattern: /^1[3-9]\d{9}$/, message: "请输入正确的手机号码", trigger: "blur" }],
 }
 
 /** 提交按钮 */
 function submit() {
-  proxy.$refs.userRef.validate((valid: boolean) => {
+  ;(proxy.$refs.userRef as import('element-plus').FormInstance).validate((valid: boolean) => {
     if (valid) {
       updateUserProfile(form.value).then((result:any) => {
         if(result.requireRelogin){proxy.$modal.msgSuccess("登录账号已更新，请使用新手机号重新登录");session.clearSession();router.replace('/login');return}
@@ -66,7 +66,7 @@ function close() {
 }
 
 // 回显当前登录用户信息
-watch(() => props.user, (user: SysUser) => {
+watch(() => props.user, (user) => {
   if (user) {
     form.value = { version:user.version, nickName: user.nickName, phonenumber: user.phonenumber, email: user.email, sex: user.sex }
   }

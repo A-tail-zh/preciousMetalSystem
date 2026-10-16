@@ -5,6 +5,7 @@ import type { PageDomain, AjaxResult, BaseEntity } from "../common";
 
 /** 用户分页查询参数 */
 export interface UserQueryParams extends PageDomain {
+  roleId?: number
   /** 用户名称 */
   userName?: string;
   /** 手机号码 */
@@ -28,6 +29,8 @@ export interface AuthUserQueryParams extends UserQueryParams {
 
 /** 用户信息 */
 export interface SysUser extends BaseEntity {
+  loginIp?: string
+  loginDate?: string
   version?: number;
   /** 用户ID */
   userId?: number;

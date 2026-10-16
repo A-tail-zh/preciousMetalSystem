@@ -1,8 +1,9 @@
+import type {DataResult} from '@/types/api/common'
 import request from '@/utils/request'
 import type { MenuQueryParams, SysMenu, MenuSortParams, TreeSelect, AjaxResult, RoleMenuTreeselectResult } from '@/types'
 
 // 查询菜单列表
-export function listMenu(query?: MenuQueryParams): Promise<AjaxResult<SysMenu[]>> {
+export function listMenu(query?: MenuQueryParams): Promise<DataResult<SysMenu[]>> {
   return request({
     url: '/system/menu/list',
     method: 'get',
@@ -11,7 +12,7 @@ export function listMenu(query?: MenuQueryParams): Promise<AjaxResult<SysMenu[]>
 }
 
 // 查询菜单详细
-export function getMenu(menuId: number): Promise<AjaxResult<SysMenu>> {
+export function getMenu(menuId: number): Promise<DataResult<SysMenu>> {
   return request({
     url: '/system/menu/' + menuId,
     method: 'get'
@@ -19,7 +20,7 @@ export function getMenu(menuId: number): Promise<AjaxResult<SysMenu>> {
 }
 
 // 查询菜单下拉树结构
-export function treeselect(): Promise<AjaxResult<TreeSelect[]>> {
+export function treeselect(): Promise<DataResult<TreeSelect[]>> {
   return request({
     url: '/system/menu/treeselect',
     method: 'get'

@@ -111,7 +111,7 @@ const goLogin = () => {
 const initParticles = () => {
   const canvas = particleCanvas.value
   if (!canvas) return
-  const ctx = canvas.getContext('2d')
+  const ctx = canvas.getContext('2d')!
   const resize = () => {
     canvas.width = window.innerWidth
     canvas.height = window.innerHeight
@@ -130,7 +130,7 @@ const initParticles = () => {
 
   const draw = () => {
     ctx.clearRect(0, 0, canvas.width, canvas.height)
-    particles.forEach(p => {
+    particles.forEach((p: {x:number;y:number;r:number;alpha:number;dx:number;dy:number}) => {
       ctx.beginPath()
       ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2)
       ctx.fillStyle = `rgba(255,255,255,${p.alpha})`

@@ -1,6 +1,6 @@
 <template>
   <div>
-    <el-popover ref="noticePopover" placement="bottom-end" :width="320" trigger="manual" v-model:visible="noticeVisible" popper-class="notice-popover">
+    <el-popover ref="noticePopover" placement="bottom-end" :width="320" trigger="click" v-model:visible="noticeVisible" popper-class="notice-popover">
       <!-- 弹出内容 -->
       <div class="notice-header">
         <span class="notice-title">通知公告</span>
@@ -52,7 +52,7 @@ const unreadCount = ref<number>(0)
 const noticeLoading = ref<boolean>(false)
 const noticeVisible = ref<boolean>(false)
 const noticeLeaveTimer = ref<ReturnType<typeof setTimeout> | null>(null)
-  const { proxy } = getCurrentInstance()
+  const proxy = getCurrentInstance()!.proxy!
 
 // 加载顶部公告列表
 function loadNoticeTop(): void {
@@ -96,7 +96,7 @@ function previewNotice(item: SysNotice): void {
     if (idx !== -1) noticeList.value[idx] = { ...item, isRead: true }
     unreadCount.value = Math.max(0, unreadCount.value - 1)
   }
-  proxy.$refs["noticeViewRef"].open(item.noticeId)
+  ;(proxy.$refs['noticeViewRef'] as InstanceType<typeof NoticeDetailView>).open(item.noticeId)
 }
 
 // 全部已读

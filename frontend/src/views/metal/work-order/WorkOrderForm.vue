@@ -19,6 +19,7 @@
  </el-dialog>
 </template>
 <script setup lang="ts">
+import {createUUID} from '@/utils/uuid'
 import {ref,reactive,computed,nextTick} from 'vue'
 import {ElMessage,ElMessageBox} from 'element-plus'
 import type {FormInstance,FormRules} from 'element-plus'
@@ -28,14 +29,14 @@ import {reserveOrderNumber,orderDetail,orderOptions,orderProductPlans,orderSave}
 import type {WorkOrder,WorkOrderItem,OrderOption} from '@/api/metal/work-order'
 const emit=defineEmits<{saved:[added:boolean]}>(),user=useUserStore(),isAdmin=computed(()=>String(user.id)==='1')
 const opened=ref(false),saving=ref(false),optionsLoading=ref(false),formRef=ref<FormInstance>()
-const blankItem=():WorkOrderItem=>({key:crypto.randomUUID(),productId:'',quantity:1,plans:[]})
+const blankItem=():WorkOrderItem=>({key:createUUID(),productId:'',quantity:1,plans:[]})
 const today=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date())
-const blank=():WorkOrder=>({requestId:crypto.randomUUID(),customer:'',factoryId:'',productionLineId:'',ownerId:'',orderDate:today(),items:[blankItem()]})
+const blank=():WorkOrder=>({requestId:createUUID(),customer:'',factoryId:'',productionLineId:'',ownerId:'',orderDate:today(),items:[blankItem()]})
 const form=reactive<WorkOrder>(blank()),factories=ref<OrderOption[]>([]),lines=ref<OrderOption[]>([]),owners=ref<OrderOption[]>([]),availableProducts=ref<OrderOption[]>([])
 const required=(message:string)=>[{required:true,message,trigger:'change'}]
 const rules:FormRules={customer:[{required:true,whitespace:true,message:'请输入客户',trigger:'blur'}],factoryId:required('请选择工厂'),productionLineId:required('请选择产线'),ownerId:required('请选择负责人'),orderDate:required('请选择开单日期')}
 async function loadFactoryOptions(){const result=await Promise.all([orderOptions('lines',{factoryId:form.factoryId}),orderOptions('owners',{factoryId:form.factoryId})]);lines.value=result[0].data;owners.value=result[1].data}
-async function open(row?:WorkOrder){optionsLoading.value=true;try{for(const k of Object.keys(form))delete(form as unknown as Record<string,unknown>)[k];Object.assign(form,blank());if(!row?.id)form.orderNo=(await reserveOrderNumber(form.requestId!)).data;factories.value=(await orderOptions('factories')).data;if(row?.id){Object.assign(form,(await orderDetail(row.id)).data);form.items.forEach(item=>{item.key=crypto.randomUUID()})}else if(!isAdmin.value)form.factoryId=factories.value[0]?.id??'';if(form.factoryId)await loadFactoryOptions();else{lines.value=[];owners.value=[]}availableProducts.value=form.productionLineId?(await orderOptions('products',{lineId:form.productionLineId})).data:[];if(form.ownerId&&!owners.value.some(o=>o.id===form.ownerId))form.ownerId='';opened.value=true;await nextTick();formRef.value?.clearValidate()}catch{}finally{optionsLoading.value=false}}
+async function open(row?:WorkOrder){optionsLoading.value=true;try{for(const k of Object.keys(form))delete(form as unknown as Record<string,unknown>)[k];Object.assign(form,blank());if(!row?.id)form.orderNo=(await reserveOrderNumber(form.requestId!)).data;factories.value=(await orderOptions('factories')).data;if(row?.id){Object.assign(form,(await orderDetail(row.id)).data);form.items.forEach(item=>{item.key=createUUID()})}else if(!isAdmin.value)form.factoryId=factories.value[0]?.id??'';if(form.factoryId)await loadFactoryOptions();else{lines.value=[];owners.value=[]}availableProducts.value=form.productionLineId?(await orderOptions('products',{lineId:form.productionLineId})).data:[];if(form.ownerId&&!owners.value.some(o=>o.id===form.ownerId))form.ownerId='';opened.value=true;await nextTick();formRef.value?.clearValidate()}catch{}finally{optionsLoading.value=false}}
 async function confirmReset(){if(!form.items.some(item=>item.productId||item.plans.length)&&!form.ownerId&&!form.productionLineId)return true;try{await ElMessageBox.confirm('变更工厂或产线将清空相关产品和计划时间，是否继续？','确认变更',{confirmButtonText:'继续',cancelButtonText:'取消',type:'warning'});return true}catch{return false}}
 async function changeFactory(value:string){if(value===form.factoryId||!await confirmReset())return;optionsLoading.value=true;try{form.factoryId=value;form.productionLineId='';form.ownerId='';form.items=[blankItem()];availableProducts.value=[];await loadFactoryOptions()}catch{}finally{optionsLoading.value=false}}
 async function changeLine(value:string){if(value===form.productionLineId)return;if(form.items.some(item=>item.productId)&&!await confirmReset())return;optionsLoading.value=true;try{form.productionLineId=value;form.items=[blankItem()];availableProducts.value=(await orderOptions('products',{lineId:value})).data}catch{}finally{optionsLoading.value=false}}

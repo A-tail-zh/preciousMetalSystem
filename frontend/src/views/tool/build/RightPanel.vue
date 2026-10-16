@@ -43,7 +43,7 @@
             <el-input v-model="activeData['end-placeholder']" placeholder="请输入占位提示" />
           </el-form-item>
           <el-form-item v-if="activeData.span !== undefined" label="表单栅格">
-            <el-slider v-model="activeData.span" :max="24" :min="1" :marks="{ 12: '' }" @change="spanChange" />
+            <el-slider v-model="activeData.span" :max="24" :min="1" :marks="{ 12: '' }" @change="spanChange(Array.isArray($event) ? $event[0] : $event)" />
           </el-form-item>
           <el-form-item v-if="activeData.layout === 'rowFormItem'" label="栅格间隔">
             <el-input-number v-model="activeData.gutter" :min="0" placeholder="栅格间隔" />
@@ -73,11 +73,11 @@
           </el-form-item>
           <el-form-item v-if="activeData.tag === 'el-checkbox-group'" label="至少应选">
             <el-input-number :value="activeData.min" :min="0" placeholder="至少应选"
-              @input="$set(activeData, 'min', $event ? $event : undefined)" />
+              @input="activeData.min = $event || undefined" />
           </el-form-item>
           <el-form-item v-if="activeData.tag === 'el-checkbox-group'" label="最多可选">
             <el-input-number :value="activeData.max" :min="0" placeholder="最多可选"
-              @input="$set(activeData, 'max', $event ? $event : undefined)" />
+              @input="activeData.max = $event || undefined" />
           </el-form-item>
           <el-form-item v-if="activeData.prepend !== undefined" label="前缀">
             <el-input v-model="activeData.prepend" placeholder="请输入前缀" />
@@ -301,16 +301,16 @@
             <el-switch v-model="activeData['allow-half']" />
           </el-form-item>
           <el-form-item v-if="activeData['show-text'] !== undefined" label="辅助文字">
-            <el-switch v-model="activeData['show-text']" @change="rateTextChange" />
+            <el-switch v-model="activeData['show-text']" @change="rateTextChange($event === true)" />
           </el-form-item>
           <el-form-item v-if="activeData['show-score'] !== undefined" label="显示分数">
-            <el-switch v-model="activeData['show-score']" @change="rateScoreChange" />
+            <el-switch v-model="activeData['show-score']" @change="rateScoreChange($event === true)" />
           </el-form-item>
           <el-form-item v-if="activeData['show-stops'] !== undefined" label="显示间断点">
             <el-switch v-model="activeData['show-stops']" />
           </el-form-item>
           <el-form-item v-if="activeData.range !== undefined" label="范围选择">
-            <el-switch v-model="activeData.range" @change="rangeChange" />
+            <el-switch v-model="activeData.range" @change="rangeChange($event === true)" />
           </el-form-item>
           <el-form-item v-if="activeData.border !== undefined && activeData.optionType === 'default'" label="是否带边框">
             <el-switch v-model="activeData.border" />
@@ -375,7 +375,7 @@
             <el-switch v-model="activeData.filterable" />
           </el-form-item>
           <el-form-item v-if="activeData.tag === 'el-select'" label="是否多选">
-            <el-switch v-model="activeData.multiple" @change="multipleChange" />
+            <el-switch v-model="activeData.multiple" @change="multipleChange($event === true)" />
           </el-form-item>
           <el-form-item v-if="activeData.required !== undefined" label="是否必填">
             <el-switch v-model="activeData.required" />
@@ -472,7 +472,7 @@ import IconsDialog from './IconsDialog.vue'
 import TreeNodeDialog from './TreeNodeDialog.vue'
 import { inputComponents, selectComponents } from '@/utils/generator/config'
 
-const { proxy } = getCurrentInstance()
+const proxy = getCurrentInstance()!.proxy!
 const dateTimeFormat: Record<string, string> = {
   date: 'YYYY-MM-DD',
   week: 'YYYY 第 ww 周',
@@ -491,10 +491,10 @@ const props = defineProps<{
 
 const data = reactive({
   currentTab: 'field',
-  currentNode: null,
+  currentNode: null as Record<string,any>[] | null,
   dialogVisible: false,
   iconsVisible: false,
-  currentIconModel: null,
+  currentIconModel: '',
   dateTypeOptions: [
     {
       label: '日(date)',
@@ -629,7 +629,7 @@ function addSelectItem(): void {
 }
 
 function addTreeItem(): void {
-  ++proxy.idGlobal
+  // New node identifiers are generated inside TreeNodeDialog.
   dialogVisible.value = true
   currentNode.value = props.activeData.options
 }

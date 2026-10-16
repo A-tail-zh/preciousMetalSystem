@@ -102,7 +102,7 @@ const props = defineProps({
   }
 })
 
-const { proxy } = getCurrentInstance()
+const proxy = getCurrentInstance()!.proxy!
 const emit = defineEmits()
 const number = ref(0)
 const uploadList = ref<UploadImageItem[]>([])
@@ -187,7 +187,7 @@ function handleUploadSuccess(res: UploadFileResult, file: any): void {
     number.value--
     proxy.$modal.closeLoading()
     proxy.$modal.msgError(res.msg)
-    proxy.$refs.imageUpload.handleRemove(file)
+    ;(proxy.$refs.imageUpload as import('element-plus').UploadInstance).handleRemove(file)
     uploadedSuccessfully()
   }
 }
@@ -242,7 +242,7 @@ function listToString(list: UploadImageItem[], separator?: string): string {
 onMounted(() => {
   if (props.drag && !props.disabled) {
     nextTick(() => {
-      const element = proxy.$refs.imageUpload?.$el?.querySelector('.el-upload-list') as HTMLElement
+      const element = (proxy.$refs.imageUpload as import('element-plus').UploadInstance)?.$el?.querySelector('.el-upload-list') as HTMLElement
       if (element) {
         Sortable.create(element, {
           onEnd: (evt: any) => {

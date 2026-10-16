@@ -14,7 +14,7 @@ export interface Column {key:string;label:string;width:number}
 const cols=(items:[string,string,number][]):Column[]=>items.map(([key,label,width])=>({key,label,width}))
 export const masterConfigs={
  line:{title:'产线管理',endpoint:'/metal/production-line',permission:'metal:production-line',width:708,columns:cols([['code','产线编号',72],['name','产线名称',72],['productNames','产品名称',128],['createBy','创建人',72],['createTime','创建时间',128]])},
- product:{title:'产品管理',endpoint:'/metal/product',permission:'metal:product',width:990,columns:cols([['code','产品编号',70],['productDisplay','名称/类别',94],['specification','规格型号',70],['volume','产品体积',76],['purity','纯度',56],['weight','理论成品净重（g）',135],['createBy','创建人',64],['createTime','创建时间',130]])},
+ product:{title:'产品管理',endpoint:'/metal/product',permission:'metal:product',width:990,columns:cols([['code','产品编号',70],['productDisplay','名称/类别',94],['specification','规格型号',220],['volume','产品体积',76],['purity','纯度',56],['weight','理论成品净重（g）',135],['createBy','创建人',64],['createTime','创建时间',130]])},
  material:{title:'物料管理',endpoint:'/metal/material',permission:'metal:material',width:936,columns:cols([['code','物料编码',132],['materialType','物料类型',220],['specification','规格型号',136],['createBy','创建人',100],['createTime','创建时间',140]])},
  process:{title:'工序管理',endpoint:'/metal/process',permission:'metal:process',width:990,columns:cols([['id','工序ID',98],['name','工序名称',130],['description','工序描述',250],['createBy','创建人',130],['updateTime','更新时间',146]])},
  staff:{title:'人员管理',endpoint:'/system/user',permission:'system:user',width:1032,columns:cols([['phonenumber','手机号',146],['nickName','姓名',100],['factoryName','工厂名称',160],['roleNames','角色',180],['status','状态',66],['createTime','创建时间',144]])},

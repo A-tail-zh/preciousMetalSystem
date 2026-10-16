@@ -12,7 +12,7 @@
         :key="tag.path"
         :data-path="tag.path"
         :class="{ 'active': isActive(tag), 'has-icon': tagsIcon }"
-        :to="{ path: tag.path, query: tag.query, fullPath: tag.fullPath }"
+        :to="{ path: tag.fullPath || tag.path }"
         class="tags-view-item"
         :style="tagActiveStyle(tag)"
         @click.middle="!isAffix(tag) ? closeSelectedTag(tag) : ''"
@@ -86,7 +86,7 @@ const canScrollRight = ref<boolean>(false)
 const isFullscreen = ref<boolean>(false)
 const hiddenElements = ref<any>([])
 
-const { proxy } = getCurrentInstance()
+const proxy = getCurrentInstance()!.proxy!
 const route = useRoute()
 const router = useRouter()
 const settingsStore = useSettingsStore()

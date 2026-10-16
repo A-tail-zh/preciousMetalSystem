@@ -13,9 +13,9 @@
 import useTagsViewStore from '@/store/modules/tagsView'
 
 const tagAndTagSpacing = ref<number>(4)
-const { proxy } = getCurrentInstance()
+const proxy = getCurrentInstance()!.proxy!
 
-const scrollWrapper = computed(() => proxy.$refs.scrollContainer.$refs.wrapRef)
+const scrollWrapper = computed(() => (proxy.$refs.scrollContainer as import('element-plus').ScrollbarInstance).wrapRef!)
 
 onMounted(() => {
   scrollWrapper.value.addEventListener('scroll', emitScroll, true)
@@ -75,7 +75,7 @@ const tagsViewStore = useTagsViewStore()
 const visitedViews = computed(() => tagsViewStore.visitedViews)
 
 function moveToTarget(currentTag: any): void {
-  const $container = proxy.$refs.scrollContainer.$el
+  const $container = (proxy.$refs.scrollContainer as import('element-plus').ScrollbarInstance).$el
   const $containerWidth = $container.offsetWidth
   const $scrollWrapper = scrollWrapper.value
 

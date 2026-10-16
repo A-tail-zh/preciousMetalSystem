@@ -32,7 +32,7 @@
                type="primary"
                plain
                icon="Plus"
-               @click="handleAdd"
+               @click="handleAdd()"
                v-hasPermi="['system:menu:add']"
             >新增</el-button>
          </el-col>
@@ -109,7 +109,7 @@
                      <el-tree-select
                         v-model="form.parentId"
                         :data="menuOptions"
-                        :props="{ value: 'menuId', label: 'menuName', children: 'children' }"
+                        :props="{ label: 'menuName', children: 'children' }"
                         value-key="menuId"
                         placeholder="选择上级菜单"
                         check-strictly
@@ -311,7 +311,7 @@ import SvgIcon from "@/components/SvgIcon/index.vue"
 import IconSelect from "@/components/IconSelect/index.vue"
 import type { SysMenu, MenuQueryParams } from '@/types/api/system/menu'
 
-const { proxy } = getCurrentInstance()
+const proxy = getCurrentInstance()!.proxy!
 const { sys_show_hide, sys_normal_disable } = useDict("sys_show_hide", "sys_normal_disable")
 
 const menuList = ref<any[]>([])
@@ -354,7 +354,7 @@ function getList() {
 function getTreeselect() {
   menuOptions.value = []
   listMenu().then(response => {
-    const menu = { menuId: 0, menuName: "主类目", children: [] }
+    const menu = { menuId: 0, menuName: "主类目", children: [] as SysMenu[] }
     menu.children = proxy.handleTree(response.data, "menuId")
     menuOptions.value.push(menu)
   })
@@ -439,7 +439,7 @@ async function handleUpdate(row: SysMenu) {
 
 /** 提交按钮 */
 function submitForm() {
-  proxy.$refs["menuRef"].validate((valid: boolean) => {
+  ;(proxy.$refs["menuRef"] as import('element-plus').FormInstance).validate((valid: boolean) => {
     if (valid) {
       if (form.value.menuId != undefined) {
         updateMenu(form.value).then(() => {
@@ -461,7 +461,7 @@ function submitForm() {
 /** 递归记录原始排序 */
 function recordOriginalOrders(list: SysMenu[]) {
   list.forEach(item => {
-    originalOrders.value[item.menuId] = item.orderNum
+    originalOrders.value[item.menuId!] = item.orderNum ?? 0
     if (item.children && item.children.length) {
       recordOriginalOrders(item.children)
     }

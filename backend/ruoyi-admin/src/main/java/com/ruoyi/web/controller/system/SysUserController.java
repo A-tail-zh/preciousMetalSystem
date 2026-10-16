@@ -45,6 +45,11 @@ public class SysUserController extends BaseController
     @Autowired
     private ISysUserService userService;
 
+    @Autowired private com.ruoyi.metal.service.StaffManagementService staffManagementService;
+    public record LegacyPasswordReset(@jakarta.validation.constraints.NotNull Long userId,
+        @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.Min(0) Integer version,
+        @jakarta.validation.constraints.NotBlank String password) {}
+
     @Autowired
     private ISysRoleService roleService;
 
@@ -193,13 +198,14 @@ public class SysUserController extends BaseController
     @PreAuthorize("@metalScope.isAdmin() and (@ss.hasPermi('system:user:resetPwd'))")
     @Log(title = "用户管理", businessType = BusinessType.UPDATE)
     @PutMapping("/resetPwd")
-    public AjaxResult resetPwd(@RequestBody SysUser user)
+    public AjaxResult resetPwd(@jakarta.validation.Valid @RequestBody LegacyPasswordReset input)
     {
-        userService.checkUserAllowed(user);
-        userService.checkUserDataScope(user.getUserId());
-        user.setPassword(SecurityUtils.encryptPassword(user.getPassword()));
-        user.setUpdateBy(getUsername());
-        return toAjax(userService.resetPwd(user));
+        var request = new com.ruoyi.metal.catalog.StaffRecord();
+        request.setId(input.userId());
+        request.setVersion(input.version());
+        request.setPassword(input.password());
+        staffManagementService.resetPassword(request);
+        return success();
     }
 
     /**

@@ -20,7 +20,7 @@
 import useUserStore from "@/store/modules/user"
 import { updateUserPwd } from "@/api/system/user"
 
-const { proxy } = getCurrentInstance()
+const proxy = getCurrentInstance()!.proxy!
 const infoPwdValidator=[{required:true,message:'新密码不能为空',trigger:'blur'},{validator:(_r:any,v:string,cb:(e?:Error)=>void)=>cb(v&&v.length>=8&&new TextEncoder().encode(v).length<=72?undefined:new Error('密码至少8位，最多72个UTF-8字节')),trigger:'blur'}]
 const session=useUserStore(),router=useRouter()
 
@@ -54,7 +54,7 @@ const rules = {
 
 /** 提交按钮 */
 function submit() {
-  proxy.$refs.pwdRef.validate((valid: boolean) => {
+  ;(proxy.$refs.pwdRef as import('element-plus').FormInstance).validate((valid: boolean) => {
     if (valid) {
       updateUserPwd(user.oldPassword!, user.newPassword!).then(() => {
         proxy.$modal.msgSuccess("密码已修改，请重新登录"); session.clearSession(); router.replace('/login')

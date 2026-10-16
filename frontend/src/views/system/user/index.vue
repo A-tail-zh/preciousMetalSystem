@@ -29,10 +29,10 @@
             <el-button type="primary" plain icon="Plus" @click="handleAdd" v-hasPermi="['system:user:add']">新增</el-button>
           </el-col>
           <el-col :span="1.5">
-            <el-button type="success" plain icon="Edit" :disabled="single" @click="handleUpdate" v-hasPermi="['system:user:edit']">修改</el-button>
+            <el-button type="success" plain icon="Edit" :disabled="single" @click="handleUpdate()" v-hasPermi="['system:user:edit']">修改</el-button>
           </el-col>
           <el-col :span="1.5">
-            <el-button type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete" v-hasPermi="['system:user:remove']">删除</el-button>
+            <el-button type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete()" v-hasPermi="['system:user:remove']">删除</el-button>
           </el-col>
           <el-col :span="1.5">
             <el-button type="info" plain icon="Upload" @click="handleImport" v-hasPermi="['system:user:import']">导入</el-button>
@@ -100,7 +100,7 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="归属部门" prop="deptId">
-              <el-tree-select v-model="form.deptId" :data="enabledDeptOptions" :props="{ value: 'id', label: 'label', children: 'children' }" value-key="id" placeholder="请选择归属部门" clearable check-strictly />
+              <el-tree-select v-model="form.deptId" :data="enabledDeptOptions" :props="{ label: 'label', children: 'children' }" value-key="id" placeholder="请选择归属部门" clearable check-strictly />
             </el-form-item>
           </el-col>
         </el-row>
@@ -148,14 +148,14 @@
           <el-col :span="12">
             <el-form-item label="岗位">
               <el-select v-model="form.postIds" multiple placeholder="请选择">
-                <el-option v-for="item in postOptions" :key="item.postId" :label="item.postName" :value="item.postId" :disabled="item.status == 1"></el-option>
+                <el-option v-for="item in postOptions" :key="item.postId" :label="item.postName" :value="item.postId!" :disabled="item.status == '1'"></el-option>
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="角色">
               <el-select v-model="form.roleIds" multiple placeholder="请选择">
-                <el-option v-for="item in roleOptions" :key="item.roleId" :label="item.roleName" :value="item.roleId" :disabled="item.status == 1"></el-option>
+                <el-option v-for="item in roleOptions" :key="item.roleId" :label="item.roleName" :value="item.roleId!" :disabled="item.status == '1'"></el-option>
               </el-select>
             </el-form-item>
           </el-col>
@@ -184,6 +184,7 @@
 </template>
 
 <script setup lang="ts" name="User">
+import {ElMessageBox} from 'element-plus'
 import TreePanel from "@/components/TreePanel/index.vue"
 import ExcelImportDialog from "@/components/ExcelImportDialog/index.vue"
 import UserViewDrawer from "./view.vue"
@@ -195,7 +196,7 @@ import type { SysPost } from '@/types/api/system/post'
 import type { TreeSelect, TableShowColumns, AjaxResult } from '@/types/api/common'
 
 const router = useRouter()
-const { proxy } = getCurrentInstance()
+const proxy = getCurrentInstance()!.proxy!
 const { pwdValidator, pwdPromptValidator } = usePasswordRule()
 const { sys_normal_disable, sys_user_sex } = useDict("sys_normal_disable", "sys_user_sex")
 
@@ -238,7 +239,7 @@ const data = reactive({
   rules: {
     userName: [{ required: true, message: "用户名称不能为空", trigger: "blur" }, { min: 2, max: 20, message: "用户名称长度必须介于 2 和 20 之间", trigger: "blur" }],
     nickName: [{ required: true, message: "用户昵称不能为空", trigger: "blur" }],
-    email: [{ type: "email", message: "请输入正确的邮箱地址", trigger: ["blur", "change"] }],
+    email: [{ type: "email" as const, message: "请输入正确的邮箱地址", trigger: ["blur", "change"] }],
     phonenumber: [{ pattern: /^1[3|4|5|6|7|8|9][0-9]\d{8}$/, message: "请输入正确的手机号码", trigger: "blur" }]
   }
 })
@@ -293,7 +294,7 @@ function resetQuery() {
   dateRange.value = []
   proxy.resetForm("queryRef")
   queryParams.value.deptId = undefined
-  proxy.$refs.deptTreeRef.setCurrentKey(null)
+  ;(proxy.$refs['deptTreeRef'] as InstanceType<typeof TreePanel>).setCurrentKey(null)
   handleQuery()
 }
 
@@ -349,14 +350,14 @@ function handleAuthRole(row: SysUser) {
 
 /** 重置密码按钮操作 */
 function handleResetPwd(row: SysUser) {
-  proxy.$prompt(`请输入「${row.userName}」的新密码`, "重置密码", {
+  ElMessageBox.prompt(`请输入「${row.userName}」的新密码`, "重置密码", {
     confirmButtonText: "确定",
     cancelButtonText: "取消",
     closeOnClickModal: false,
     inputValidator: pwdPromptValidator
   }).then(({ value }: { value: string }) => { 
     resetUserPwd(row.userId!, value).then(() => {
-      proxy.$modal.msgSuccess("修改成功，新密码是：" + value)
+      proxy.$modal.msgSuccess("密码修改成功")
     })
   }).catch(() => {})
 }
@@ -370,12 +371,12 @@ function handleSelectionChange(selection: SysUser[]) {
 
 /** 详情按钮操作 */
 function handleViewData(row: SysUser) {
-  proxy.$refs["userViewRef"].open(row.userId)
+  ;(proxy.$refs['userViewRef'] as InstanceType<typeof UserViewDrawer>).open(row.userId!)
 }
 
 /** 导入按钮操作 */
 function handleImport() {
-  proxy.$refs["importUserRef"].open()
+  ;(proxy.$refs['importUserRef'] as InstanceType<typeof ExcelImportDialog>).open()
 }
 
 /** 重置操作表单 */
@@ -433,7 +434,7 @@ function handleUpdate(row?: SysUser) {
 
 /** 提交按钮 */
 function submitForm() {
-  proxy.$refs["userRef"].validate((valid: boolean) => {
+  ;(proxy.$refs["userRef"] as import('element-plus').FormInstance).validate((valid: boolean) => {
     if (valid) {
       if (form.value.userId != undefined) {
         updateUser(form.value).then(() => {

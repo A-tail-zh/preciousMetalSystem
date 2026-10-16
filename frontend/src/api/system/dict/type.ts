@@ -1,8 +1,9 @@
+import type {DataResult} from '@/types/api/common'
 import request from '@/utils/request'
 import type { DictTypeQueryParams, SysDictType, AjaxResult, TableDataInfo } from '@/types'
 
 // 查询字典类型列表
-export function listType(query: DictTypeQueryParams): Promise<TableDataInfo<SysDictType[]>> {
+export function listType(query: DictTypeQueryParams): Promise<TableDataInfo<SysDictType>> {
   return request({
     url: '/system/dict/type/list',
     method: 'get',
@@ -11,7 +12,7 @@ export function listType(query: DictTypeQueryParams): Promise<TableDataInfo<SysD
 }
 
 // 查询字典类型详细
-export function getType(dictId: number): Promise<AjaxResult<SysDictType>> {
+export function getType(dictId: number): Promise<DataResult<SysDictType>> {
   return request({
     url: '/system/dict/type/' + dictId,
     method: 'get'
@@ -53,7 +54,7 @@ export function refreshCache(): Promise<AjaxResult> {
 }
 
 // 获取字典选择框列表
-export function optionselect(): Promise<AjaxResult<SysDictType[]>> {
+export function optionselect(): Promise<DataResult<SysDictType[]>> {
   return request({
     url: '/system/dict/type/optionselect',
     method: 'get'

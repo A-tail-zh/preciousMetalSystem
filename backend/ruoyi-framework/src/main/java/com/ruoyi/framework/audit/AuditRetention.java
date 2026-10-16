@@ -11,9 +11,9 @@ import java.util.*;import java.time.*;import java.nio.file.*;import java.io.*;im
   jdbc.update("INSERT IGNORE INTO audit_cleanup_history(business_date,status,stage,cutoffs_json,summary) VALUES(?,'RUNNING','OPERATION',?,'分批清理开始')",day,JSON.toJSONString(cutoffs));var state=jdbc.queryForMap("SELECT * FROM audit_cleanup_history WHERE business_date=? FOR UPDATE",day);if("SUCCESS".equals(state.get("status")))return;
   if(state.get("cutoffs_json")==null)jdbc.update("UPDATE audit_cleanup_history SET cutoffs_json=? WHERE business_date=?",JSON.toJSONString(cutoffs),day);else cutoffs=JSON.parseObject(state.get("cutoffs_json").toString(),LinkedHashMap.class);
   String stage=state.get("stage").toString();Path root=archiveRoot;FilesSafe.directory(root);int removed=0;String column=null,next=stage;String cutoff=cutoffs.get(stage);
-  if(stage.equals("OPERATION")||stage.equals("LOGIN")){long usable=root.toFile().getUsableSpace(),total=root.toFile().getTotalSpace();if(usable<2147483648L||usable<total/10)throw new IllegalStateException("磁盘空间不足，停止归档清理");boolean operation=stage.equals("OPERATION");removed=archiveBatch(operation?"sys_oper_log":"sys_logininfor",operation?"oper_id":"info_id",operation?"oper_time":"login_time",LocalDateTime.parse(cutoff).toLocalDate(),root);column=operation?"operation_count":"login_count";if(removed==0)next=operation?"LOGIN":"RUNTIME";}
+  if(stage.equals("OPERATION")||stage.equals("LOGIN")){ensureArchiveSpace(root,LocalDateTime.parse(cutoffs.get("ARCHIVE")).atZone(ZoneId.of("Asia/Shanghai")).toInstant());boolean operation=stage.equals("OPERATION");removed=archiveBatch(operation?"sys_oper_log":"sys_logininfor",operation?"oper_id":"info_id",operation?"oper_time":"login_time",LocalDateTime.parse(cutoff).toLocalDate(),root);column=operation?"operation_count":"login_count";if(removed==0)next=operation?"LOGIN":"RUNTIME";}
   else if(stage.equals("RUNTIME")){removed=jdbc.update("DELETE FROM sys_runtime_log WHERE event_time<? LIMIT 1000",LocalDateTime.parse(cutoff));column="runtime_count";if(removed==0)next="OUTBOX";}
-  else if(stage.equals("OUTBOX")){removed=jdbc.update("DELETE FROM audit_outbox WHERE status='DELIVERED' AND create_time<? LIMIT 1000",LocalDateTime.parse(cutoff));column="outbox_count";if(removed==0)next="ARCHIVE";}
+  else if(stage.equals("OUTBOX")){removed=jdbc.update("DELETE FROM audit_outbox WHERE status='DELIVERED' AND delivered_time<? LIMIT 1000",LocalDateTime.parse(cutoff));column="outbox_count";if(removed==0)next="ARCHIVE";}
   else if(stage.equals("ARCHIVE")){expireArchivesBefore(root,LocalDateTime.parse(cutoff).atZone(ZoneId.of("Asia/Shanghai")).toInstant());next="DONE";}
   else if(!stage.equals("DONE"))throw new IllegalStateException("清理阶段无效");
   String increment=column==null?"":","+column+"="+column+"+?";List<Object> args=new ArrayList<>(List.of(next,next.equals("DONE")?"SUCCESS":"RUNNING",next.equals("DONE")?"全部阶段清理完成":"分批清理进行中"));if(column!=null)args.add(removed);args.add(day);jdbc.update("UPDATE audit_cleanup_history SET stage=?,status=?,summary=?,update_time=NOW()"+increment+" WHERE business_date=?",args.toArray());
@@ -25,7 +25,7 @@ import java.util.*;import java.time.*;import java.nio.file.*;import java.io.*;im
    var rows=jdbc.queryForList("SELECT * FROM "+table+" WHERE "+time+"<? ORDER BY "+pk+" LIMIT 1000 FOR UPDATE",cutoff);
    if(rows.isEmpty())return 0;
    try{
-    long size;try(var paths=Files.list(root)){size=paths.mapToLong(p->p.toFile().length()).sum();}
+    long size=archiveBytes(root);
     if(size>5368709120L)throw new IOException("审计归档容量已满");
     List<String> ids=recordIds(rows,pk);
     byte[] data=JSON.toJSONBytes(AuditRedactor.redactComplete(rows));
@@ -43,6 +43,13 @@ import java.util.*;import java.time.*;import java.nio.file.*;import java.io.*;im
     return removed;
    }catch(Exception error){throw new IllegalStateException("归档失败，数据库记录保留",error);}
  }
+ long archiveBytes(Path root)throws IOException{try(var paths=Files.list(root)){return paths.mapToLong(p->p.toFile().length()).sum();}}
+ boolean diskSpaceLow(Path root){long usable=root.toFile().getUsableSpace(),total=root.toFile().getTotalSpace();return usable<2147483648L||usable<total/10;}
+ void ensureArchiveSpace(Path root,java.time.Instant cutoff){try{
+  if(!diskSpaceLow(root)&&archiveBytes(root)<=5368709120L)return;
+  expireArchivesBefore(root,cutoff);
+  if(diskSpaceLow(root)||archiveBytes(root)>5368709120L)throw new IllegalStateException("归档空间不足，保留数据库记录并停止清理");
+ }catch(IOException failure){throw new IllegalStateException("归档容量检查失败",failure);}}
  private static List<String> recordIds(List<? extends Map<String,?>> rows,String pk)throws IOException{
   List<String> ids=new ArrayList<>();for(var row:rows){Object id=row.get(pk);if(id==null||!id.toString().matches("[0-9]+"))throw new IOException("归档记录ID无效");ids.add(id.toString());}
   if(new HashSet<>(ids).size()!=ids.size())throw new IOException("归档记录ID重复");return ids;
@@ -57,6 +64,16 @@ import java.util.*;import java.time.*;import java.nio.file.*;import java.io.*;im
  }
  void writeManifest(Path file,Map<String,Object> data)throws IOException{Files.writeString(file,JSON.toJSONString(data),StandardOpenOption.CREATE_NEW);}
  private void expireArchives(Path root,int days){expireArchivesBefore(root,java.time.Instant.now().minus(java.time.Duration.ofDays(days)));}
- private void expireArchivesBefore(Path root,java.time.Instant cutoff){try(var paths=Files.list(root)){for(Path manifest:paths.filter(p->p.getFileName().toString().matches("sys_(oper_log|logininfor)-[a-f0-9-]+[.]manifest[.]json")).toList()){if(!Files.getLastModifiedTime(manifest).toInstant().isBefore(cutoff))continue;var meta=JSON.parseObject(Files.readString(manifest));Path data=root.resolve(meta.getString("file")).normalize();if(!data.getParent().equals(root)||!data.getFileName().toString().matches("sys_(oper_log|logininfor)-[a-f0-9-]+[.]json[.]gz"))continue;if(Files.exists(data)){try(var gzip=new GZIPInputStream(Files.newInputStream(data))){String digest=HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(gzip.readAllBytes()));if(!digest.equals(meta.getString("sha256")))continue;}Files.delete(data);}Files.delete(manifest);}}catch(Exception failure){throw new IllegalStateException("过期归档清理失败",failure);}}
+ private void expireArchivesBefore(Path root,java.time.Instant cutoff){try(var paths=Files.list(root)){
+  for(Path manifest:paths.filter(p->p.getFileName().toString().matches("sys_(oper_log|logininfor)-[a-f0-9-]+[.]manifest[.]json")).toList()){
+   try{
+    if(!Files.getLastModifiedTime(manifest).toInstant().isBefore(cutoff))continue;
+    var meta=JSON.parseObject(Files.readString(manifest));Path data=root.resolve(meta.getString("file")).normalize();
+    if(!data.getParent().equals(root)||!data.getFileName().toString().matches("sys_(oper_log|logininfor)-[a-f0-9-]+[.]json[.]gz"))throw new IOException("归档路径无效");
+    if(Files.exists(data)){try(var gzip=new GZIPInputStream(Files.newInputStream(data))){String digest=HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(gzip.readAllBytes()));if(!digest.equals(meta.getString("sha256")))throw new IOException("归档哈希不符");}Files.delete(data);}
+    Files.delete(manifest);
+   }catch(Exception failure){LOG.warn("AUDIT_ARCHIVE_EXPIRY_SKIPPED file={} reason={}",manifest.getFileName(),failure.getClass().getSimpleName());}
+  }
+ }catch(Exception failure){throw new IllegalStateException("过期归档清理失败",failure);}}
  private static class FilesSafe{static void directory(Path path){try{Files.createDirectories(path);}catch(Exception e){throw new IllegalStateException(e);}}}
 }

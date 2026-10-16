@@ -8,4 +8,16 @@ class AuditRedactorTest{
  @Test void cookiesHideAllValuesAndRespectBoundaries(){for(String header:List.of("Cookie: session=FAKE_SESSION; theme=FAKE_THEME","Set-Cookie: session=FAKE_SESSION; HttpOnly; Path=/")){String clean=AuditRedactor.text(header+" | status=200\nmessage=kept");assertFalse(clean.contains("FAKE_"),clean);assertFalse(clean.contains("theme="));assertTrue(clean.contains("status=200"));assertTrue(clean.contains("message=kept"));}String clean=AuditRedactor.text("Cookie: first=FAKE_FIRST; second=FAKE_SECOND status=200");assertFalse(clean.contains("FAKE_"));assertTrue(clean.contains("status=200"));}
  @Test void pipeBoundaryKeepsFollowingFields(){String clean=AuditRedactor.text("Authorization: Bearer FAKE_TOKEN|status=200");assertFalse(clean.contains("FAKE_TOKEN"));assertTrue(clean.contains("|status=200"));}
  @Test void structuredAndOrdinaryTextStillWork(){assertFalse(AuditRedactor.text("{\"nested\":{\"Authorization\":\"Bearer FAKE_TOKEN\",\"password\":\"FAKE_PASSWORD\"}}").contains("FAKE_"));assertEquals("completed 20 records status=200",AuditRedactor.text("completed 20 records status=200"));assertFalse(AuditRedactor.text("password=FAKE_PASSWORD; token=FAKE_TOKEN").contains("FAKE_"));}
+
+ @Test void embeddedQuotedAndEscapedHeadersAreRedacted(){
+  for(String message:List.of(
+   "HTTP failure headers={\"Authorization\":\"Bearer FAKE_AUTH\",\"Cookie\":\"sid=FAKE_COOKIE; theme=FAKE_THEME\"} status=500",
+   "headers={'Proxy-Authorization': 'Basic FAKE_BASIC', 'Set-Cookie': 'sid=FAKE_COOKIE'} status=200",
+   "headers={\\\"Authorization\\\":\\\"Bearer FAKE_ESCAPED\\\",\\\"Cookie\\\":\\\"sid=FAKE_COOKIE\\\"} status=200",
+   "  {\"Authorization\":\"Bearer FAKE_AUTH\",\"message\":\"kept\"}")){
+   String clean=AuditRedactor.text(message);assertFalse(clean.contains("FAKE_"),clean);assertTrue(clean.contains("status=")||clean.contains("kept"));
+  }
+  assertEquals("  normal message",AuditRedactor.text("  normal message"));
+ }
+
 }

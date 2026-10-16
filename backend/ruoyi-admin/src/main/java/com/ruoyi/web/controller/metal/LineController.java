@@ -33,9 +33,9 @@ public class LineController extends BaseController {
     @GetMapping("/list")
     @Log(title = "产线管理", businessType = BusinessType.OTHER, isSaveResponseData = false)
     @PreAuthorize("@ss.hasPermi('metal:production-line:list')")
-    public TableDataInfo list(@RequestParam(defaultValue = "1") @Min(1) int pageNum, @RequestParam(defaultValue = "16") @Min(1) @Max(100) int pageSize) {
+    public TableDataInfo list(@RequestParam(defaultValue = "1") @Min(1) int pageNum, @RequestParam(defaultValue = "16") @Min(1) @Max(100) int pageSize, @ModelAttribute com.ruoyi.metal.catalog.ListQuery query) {
         PageHelper.startPage(pageNum, pageSize);
-        return getDataTable(service.list());
+        return getDataTable(service.list(query));
     }
 
     /**

@@ -65,7 +65,7 @@ import { uploadAvatar } from "@/api/system/user"
 import useUserStore from "@/store/modules/user"
 
 const userStore = useUserStore()
-const { proxy } = getCurrentInstance()
+const proxy = getCurrentInstance()!.proxy!
 
 const open = ref<boolean>(false)
 const visible = ref<boolean>(false)
@@ -94,22 +94,25 @@ function modalOpened() {
 }
 
 /** 覆盖默认上传行为 */
-function requestUpload() {}
+function requestUpload() {
+  return Promise.resolve()
+  // File bytes are submitted after cropping.
+}
 
 /** 向左旋转 */
 function rotateLeft() {
-  proxy.$refs.cropper.rotateLeft()
+  ;(proxy.$refs.cropper as {rotateLeft():void;rotateRight():void;changeScale(value:number):void;getCropBlob(callback:(data:Blob)=>void):void}).rotateLeft()
 }
 
 /** 向右旋转 */
 function rotateRight() {
-  proxy.$refs.cropper.rotateRight()
+  ;(proxy.$refs.cropper as {rotateLeft():void;rotateRight():void;changeScale(value:number):void;getCropBlob(callback:(data:Blob)=>void):void}).rotateRight()
 }
 
 /** 图片缩放 */
 function changeScale(num: number) {
   num = num || 1
-  proxy.$refs.cropper.changeScale(num)
+  ;(proxy.$refs.cropper as {rotateLeft():void;rotateRight():void;changeScale(value:number):void;getCropBlob(callback:(data:Blob)=>void):void}).changeScale(num)
 }
 
 /** 上传预处理 */
@@ -128,7 +131,7 @@ function beforeUpload(file: File) {
 
 /** 上传图片 */
 function uploadImg() {
-  proxy.$refs.cropper.getCropBlob((data: Blob) => {
+  ;(proxy.$refs.cropper as {rotateLeft():void;rotateRight():void;changeScale(value:number):void;getCropBlob(callback:(data:Blob)=>void):void}).getCropBlob((data: Blob) => {
     const formData = new FormData()
     formData.append("avatarfile", data, options.filename)
     uploadAvatar(formData).then(response => {

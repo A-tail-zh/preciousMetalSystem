@@ -1,8 +1,9 @@
+import type {DataResult} from '@/types/api/common'
 import request from '@/utils/request'
 import type { DeptQueryParams, SysDept, DeptSortParams, AjaxResult } from '@/types'
 
 // 查询部门列表
-export function listDept(query?: DeptQueryParams): Promise<AjaxResult<SysDept[]>> {
+export function listDept(query?: DeptQueryParams): Promise<DataResult<SysDept[]>> {
   return request({
     url: '/system/dept/list',
     method: 'get',
@@ -11,7 +12,7 @@ export function listDept(query?: DeptQueryParams): Promise<AjaxResult<SysDept[]>
 }
 
 // 查询部门列表（排除节点）
-export function listDeptExcludeChild(deptId: number): Promise<AjaxResult<SysDept[]>> {
+export function listDeptExcludeChild(deptId: number): Promise<DataResult<SysDept[]>> {
   return request({
     url: '/system/dept/list/exclude/' + deptId,
     method: 'get'
@@ -19,7 +20,7 @@ export function listDeptExcludeChild(deptId: number): Promise<AjaxResult<SysDept
 }
 
 // 查询部门详细
-export function getDept(deptId: number): Promise<AjaxResult<SysDept>> {
+export function getDept(deptId: number): Promise<DataResult<SysDept>> {
   return request({
     url: '/system/dept/' + deptId,
     method: 'get'

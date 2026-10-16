@@ -83,3 +83,6 @@ export interface UploadFileResult extends AjaxResult {
   /** 原始文件名称 */
   originalFilename: string
 }
+
+/** Successful endpoints with a required data payload. */
+export type DataResult<T> = AjaxResult<T> & {data:T}

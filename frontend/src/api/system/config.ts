@@ -1,8 +1,9 @@
+import type {DataResult} from '@/types/api/common'
 import request from '@/utils/request'
 import type { ConfigQueryParams, SysConfig, AjaxResult, TableDataInfo } from '@/types'
 
 // 查询参数列表
-export function listConfig(query: ConfigQueryParams): Promise<TableDataInfo<SysConfig[]>> {
+export function listConfig(query: ConfigQueryParams): Promise<TableDataInfo<SysConfig>> {
   return request({
     url: '/system/config/list',
     method: 'get',
@@ -11,7 +12,7 @@ export function listConfig(query: ConfigQueryParams): Promise<TableDataInfo<SysC
 }
 
 // 查询参数详细
-export function getConfig(configId: number): Promise<AjaxResult<SysConfig>> {
+export function getConfig(configId: number): Promise<DataResult<SysConfig>> {
   return request({
     url: '/system/config/' + configId,
     method: 'get'

@@ -28,12 +28,13 @@
 
 <script setup lang="ts">
 import axios from 'axios'
+import type {UploadFile} from 'element-plus'
 import { QuillEditor } from "@vueup/vue-quill"
 import "@vueup/vue-quill/dist/vue-quill.snow.css"
 import { getToken } from "@/utils/auth"
 import type { UploadFileResult } from '@/types/api/common'
 
-const { proxy } = getCurrentInstance()
+const proxy = getCurrentInstance()!.proxy!
 
 const quillEditorRef = ref()
 const uploadUrl = ref(import.meta.env.VITE_APP_BASE_API + "/common/upload") // 上传的图片服务器地址
@@ -108,7 +109,7 @@ const styles = computed(() => {
 })
 
 const content = ref("")
-watch(() => props.modelValue, (v: string) => {
+watch(() => props.modelValue, (v) => {
   if (v !== content.value) {
     content.value = v == undefined ? "<p></p>" : v
   }
@@ -121,7 +122,7 @@ onMounted(() => {
     let toolbar = quill.getModule("toolbar")
     toolbar.addHandler("image", (value: boolean) => {
       if (value) {
-        proxy.$refs.uploadRef.click()
+        ;(proxy.$refs.uploadRef as HTMLElement).click()
       } else {
         quill.format("image", false)
       }
@@ -151,7 +152,7 @@ function handleBeforeUpload(file: File) {
 }
 
 // 上传成功处理
-function handleUploadSuccess(res: UploadFileResult, file: File) {
+function handleUploadSuccess(res: UploadFileResult, file: File | UploadFile) {
   // 如果上传成功
   if (res.code == 200) {
     // 获取富文本实例

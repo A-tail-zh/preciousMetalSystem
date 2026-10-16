@@ -32,5 +32,5 @@ import com.ruoyi.metal.security.FactoryScope;
  /**
   * 获取当前用户可以授予的菜单和按钮权限选项。
   */
- @GetMapping("/menus") @PreAuthorize("@ss.hasAnyPermi('system:role:add,system:role:edit')") public AjaxResult menus(){Set<String> owned=com.ruoyi.common.utils.SecurityUtils.getLoginUser().getPermissions();List<Map<String,Object>> all=jdbc.queryForList("SELECT CAST(menu_id AS CHAR) id,CAST(parent_id AS CHAR) parentId,menu_name name,perms FROM sys_menu WHERE status='0' ORDER BY order_num,menu_id");return success(all.stream().filter(m->scope.isAdmin()||m.get("perms")==null||m.get("perms").toString().isBlank()||owned.contains(m.get("perms"))).toList());}
+ @GetMapping("/menus") @PreAuthorize("@ss.hasAnyPermi('system:role:add,system:role:edit')") public AjaxResult menus(){Set<String> owned=com.ruoyi.common.utils.SecurityUtils.getLoginUser().getPermissions();List<Map<String,Object>> all=jdbc.queryForList("SELECT CAST(menu_id AS CHAR) id,CAST(parent_id AS CHAR) parentId,menu_name name,perms,component,menu_type menuType FROM sys_menu WHERE status='0' ORDER BY order_num,menu_id");return success(com.ruoyi.metal.security.BusinessMenuOptions.filter(all,scope.isAdmin(),owned));}
 }

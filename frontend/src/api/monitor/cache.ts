@@ -1,8 +1,9 @@
+import type {DataResult} from '@/types/api/common'
 import request from '@/utils/request'
 import type { SysCache, AjaxResult } from '@/types'
 
 // 查询缓存详细
-export function getCache(): Promise<AjaxResult<any>> {
+export function getCache(): Promise<DataResult<any>> {
   return request({
     url: '/monitor/cache',
     method: 'get'
@@ -10,7 +11,7 @@ export function getCache(): Promise<AjaxResult<any>> {
 }
 
 // 查询缓存名称列表
-export function listCacheName(): Promise<AjaxResult<SysCache[]>> {
+export function listCacheName(): Promise<DataResult<SysCache[]>> {
   return request({
     url: '/monitor/cache/getNames',
     method: 'get'
@@ -18,7 +19,7 @@ export function listCacheName(): Promise<AjaxResult<SysCache[]>> {
 }
 
 // 查询缓存键名列表
-export function listCacheKey(cacheName: string): Promise<AjaxResult<string[]>> {
+export function listCacheKey(cacheName: string): Promise<DataResult<string[]>> {
   return request({
     url: '/monitor/cache/getKeys/' + cacheName,
     method: 'get'
@@ -26,7 +27,7 @@ export function listCacheKey(cacheName: string): Promise<AjaxResult<string[]>> {
 }
 
 // 查询缓存内容
-export function getCacheValue(cacheName: string, cacheKey: string): Promise<AjaxResult<SysCache>> {
+export function getCacheValue(cacheName: string, cacheKey: string): Promise<DataResult<SysCache>> {
   return request({
     url: '/monitor/cache/getValue/' + cacheName + '/' + cacheKey,
     method: 'get'

@@ -26,7 +26,7 @@
 import type {  AjaxResult } from '@/types/api/common'
 import { getToken } from '@/utils/auth'
 
-const { proxy } = getCurrentInstance()
+const proxy = getCurrentInstance()!.proxy!
 
 const props = defineProps({
   // 对话框标题

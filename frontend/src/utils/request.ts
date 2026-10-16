@@ -5,8 +5,12 @@ import { getToken } from '@/utils/auth'
 import errorCode from '@/utils/errorCode'
 import { tansParams, blobValidate } from '@/utils/ruoyi'
 import cache from '@/plugins/cache'
+import {copyText} from '@/utils/clipboard'
+import {containsSensitiveData} from '@/utils/sensitive-request'
 import { saveAs } from 'file-saver'
 import useUserStore from '@/store/modules/user'
+
+try { if (containsSensitiveData(cache.session.getJSON('sessionObj'))) cache.session.remove('sessionObj') } catch { cache.session.remove('sessionObj') }
 
 let downloadLoadingInstance: ReturnType<typeof ElLoading.service>
 // 是否显示重新登录
@@ -23,6 +27,7 @@ const service = axios.create({
 
 // request拦截器
 service.interceptors.request.use((config: any) => {
+  config.sessionToken=getToken()
   // 是否需要设置 token
   const isToken = (config.headers || {}).isToken === false
   // 是否需要防止数据重复提交
@@ -39,13 +44,14 @@ service.interceptors.request.use((config: any) => {
     config.params = {}
     config.url = url
   }
-  if (!isRepeatSubmit && (config.method === 'post' || config.method === 'put')) {
+  if (containsSensitiveData(config.data)) cache.session.remove('sessionObj')
+  if (!isRepeatSubmit && !containsSensitiveData(config.data) && (config.method === 'post' || config.method === 'put')) {
     const requestObj = {
       url: config.url,
       data: typeof config.data === 'object' ? JSON.stringify(config.data) : config.data,
       time: new Date().getTime()
     }
-    const requestSize = Object.keys(JSON.stringify(requestObj)).length // 请求数据大小
+    const requestSize = JSON.stringify(requestObj).length // 请求数据大小
     const limitSize = 5 * 1024 * 1024 // 限制存放数据5M
     if (requestSize >= limitSize) {
       console.warn(`[${config.url}]: ` + '请求数据大小超出允许的5M限制，无法进行防重复提交验证。')
@@ -77,7 +83,7 @@ service.interceptors.request.use((config: any) => {
 service.interceptors.response.use((res: any) => {
     // 未设置状态码则默认成功状态
     const code = res.data.code || 200
-    const trace=res.data.traceId||res.headers?.['x-trace-id'];if(code!==200&&trace)ElNotification({title:'故障追踪',message:h('button',{onClick:()=>navigator.clipboard.writeText(trace)},'复制追踪ID：'+trace),duration:10000})
+    const trace=res.data.traceId||res.headers?.['x-trace-id'];if(code!==200&&code!==401&&trace&&useUserStore().sessionReady&&!!getToken()&&res.config?.sessionToken===getToken()&&!/\/(login|logout|captchaImage|getInfo)(?:\?|$)/.test(res.config?.url??'')&&!location.pathname.startsWith('/login'))ElNotification({title:'故障追踪',message:h('button',{onClick:()=>copyText(trace).then(()=>ElMessage.success('追踪ID已复制')).catch(()=>ElMessage.warning('复制失败，请手动选择追踪ID'))},'复制追踪ID：'+trace),duration:10000})
     // 获取错误信息
     const msg = errorCode[code] || res.data.msg || errorCode['default']
     // 二进制数据则直接返回
@@ -85,7 +91,8 @@ service.interceptors.response.use((res: any) => {
       return res.data
     }
     if (code === 401) {
-      if (!isRelogin.show) {
+      useUserStore().sessionReady=false
+      if (!isRelogin.show&&!location.pathname.startsWith('/login')) {
         isRelogin.show = true
         ElMessageBox.confirm('登录状态已过期，您可以继续留在该页面，或者重新登录', '系统提示', { confirmButtonText: '重新登录', cancelButtonText: '取消', type: 'warning' }).then(() => {
           isRelogin.show = false

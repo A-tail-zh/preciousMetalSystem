@@ -51,7 +51,7 @@
                plain
                icon="Edit"
                :disabled="single"
-               @click="handleUpdate"
+               @click="handleUpdate()"
                v-hasPermi="['system:post:edit']"
             >修改</el-button>
          </el-col>
@@ -61,7 +61,7 @@
                plain
                icon="Delete"
                :disabled="multiple"
-               @click="handleDelete"
+               @click="handleDelete()"
                v-hasPermi="['system:post:remove']"
             >删除</el-button>
          </el-col>
@@ -148,7 +148,7 @@
 import { listPost, addPost, delPost, getPost, updatePost } from "@/api/system/post"
 import type { SysPost, PostQueryParams } from '@/types/api/system/post'
 
-const { proxy } = getCurrentInstance()
+const proxy = getCurrentInstance()!.proxy!
 const { sys_normal_disable } = useDict("sys_normal_disable")
 
 const postList = ref<SysPost[]>([])
@@ -247,7 +247,7 @@ function handleUpdate(row?: SysPost) {
 
 /** 提交按钮 */
 function submitForm() {
-  proxy.$refs["postRef"].validate((valid: boolean) => {
+  ;(proxy.$refs["postRef"] as import('element-plus').FormInstance).validate((valid: boolean) => {
     if (valid) {
       if (form.value.postId != undefined) {
         updatePost(form.value).then(() => {

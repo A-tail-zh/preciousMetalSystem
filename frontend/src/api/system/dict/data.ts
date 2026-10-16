@@ -1,8 +1,9 @@
+import type {DataResult} from '@/types/api/common'
 import request from '@/utils/request'
 import type { DictDataQueryParams, SysDictData, AjaxResult, TableDataInfo } from '@/types'
 
 // 查询字典数据列表
-export function listData(query: DictDataQueryParams): Promise<TableDataInfo<SysDictData[]>> {
+export function listData(query: DictDataQueryParams): Promise<TableDataInfo<SysDictData>> {
   return request({
     url: '/system/dict/data/list',
     method: 'get',
@@ -11,7 +12,7 @@ export function listData(query: DictDataQueryParams): Promise<TableDataInfo<SysD
 }
 
 // 查询字典数据详细
-export function getData(dictCode: number): Promise<AjaxResult<SysDictData>> {
+export function getData(dictCode: number): Promise<DataResult<SysDictData>> {
   return request({
     url: '/system/dict/data/' + dictCode,
     method: 'get'
@@ -19,7 +20,7 @@ export function getData(dictCode: number): Promise<AjaxResult<SysDictData>> {
 }
 
 // 根据字典类型查询字典数据信息
-export function getDicts(dictType: string): Promise<AjaxResult<SysDictData[]>> {
+export function getDicts(dictType: string): Promise<DataResult<SysDictData[]>> {
   return request({
     url: '/system/dict/data/type/' + dictType,
     method: 'get'

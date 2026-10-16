@@ -169,7 +169,7 @@ interface CacheForm {
   cacheValue?: string
 }
 
-const { proxy } = getCurrentInstance()
+const proxy = getCurrentInstance()!.proxy!
 
 const cacheNames = ref<CacheName[]>([])
 const cacheKeys = ref<string[]>([])
@@ -183,7 +183,7 @@ const tableHeight = ref<number>(window.innerHeight - 200)
 function getCacheNames(): void {
   loading.value = true
   listCacheName().then(response => {
-    cacheNames.value = response.data!
+    cacheNames.value = response.data!.filter((item): item is typeof item & {cacheName:string} => typeof item.cacheName === 'string')
     loading.value = false
   })
 }
@@ -209,10 +209,10 @@ function getCacheKeys(row?: SysCache): void {
     return
   }
   subLoading.value = true
-  listCacheKey(cacheName).then(response => {
+  listCacheKey(cacheName || '').then(response => {
     cacheKeys.value = response.data!
     subLoading.value = false
-    nowCacheName.value = cacheName
+    nowCacheName.value = cacheName || ''
   })
 }
 

@@ -11,6 +11,10 @@
 </resultMap>
 <sql id="columns">r.material_id,r.material_code,r.material_type,r.specification,r.create_by,r.create_time,r.update_by,r.update_time,r.version</sql>
 <select id="list" resultMap="Record">SELECT <include refid="columns"/> FROM metal_material r WHERE r.del_flag='0' ORDER BY r.material_id ASC</select>
+<select id="listFiltered" resultMap="Record">SELECT <include refid="columns"/> FROM metal_material r WHERE r.del_flag='0' <if test="q.code != null">AND r.material_code LIKE #{q.codePattern} ESCAPE '!'</if>
+<if test="q.materialType != null and q.materialType != ''">AND r.material_type =#{q.materialType}</if>
+<if test="q.specification != null">AND r.specification LIKE #{q.specificationPattern} ESCAPE '!'</if>
+<if test="q.startTime != null">AND r.create_time &gt;=#{q.startTime}</if><if test="q.endExclusive != null">AND r.create_time &lt;#{q.endExclusive}</if> ORDER BY r.material_id ASC</select>
 <select id="detail" resultMap="Record">SELECT <include refid="columns"/> FROM metal_material r WHERE r.del_flag='0' AND r.material_id=#{id}</select>
 <select id="lock" resultMap="Record">SELECT <include refid="columns"/> FROM metal_material r WHERE r.del_flag='0' AND r.material_id=#{id} FOR UPDATE</select>
 <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="material_id">INSERT INTO metal_material(material_code,material_name,material_type,specification,create_by,create_time,update_by,update_time) VALUES(#{code},'',#{materialType},#{specification},#{createBy},NOW(),#{updateBy},NOW())</insert>

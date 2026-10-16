@@ -1,8 +1,9 @@
+import type {DataResult} from '@/types/api/common'
 import request from '@/utils/request'
 import type { PostQueryParams, SysPost, AjaxResult, TableDataInfo } from '@/types'
 
 // 查询岗位列表
-export function listPost(query: PostQueryParams): Promise<TableDataInfo<SysPost[]>> {
+export function listPost(query: PostQueryParams): Promise<TableDataInfo<SysPost>> {
   return request({
     url: '/system/post/list',
     method: 'get',
@@ -11,7 +12,7 @@ export function listPost(query: PostQueryParams): Promise<TableDataInfo<SysPost[
 }
 
 // 查询岗位详细
-export function getPost(postId: number): Promise<AjaxResult<SysPost>> {
+export function getPost(postId: number): Promise<DataResult<SysPost>> {
   return request({
     url: '/system/post/' + postId,
     method: 'get'

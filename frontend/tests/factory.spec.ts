@@ -43,7 +43,7 @@ test('原型列表字段、按钮和分页',async ({page}) => {
   const errors: string[] = []; page.on('pageerror',e => errors.push(e.message))
   await setup(page)
   await expect(page.locator('.factory-table th .cell')).toHaveText(['','工厂ID','工厂名称','占地面积（万㎡）','产线名称','详细地址','工厂简介','更新时间','操作'])
-  await expect(page.locator('.factory-toolbar button')).toHaveText(['添加','编辑','删除'])
+  await expect(page.locator('.factory-toolbar button')).toHaveText(['添加','编辑','删除','筛选条件'])
   await expect(page.locator('.factory-toolbar button').nth(1)).toBeDisabled()
   await expect(page.locator('.factory-toolbar button').nth(2)).toBeDisabled()
   await expect(page.locator('.factory-page')).not.toContainText('搜索')
@@ -95,6 +95,6 @@ test('非法面积及保存失败保留输入',async ({page}) => {
 
 test('只读权限隐藏写入按钮',async ({page}) => {
   await setup(page,['metal:factory:list','metal:factory:query'])
-  await expect(page.locator('.factory-toolbar button')).toHaveCount(0)
+  await expect(page.locator('.factory-toolbar button')).toHaveText(['筛选条件'])
   await expect(page.locator('.factory-table button')).toHaveCount(0)
 })

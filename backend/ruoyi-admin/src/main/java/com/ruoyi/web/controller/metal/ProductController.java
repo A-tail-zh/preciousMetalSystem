@@ -17,11 +17,11 @@ import com.ruoyi.metal.service.ProductService;
  */
 @RestController @Validated @RequestMapping("/metal/product")
 public class ProductController extends BaseController {
- private final ProductService service; public ProductController(ProductService service){this.service=service;}
+ private final ProductService service;private final com.ruoyi.metal.service.ProductDimensionImage images; public ProductController(ProductService service,com.ruoyi.metal.service.ProductDimensionImage images){this.service=service;this.images=images;}
  /**
   * 查询列表并补充关联资料。
   */
- @GetMapping("/list") @Log(title="产品管理",businessType=BusinessType.OTHER,isSaveResponseData=false) @PreAuthorize("@ss.hasPermi('metal:product:list')") public TableDataInfo list(@RequestParam(defaultValue="1") @Min(1) int pageNum,@RequestParam(defaultValue="16") @Min(1) @Max(100) int pageSize){PageHelper.startPage(pageNum,pageSize);return getDataTable(service.list());}
+ @GetMapping("/list") @Log(title="产品管理",businessType=BusinessType.OTHER,isSaveResponseData=false) @PreAuthorize("@ss.hasPermi('metal:product:list')") public TableDataInfo list(@RequestParam(defaultValue="1") @Min(1) int pageNum,@RequestParam(defaultValue="16") @Min(1) @Max(100) int pageSize, @ModelAttribute com.ruoyi.metal.catalog.ListQuery query){PageHelper.startPage(pageNum,pageSize);return getDataTable(service.list(query));}
  /**
   * 查询指定记录详情。
   */
@@ -29,6 +29,8 @@ public class ProductController extends BaseController {
  /**
   * 新增记录并保存关联资料。
   */
+ @GetMapping(value="/{id}/specification-image",produces="image/png") @PreAuthorize("@ss.hasPermi('metal:product:query')")
+ public byte[] image(@PathVariable @Positive Long id,jakarta.servlet.http.HttpServletResponse response){var product=service.detail(id);response.setHeader("Cache-Control","no-store");return images.render(product.getCategory(),product.getDimensions());}
  @PostMapping @Log(title="产品管理",businessType=BusinessType.INSERT) @PreAuthorize("@ss.hasPermi('metal:product:add')") public AjaxResult create(@Valid @RequestBody ProductRecord form){return success().put("id",service.create(form));}
  /**
   * 修改记录并更新关联资料。

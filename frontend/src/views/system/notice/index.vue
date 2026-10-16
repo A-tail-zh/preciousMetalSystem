@@ -51,7 +51,7 @@
                plain
                icon="Edit"
                :disabled="single"
-               @click="handleUpdate"
+               @click="handleUpdate()"
                v-hasPermi="['system:notice:edit']"
             >修改</el-button>
          </el-col>
@@ -61,7 +61,7 @@
                plain
                icon="Delete"
                :disabled="multiple"
-               @click="handleDelete"
+               @click="handleDelete()"
                v-hasPermi="['system:notice:remove']"
             >删除</el-button>
          </el-col>
@@ -166,7 +166,7 @@ import ReadUsersDialog from "./ReadUsers.vue"
 import { listNotice, getNotice, delNotice, addNotice, updateNotice } from "@/api/system/notice"
 import type { SysNotice, NoticeQueryParams } from '@/types/api/system/notice'
 
-const { proxy } = getCurrentInstance()
+const proxy = getCurrentInstance()!.proxy!
 const { sys_notice_status, sys_notice_type } = useDict("sys_notice_status", "sys_notice_type")
 
 const noticeList = ref<SysNotice[]>([])
@@ -263,7 +263,7 @@ function handleUpdate(row?: SysNotice) {
 
 /** 提交按钮 */
 function submitForm() {
-  proxy.$refs["noticeRef"].validate((valid: boolean) => {
+  ;(proxy.$refs["noticeRef"] as import('element-plus').FormInstance).validate((valid: boolean) => {
     if (valid) {
       if (form.value.noticeId != undefined) {
         updateNotice(form.value).then(() => {
@@ -284,12 +284,12 @@ function submitForm() {
 
 /** 查看公告详情 */
 function handleViewData(row: SysNotice) {
-  proxy.$refs["noticeViewRef"].open(row)
+  ;(proxy.$refs['noticeViewRef'] as InstanceType<typeof NoticeDetailView>).open(row)
 }
 
 /** 查看已读用户 */
 function handleReadUsers(row: SysNotice) {
-   proxy.$refs["readUsersRef"].open(row)
+   ;(proxy.$refs['readUsersRef'] as InstanceType<typeof ReadUsersDialog>).open(row)
 }
 
 /** 删除按钮操作 */

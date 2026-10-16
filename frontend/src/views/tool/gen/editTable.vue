@@ -130,7 +130,7 @@ import GenInfoForm from "./genInfoForm.vue"
 import Sortable from 'sortablejs'
 
 const route = useRoute()
-const { proxy } = getCurrentInstance()
+const proxy = getCurrentInstance()!.proxy!
 
 const activeName = ref<string>("columnInfo")
 const tableHeight = ref<string>(document.documentElement.scrollHeight - 245 + "px")
@@ -141,8 +141,8 @@ const info = ref<Record<string, any>>({})
 
 /** 提交按钮 */
 function submitForm(): void {
-  const basicForm = proxy.$refs.basicInfo.$refs.basicInfoForm
-  const genForm = proxy.$refs.genInfo.$refs.genInfoForm
+  const basicForm = (proxy.$refs.basicInfo as {$refs:{basicInfoForm:import('element-plus').FormInstance}}).$refs.basicInfoForm
+  const genForm = (proxy.$refs.genInfo as {$refs:{genInfoForm:import('element-plus').FormInstance}}).$refs.genInfoForm
   Promise.all([basicForm, genForm].map(getFormPromise)).then(res => {
     const validateResult = res.every(item => !!item)
     if (validateResult) {

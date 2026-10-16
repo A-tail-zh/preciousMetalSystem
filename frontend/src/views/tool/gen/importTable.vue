@@ -58,7 +58,7 @@ const total = ref<number>(0)
 const visible = ref<boolean>(false)
 const tables = ref<string[]>([])
 const dbTableList = ref<GenTable[]>([])
-const { proxy } = getCurrentInstance()
+const proxy = getCurrentInstance()!.proxy!
 
 const queryParams = reactive<GenQueryParams>({
   pageNum: 1,
@@ -77,12 +77,12 @@ function show(): void {
 
 /** 单击选择行 */
 function clickRow(row: GenTable) {
-  proxy.$refs.table.toggleRowSelection(row)
+  ;(proxy.$refs.table as import('element-plus').TableInstance).toggleRowSelection(row)
 }
 
 /** 多选框选中数据 */
 function handleSelectionChange(selection: GenTable[]) {
-  tables.value = selection.map(item => item.tableName)
+  tables.value = selection.map(item => item.tableName!)
 }
 
 /** 查询表数据 */
