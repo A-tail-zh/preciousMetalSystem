@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.metal.mapper.ProductMapper">
+<resultMap id="Record" type="com.ruoyi.metal.catalog.ProductRecord">
+<id property="id" column="product_id"/>
+<result property="code" column="product_code"/>
+<result property="name" column="product_name"/>
+<result property="category" column="product_category"/>
+<result property="specification" column="specification"/>
+<result property="dimensions" column="dimensions" typeHandler="com.ruoyi.metal.catalog.DimensionsHandler"/>
+<result property="volume" column="volume"/>
+<result property="purity" column="purity"/>
+
+<result property="weight" column="theoretical_weight"/>
+<result property="createBy" column="create_by"/><result property="createTime" column="create_time"/><result property="updateTime" column="update_time"/><result property="version" column="version"/>
+</resultMap>
+<sql id="columns">r.product_id,r.product_code,r.product_name,r.product_category,r.specification,r.dimensions,r.volume,r.purity,r.theoretical_weight,r.create_by,r.create_time,r.update_by,r.update_time,r.version</sql>
+<select id="list" resultMap="Record">SELECT <include refid="columns"/> FROM metal_product r WHERE r.del_flag='0' ORDER BY r.product_id DESC</select>
+<select id="listFiltered" resultMap="Record">SELECT <include refid="columns"/> FROM metal_product r WHERE r.del_flag='0' <if test="q.code != null">AND r.product_code LIKE #{q.codePattern} ESCAPE '!'</if>
+<if test="q.name != null">AND r.product_name LIKE #{q.namePattern} ESCAPE '!'</if>
+<if test="q.category != null and q.category != ''">AND r.product_category =#{q.category}</if>
+<if test="q.startTime != null">AND r.create_time &gt;=#{q.startTime}</if><if test="q.endExclusive != null">AND r.create_time &lt;#{q.endExclusive}</if> ORDER BY r.product_id DESC</select>
+<select id="detail" resultMap="Record">SELECT <include refid="columns"/> FROM metal_product r WHERE r.del_flag='0' AND r.product_id=#{id}</select>
+<select id="lock" resultMap="Record">SELECT <include refid="columns"/> FROM metal_product r WHERE r.del_flag='0' AND r.product_id=#{id} FOR UPDATE</select>
+<insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="product_id">INSERT INTO metal_product(product_code,product_name,product_category,specification,dimensions,volume,purity,unit,theoretical_weight,create_by,create_time,update_by,update_time) VALUES(#{code},#{name},#{category},#{specification},#{dimensions,typeHandler=com.ruoyi.metal.catalog.DimensionsHandler},#{volume},#{purity},'',#{weight},#{createBy},NOW(),#{updateBy},NOW())</insert>
+<update id="update">UPDATE metal_product SET product_code=#{code},product_name=#{name},product_category=#{category},specification=#{specification},dimensions=#{dimensions,typeHandler=com.ruoyi.metal.catalog.DimensionsHandler},volume=#{volume},purity=#{purity},theoretical_weight=#{weight},version=version+1,update_by=#{updateBy},update_time=NOW() WHERE product_id=#{id} AND version=#{version} AND del_flag='0'</update>
+<update id="delete">UPDATE metal_product SET del_flag='2',version=version+1,update_by=#{actor},update_time=NOW() WHERE product_id=#{id} AND del_flag='0'</update>
+</mapper>

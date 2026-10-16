@@ -1,0 +1,9 @@
+package com.ruoyi.metal.service;
+import java.util.*;import org.junit.jupiter.api.Test;import com.ruoyi.metal.security.BusinessMenuOptions;import static org.junit.jupiter.api.Assertions.*;
+class BusinessMenuOptionsTest {
+ private Map<String,Object> row(String id,String parent,String type,String component,String permission){return new HashMap<>(Map.of("id",id,"parentId",parent,"menuType",type,"component",component,"perms",permission,"name",id));}
+ private List<Map<String,Object>> rows(){return List.of(row("1","0","M","",""),row("2","1","C","tool/gen/index","tool:gen:list"),row("3","2","F","","tool:gen:code"),row("4","1","C","metal/product/index","metal:product:list"),row("5","4","F","","metal:product:add"),row("6","1","C","metal/staff/index","system:user:list"),row("7","6","F","","system:user:import"),row("8","6","F","","system:user:resetPwd"),row("9","1","C","audit/operations","monitor:operlog:list"),row("10","1","C","audit/runtime","monitor:runtime-log:list"),row("11","1","C","monitor/operlog/index","monitor:operlog:list"),row("12","999","F","","metal:warning-rule:add"),row("13","0","M","",""));}
+ @Test void onlyImplementedModulesAndActionsRemain(){var result=BusinessMenuOptions.filter(rows(),true,Set.of());assertEquals(List.of("1","4","5","6","8","9","10"),result.stream().map(r->r.get("id")).toList());assertTrue(result.stream().noneMatch(r->r.containsKey("component")));}
+ @Test void ownedPermissionsAndAdminOnlyLogsRemainRestricted(){var result=BusinessMenuOptions.filter(rows(),false,Set.of("metal:product:list","monitor:operlog:list","monitor:runtime-log:list"));assertEquals(List.of("1","4","9"),result.stream().map(r->r.get("id")).toList());}
+ @Test void everyReturnedParentExistsOrIsRoot(){var result=BusinessMenuOptions.filter(rows(),true,Set.of());var ids=new HashSet<>();result.forEach(r->ids.add(r.get("id")));assertTrue(result.stream().allMatch(r->"0".equals(r.get("parentId"))||ids.contains(r.get("parentId"))));}
+}

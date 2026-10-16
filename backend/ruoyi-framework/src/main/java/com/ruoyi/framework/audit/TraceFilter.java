@@ -1,0 +1,18 @@
+package com.ruoyi.framework.audit;
+import jakarta.servlet.*;import jakarta.servlet.http.*;import java.io.*;import java.util.*;import com.alibaba.fastjson2.JSON;import org.springframework.stereotype.Component;import org.springframework.core.annotation.Order;import org.springframework.web.filter.OncePerRequestFilter;import org.springframework.web.util.ContentCachingRequestWrapper;import org.springframework.web.util.ContentCachingResponseWrapper;import org.slf4j.*;
+@Component @Order(-200) public class TraceFilter extends OncePerRequestFilter {
+ private final AuditRecorder recorder;private static final Logger LOG=LoggerFactory.getLogger(TraceFilter.class);public TraceFilter(AuditRecorder recorder){this.recorder=recorder;}
+ protected void doFilterInternal(HttpServletRequest req,HttpServletResponse res,FilterChain chain)throws ServletException,IOException{
+  AuditContext c=new AuditContext();c.path=req.getRequestURI();c.verb=req.getMethod();AuditContext.CURRENT.set(c);MDC.put("traceId",c.trace);res.setHeader("X-Trace-Id",c.trace);ContentCachingRequestWrapper r=new ContentCachingRequestWrapper(req,8192);ContentCachingResponseWrapper s=new ContentCachingResponseWrapper(res);Throwable failure=null;
+  try{chain.doFilter(r,s);}catch(Throwable e){failure=e;if(e instanceof ServletException x)throw x;if(e instanceof IOException x)throw x;throw new ServletException(e);}finally{
+   try{byte[] body=s.getContentAsByteArray();Map<String,Object> response=null;if(s.getContentType()!=null&&s.getContentType().contains("json")){try{response=JSON.parseObject(new String(body,java.nio.charset.StandardCharsets.UTF_8));}catch(Exception ignored){}}
+    if(response==null&&s.getHeader("Content-Disposition")!=null){try{c.result=AuditRedactor.json(Map.of("fileName",s.getHeader("Content-Disposition"),"bytes",body.length,"sha256",HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(body))),4096);}catch(Exception ignored){}}
+    int code=response!=null&&response.get("code") instanceof Number n?n.intValue():s.getStatus();String result=code==200?"SUCCESS":code==403||code==401?"ACCESS_DENIED":code==400?"VALIDATION_REJECTED":"BUSINESS_REJECTED";if(failure!=null)result="SYSTEM_ERROR";if(c.failureCode!=null)result=c.failureCode;
+    if(response!=null){c.result=AuditRedactor.json(response,4096);if(code!=200){response.put("traceId",c.trace);s.resetBuffer();s.getOutputStream().write(JSON.toJSONBytes(response));}}
+    if(c.title.isEmpty())c.title=c.path;boolean audit=!c.title.equals(c.path)||(!c.verb.equals("GET")&&!c.path.endsWith("/number/reserve"))||(!result.equals("SUCCESS"));
+    if(audit&&!c.logged&&!c.path.equals("/login")&&!c.path.equals("/captchaImage")){String raw=new String(r.getContentAsByteArray(),java.nio.charset.StandardCharsets.UTF_8);if(c.request.isEmpty()){try{c.request=AuditRedactor.json(JSON.parse(raw),4096);}catch(Exception ignored){c.request="[non-JSON request]";}}if(result.equals("SUCCESS"))recorder.failure(c,"SUCCESS","");else recorder.failure(c,result,failure==null?String.valueOf(response==null?"请求被拒绝":response.get("msg")):failure.getClass().getSimpleName());}
+    if(!result.equals("SUCCESS"))LOG.warn("REQUEST_REJECTED {} {} {}",c.verb,c.path,AuditRedactor.text(response==null?result:String.valueOf(response.get("msg"))));if(System.currentTimeMillis()-c.started>AuditSettings.slowRequest)LOG.warn("SLOW_REQUEST {} {}ms",c.path,System.currentTimeMillis()-c.started);
+   }catch(Exception loggingFailure){LOG.error("AUDIT_CAPTURE_FAILED {}",loggingFailure.getClass().getSimpleName());}finally{s.copyBodyToResponse();MDC.remove("traceId");AuditContext.CURRENT.remove();}
+  }
+ }
+}

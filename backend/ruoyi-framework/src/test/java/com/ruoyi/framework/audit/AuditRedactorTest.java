@@ -1,0 +1,23 @@
+package com.ruoyi.framework.audit;
+import org.junit.jupiter.api.Test;import static org.junit.jupiter.api.Assertions.*;import java.util.*;import com.alibaba.fastjson2.JSON;
+class AuditRedactorTest{
+ @Test void secretsAreRemovedRecursively(){String json=AuditRedactor.json(Map.of("nested",List.of(Map.of("newPassword","secret-sentinel","token","secret-token","phonenumber","19900001001"))),4096);assertFalse(json.contains("secret-sentinel"));assertFalse(json.contains("secret-token"));assertTrue(json.contains("199****1001"));}
+ @Test void bounded(){assertTrue(AuditRedactor.json(Map.of("text","x".repeat(9000)),4096).length()<=4096);assertEquals(100,((List<?>)AuditRedactor.redact(Collections.nCopies(1000,"value"))).size());}
+ @Test void completePreservesNestedCollectionsAndJsonStrings(){var values=new ArrayList<Map<String,Object>>();for(int i=0;i<1001;i++)values.add(Map.of("id",i,"password","FAKE_PASSWORD"));var full=(Map<?,?>)AuditRedactor.redactComplete(Map.of("nested",values,"json",JSON.toJSONString(values)));assertEquals(1001,((List<?>)full.get("nested")).size());assertEquals(1001,JSON.parseArray(full.get("json").toString()).size());assertFalse(JSON.toJSONString(full).contains("FAKE_PASSWORD"));}
+ @Test void authenticationHeadersHideEntireCredentials(){for(String header:List.of("Authorization: Bearer FAKE_JWT.value.test","aUtHoRiZaTiOn = bEaReR FAKE_JWT.value.test","Proxy-Authorization: Basic FAKE_BASIC_VALUE==")){String clean=AuditRedactor.text(header+" status=200\nmessage=kept");assertFalse(clean.contains("FAKE_"),clean);assertTrue(clean.contains("status=200"));assertTrue(clean.contains("message=kept"));assertTrue(clean.contains("[REDACTED]"));}}
+ @Test void cookiesHideAllValuesAndRespectBoundaries(){for(String header:List.of("Cookie: session=FAKE_SESSION; theme=FAKE_THEME","Set-Cookie: session=FAKE_SESSION; HttpOnly; Path=/")){String clean=AuditRedactor.text(header+" | status=200\nmessage=kept");assertFalse(clean.contains("FAKE_"),clean);assertFalse(clean.contains("theme="));assertTrue(clean.contains("status=200"));assertTrue(clean.contains("message=kept"));}String clean=AuditRedactor.text("Cookie: first=FAKE_FIRST; second=FAKE_SECOND status=200");assertFalse(clean.contains("FAKE_"));assertTrue(clean.contains("status=200"));}
+ @Test void pipeBoundaryKeepsFollowingFields(){String clean=AuditRedactor.text("Authorization: Bearer FAKE_TOKEN|status=200");assertFalse(clean.contains("FAKE_TOKEN"));assertTrue(clean.contains("|status=200"));}
+ @Test void structuredAndOrdinaryTextStillWork(){assertFalse(AuditRedactor.text("{\"nested\":{\"Authorization\":\"Bearer FAKE_TOKEN\",\"password\":\"FAKE_PASSWORD\"}}").contains("FAKE_"));assertEquals("completed 20 records status=200",AuditRedactor.text("completed 20 records status=200"));assertFalse(AuditRedactor.text("password=FAKE_PASSWORD; token=FAKE_TOKEN").contains("FAKE_"));}
+
+ @Test void embeddedQuotedAndEscapedHeadersAreRedacted(){
+  for(String message:List.of(
+   "HTTP failure headers={\"Authorization\":\"Bearer FAKE_AUTH\",\"Cookie\":\"sid=FAKE_COOKIE; theme=FAKE_THEME\"} status=500",
+   "headers={'Proxy-Authorization': 'Basic FAKE_BASIC', 'Set-Cookie': 'sid=FAKE_COOKIE'} status=200",
+   "headers={\\\"Authorization\\\":\\\"Bearer FAKE_ESCAPED\\\",\\\"Cookie\\\":\\\"sid=FAKE_COOKIE\\\"} status=200",
+   "  {\"Authorization\":\"Bearer FAKE_AUTH\",\"message\":\"kept\"}")){
+   String clean=AuditRedactor.text(message);assertFalse(clean.contains("FAKE_"),clean);assertTrue(clean.contains("status=")||clean.contains("kept"));
+  }
+  assertEquals("  normal message",AuditRedactor.text("  normal message"));
+ }
+
+}
