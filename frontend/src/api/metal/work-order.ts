@@ -7,7 +7,7 @@ export const orderStatus:Record<string,string>={PENDING:'旧流程：待审核',
 export const orderEditable=(row:WorkOrder)=>row.canEdit===true
 const root='/metal/work-order'
 export const orderList=(params:{pageNum:number;pageSize:number}):Promise<{rows:WorkOrder[];total:number}>=>request({url:root+'/list',params})
-export const orderDetail=(id:string):Promise<{data:WorkOrder}>=>request({url:root+'/'+id})
+export const orderDetail=(id:string,isContextCurrent?:()=>boolean):Promise<{data:WorkOrder}>=>request({url:root+'/'+id,...(isContextCurrent?{isContextCurrent}:{})})
 export const orderSave=(data:WorkOrder):Promise<{id?:string}>=>request({url:root,method:data.id?'put':'post',data:{id:data.id,version:data.version,requestId:data.requestId,customer:data.customer,factoryId:data.factoryId,productionLineId:data.productionLineId,ownerId:data.ownerId,orderDate:data.orderDate,items:data.items.map(item=>({id:item.id,productId:item.productId,quantity:item.quantity,plans:item.plans.map(step=>({processId:step.processId,startTime:step.startTime,endTime:step.endTime}))}))}})
 export const orderDelete=(ids:string[])=>request({url:root+'/'+ids.join(','),method:'delete'})
 export const orderAction=(id:string,action:string,version:number,reason?:string)=>request({url:root+'/'+id+'/'+action,method:'post',data:{version,reason}})

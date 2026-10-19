@@ -50,9 +50,10 @@ export function unlockScreen(password: string) {
 }
 
 // 退出方法
-export function logout() {
+export function logout(token?:string) {
   return request({
     url: '/logout',
+    headers: token?{Authorization:'Bearer '+token,repeatSubmit:false}: {repeatSubmit:false},
     method: 'post'
   })
 }

@@ -15,13 +15,13 @@ async function setup(page: Page, permissions = ['*:*:*']) {
       expect(url.searchParams.get('pageSize')).toBe('16')
       response = {...response,rows,total:rows.length}
     }
-    else if (path === '/metal/factory/line-options') response.data = []
+    else if (path === '/metal/factory/line-options') response.data = [{productionLineId:'10',productionLineName:'未分配测试产线',factoryId:null}]
     else if (path === '/metal/factory' && ['POST','PUT'].includes(request.method())) {
       if (rejectSave) response = {code:500,msg:'数据已被修改，请刷新后重试'}
       else {
         const data = request.postDataJSON()
         expect(typeof data.area).toBe('string')
-        expect(data.productionLineIds).toEqual([])
+        if(request.method()==='POST')expect(data.productionLineIds).toEqual(['10'])
         const factoryId = data.factoryId || String(nextId++)
         const row = {...data,factoryId,version:data.factoryId ? data.version+1 : 0,productionLines:[],updateTime:'2026-10-12 13:00:00'}
         rows = [row,...rows.filter(f => f.factoryId !== factoryId)]
@@ -43,7 +43,7 @@ test('原型列表字段、按钮和分页',async ({page}) => {
   const errors: string[] = []; page.on('pageerror',e => errors.push(e.message))
   await setup(page)
   await expect(page.locator('.factory-table th .cell')).toHaveText(['','工厂ID','工厂名称','占地面积（万㎡）','产线名称','详细地址','工厂简介','更新时间','操作'])
-  await expect(page.locator('.factory-toolbar button')).toHaveText(['添加','编辑','删除','筛选条件'])
+  await expect(page.locator('.factory-toolbar button')).toHaveText(['添加','编辑','删除','查询','重置'])
   await expect(page.locator('.factory-toolbar button').nth(1)).toBeDisabled()
   await expect(page.locator('.factory-toolbar button').nth(2)).toBeDisabled()
   await expect(page.locator('.factory-page')).not.toContainText('搜索')
@@ -59,6 +59,7 @@ test('新增、刷新、编辑回显和删除',async ({page}) => {
   await dialog.getByLabel('工厂名称',{exact:true}).fill('第二工厂')
   await dialog.getByLabel('占地面积（万㎡）',{exact:true}).fill('20.1234')
   await dialog.getByLabel('详细地址',{exact:true}).fill('第二工厂地址')
+  await dialog.locator('.el-select__wrapper').click();await page.getByRole('option',{name:'未分配测试产线',exact:true}).click();await page.keyboard.press('Escape')
   await dialog.getByRole('button',{name:'确定',exact:true}).click()
   await expect(dialog).not.toBeVisible()
   let row = page.getByRole('row').filter({hasText:'第二工厂'})
@@ -95,6 +96,6 @@ test('非法面积及保存失败保留输入',async ({page}) => {
 
 test('只读权限隐藏写入按钮',async ({page}) => {
   await setup(page,['metal:factory:list','metal:factory:query'])
-  await expect(page.locator('.factory-toolbar button')).toHaveText(['筛选条件'])
+  await expect(page.locator('.factory-toolbar button')).toHaveText(['查询','重置'])
   await expect(page.locator('.factory-table button')).toHaveCount(0)
 })

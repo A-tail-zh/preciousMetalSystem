@@ -98,8 +98,8 @@ token:
   header: Authorization
   # 令牌密钥
   secret: ${TOKEN_SECRET}
-  # 令牌有效期（默认30分钟）
-  expireTime: 30
+  # 登录会话有效期（分钟，默认8小时；访问时按现有机制自动续期）
+  expireTime: ${TOKEN_EXPIRE_MINUTES:480}
 
 # MyBatis配置
 mybatis:

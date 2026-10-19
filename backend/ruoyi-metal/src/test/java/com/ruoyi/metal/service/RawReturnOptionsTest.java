@@ -1,0 +1,5 @@
+package com.ruoyi.metal.service;
+import org.junit.jupiter.api.Test;import static org.junit.jupiter.api.Assertions.*;import static org.mockito.Mockito.*;import static org.mockito.ArgumentMatchers.*;import java.util.*;import java.math.BigDecimal;import org.springframework.jdbc.core.JdbcTemplate;import com.ruoyi.metal.security.FactoryScope;
+class RawReturnOptionsTest {
+ @Test void optionsExposeRawAllowanceWithoutChangingLegacyBalance(){var j=mock(JdbcTemplate.class);var scope=mock(FactoryScope.class);when(scope.isAdmin()).thenReturn(true);when(j.queryForList(anyString(),any(Object[].class))).thenAnswer(a->List.of(new HashMap<String,Object>(Map.of("id",1L,"type","PRODUCTION_OUT","category","RAW","remaining_weight",new BigDecimal("280.000000"),"issued_weight",new BigDecimal("300"),"output_weight",new BigDecimal("190"),"returned_weight",new BigDecimal("20"),"batch_status","OPEN"))));var row=new WarehouseService(j,scope).options("out-lines",3L,null).get(0);assertEquals("280.000000",row.get("remainingWeight"));assertEquals("90.000000",row.get("batchRemainingWeight"));assertEquals("90.000000",row.get("returnableWeight"));}
+}

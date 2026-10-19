@@ -97,8 +97,8 @@ public class SysLoginService
         // 生成token
         String token;
         try { token=tokenService.createToken(loginUser); }
-        catch(ServiceException changed){AsyncManager.me().execute(AsyncFactory.recordLogininfor(username,Constants.LOGIN_FAIL,changed.getMessage()));throw changed;}
-        AsyncManager.me().execute(AsyncFactory.recordLogininfor(username, Constants.LOGIN_SUCCESS, MessageUtils.message("user.login.success")));
+        catch(ServiceException changed){AsyncManager.me().execute(AsyncFactory.recordLogininforForUser(loginUser.getUserId(),username,Constants.LOGIN_FAIL,changed.getMessage()));throw changed;}
+        AsyncManager.me().execute(AsyncFactory.recordLogininforForUser(loginUser.getUserId(),username, Constants.LOGIN_SUCCESS, MessageUtils.message("user.login.success")));
         return token;
     }
 
@@ -143,6 +143,11 @@ public class SysLoginService
         {
             AsyncManager.me().execute(AsyncFactory.recordLogininfor(username, Constants.LOGIN_FAIL, MessageUtils.message("not.null")));
             throw new UserNotExistsException();
+        }
+        if (!"admin".equals(username) && !username.matches("[0-9]{11}"))
+        {
+            AsyncManager.me().execute(AsyncFactory.recordLogininfor(username, Constants.LOGIN_FAIL, "账号须为11位手机号"));
+            throw new com.ruoyi.common.exception.ServiceException("请输入11位手机号账号");
         }
         // 密码如果不在指定范围内 错误
         if (!com.ruoyi.common.utils.PasswordPolicy.valid(password))

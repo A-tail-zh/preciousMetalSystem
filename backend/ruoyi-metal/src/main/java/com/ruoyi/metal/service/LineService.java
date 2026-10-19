@@ -74,7 +74,8 @@ public class LineService extends MasterService<LineRecord> {
             scope.adminOnly();
             WorkOrderReferences.lineMove(jdbc, row.getId());
         }
-        scope.lockFactories(List.of(row.getFactoryId()));
+        if(row.getFactoryId()==null)scope.adminOnly();
+        scope.lockFactories(Collections.singletonList(row.getFactoryId()));
         if (row.getProductIds() == null || row.getProductIds().size() > 1000 || row.getProductIds().stream().anyMatch(i -> i == null || i <= 0) || new HashSet<>(row.getProductIds()).size() != row.getProductIds().size())
             throw new ServiceException("产品关联无效或重复");
         if (old != null) WorkOrderReferences.lineProducts(jdbc, row.getId(), row.getProductIds());

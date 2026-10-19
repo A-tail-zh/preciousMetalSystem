@@ -62,6 +62,7 @@ public class FactoryService {
         scope.adminOnly();
         if (form.getFactoryId() != null) throw new ServiceException("新增时不能指定工厂ID");
         List<Long> ids = checkedIds(form.getProductionLineIds());
+        if (ids.isEmpty()) throw new ServiceException("请选择至少一条关联产线");
         mapper.insert(form, actor);
         validateLines(ids, mapper.lockLines(ids, null), form.getFactoryId());
         assign(ids, form.getFactoryId());

@@ -24,4 +24,12 @@ class WarehouseOutputQuantityTest {
   assertThrows(com.ruoyi.common.exception.ServiceException.class,()->WarehouseService.validateProductionWeight(new BigDecimal("10"),new BigDecimal("10.000001")));
  }
  @Test void cumulativeQuantityAllowsPartialOutputsAndRejectsOverflow(){assertDoesNotThrow(()->WarehouseService.validateOutputQuantity(5,2,3));assertThrows(com.ruoyi.common.exception.ServiceException.class,()->WarehouseService.validateOutputQuantity(5,2,4));}
+ @Test void downstreamCompletionRequiresActualSemiIssue() throws Exception {
+  Method validate=WarehouseService.class.getDeclaredMethod("validateDownstreamQuantity",long.class,long.class,long.class);validate.setAccessible(true);
+  assertDoesNotThrow(()->validate.invoke(null,1L,0L,10L));
+  assertDoesNotThrow(()->validate.invoke(null,2L,6L,6L));
+  assertDoesNotThrow(()->validate.invoke(null,2L,6L,4L));
+  assertThrows(InvocationTargetException.class,()->validate.invoke(null,2L,0L,1L));
+  assertThrows(InvocationTargetException.class,()->validate.invoke(null,2L,6L,7L));
+ }
 }

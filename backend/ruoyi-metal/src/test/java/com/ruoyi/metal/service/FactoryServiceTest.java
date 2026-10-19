@@ -57,11 +57,9 @@ class FactoryServiceTest {
         when(mapper.lockLines(List.of(10L),null)).thenReturn(List.of());
         assertThrows(ServiceException.class, () -> service.create(r,"admin"));
     }
-    @Test void createWithoutLinesReturnsGeneratedId() {
-        FactoryRequest r = form(List.of());
-        doAnswer(i -> { ((FactoryRequest)i.getArgument(0)).setFactoryId(3L); return 1; }).when(mapper).insert(any(),anyString());
-        when(mapper.lockLines(List.of(),null)).thenReturn(List.of());
-        assertEquals("3",service.create(r,"admin")); verify(mapper, never()).assignLines(any(),any());
+    @Test void createWithoutLinesIsRejectedBeforeInsert() {
+        assertThrows(ServiceException.class,()->service.create(form(List.of()),"admin"));
+        verify(mapper,never()).insert(any(),anyString());
     }
     @Test void staleVersionNeverChangesAssociations() {
         Factory f = factory(1); f.setVersion(1); when(mapper.lockFactory(1L)).thenReturn(f);

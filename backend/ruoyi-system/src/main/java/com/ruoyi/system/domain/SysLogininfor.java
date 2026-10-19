@@ -14,6 +14,7 @@ import com.ruoyi.common.core.domain.BaseEntity;
 public class SysLogininfor extends BaseEntity
 {
     private static final long serialVersionUID = 1L;
+    private Long accountUserId;public Long getAccountUserId(){return accountUserId;}public void setAccountUserId(Long value){accountUserId=value;}
     private String eventId;private String reasonCategory;public String getEventId(){return eventId;}public void setEventId(String v){eventId=v;}public String getReasonCategory(){return reasonCategory;}public void setReasonCategory(String v){reasonCategory=v;}
     private String traceId;public String getTraceId(){return traceId;}public void setTraceId(String value){traceId=value;}
 

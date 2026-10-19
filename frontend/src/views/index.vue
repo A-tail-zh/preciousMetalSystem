@@ -4,11 +4,13 @@
   <main><div v-if="failed" class="load-error">数据加载失败 <el-button link @click="load">重新加载</el-button></div>
    <div class="summary-row"><div class="summary-card"><div>工单统计</div><strong>{{data.workOrders?.total??0}}<small>单</small></strong><p>进行中 {{data.workOrders?.inProgress??0}}　　已完成 {{data.workOrders?.completed??0}}</p></div><div class="summary-card"><div>今日预警统计</div><strong>{{data.warnings?.pending??0}}<small>条待处理</small></strong><p>今日新增{{data.warnings?.newToday??0}}　已处理{{data.warnings?.handledToday??0}}</p></div><div class="summary-card quotation-summary"><div>本月报价单</div><strong>{{data.quotations?.count??0}}<small>单</small></strong><p class="quotation-category-counts" :title="quotationCategoryText"><template v-if="data.quotations?.categories?.length"><span>覆盖产品：</span><span v-for="category in data.quotations.categories" :key="category" class="quotation-category">{{category}}：{{data.quotations.categoryCounts?.[category]??0}}单</span></template><span v-else>覆盖产品：暂无</span></p></div></div>
    <div class="top-charts"><section class="chart-card trend-card"><h2>近30日金属损耗趋势</h2><div ref="trendEl" class="dashboard-chart"/><span v-if="!hasTrend" class="empty-overlay">近30日暂无已结算损耗</span></section><section class="chart-card"><h2>本月工序损耗排行TOP5 <span>单位：g</span></h2><div ref="rankingEl" class="dashboard-chart"/><span v-if="!data.ranking?.length" class="empty-overlay">本月暂无工序损耗</span></section></div>
-   <div class="bottom-charts"><section class="chart-card"><h2>本月各工厂损耗对比 <span>g</span></h2><div ref="factoryEl" class="dashboard-chart"/></section><section class="chart-card"><h2>本月预警统计分布</h2><div ref="distributionEl" class="dashboard-chart"/><span v-if="!data.distribution?.length" class="empty-overlay">本月暂无预警</span></section><section class="chart-card warning-center"><h2>预警中心 <el-button v-if="can('metal:warning-record:list')" link @click="router.push('/metal/warning-record')">更多&gt;&gt;</el-button></h2><el-table :data="data.warningCenter||[]" border empty-text="暂无预警" class="warning-table"><el-table-column label="预警时间" prop="triggerTime" min-width="110"/><el-table-column label="工厂名称" prop="factoryName" min-width="90"/><el-table-column label="工序名称" prop="processName" min-width="80"/><el-table-column label="预警值" prop="thresholdValue" width="78"/><el-table-column label="状态" width="78"><template #default="{row}">{{row.status==='PENDING'?'待处理':'已处理'}}</template></el-table-column></el-table></section></div>
+   <div class="bottom-charts"><section class="chart-card"><h2>本月各工厂损耗对比 <span>g</span></h2><div ref="factoryEl" class="dashboard-chart"/></section><section class="chart-card"><h2>本月预警统计分布</h2><div ref="distributionEl" class="dashboard-chart"/><span v-if="!data.distribution?.length" class="empty-overlay">本月暂无预警</span></section><section class="chart-card warning-center"><h2>预警中心 <el-button v-if="can('metal:warning-record:list')" link @click="router.push('/metal/warning-record')">更多&gt;&gt;</el-button></h2><el-table :data="data.warningCenter||[]" border empty-text="暂无预警" class="warning-table"><el-table-column label="预警时间" prop="triggerTime" :formatter="dateTimeCell" min-width="110"/><el-table-column label="工厂名称" prop="factoryName" min-width="90"/><el-table-column label="工序名称" prop="processName" min-width="80"/><el-table-column label="预警值" prop="thresholdValue" width="78"/><el-table-column label="状态" width="78"><template #default="{row}">{{row.status==='PENDING'?'待处理':'已处理'}}</template></el-table-column></el-table></section></div>
   </main>
  </div>
 </template>
 <script setup lang="ts">
+import {getToken} from '@/utils/auth'
+import {dateTimeCell} from '@/utils/display-date-time'
 import{ref,computed,nextTick,onMounted,onBeforeUnmount,watch}from'vue'
 import{useRouter}from'vue-router'
 import{useWindowSize}from'@vueuse/core'
@@ -36,7 +38,7 @@ async function load(){
   if(disposed||current!==loadEpoch)return;data.value=response.data;await nextTick();if(!disposed&&current===loadEpoch)render()
  }catch{if(!disposed&&current===loadEpoch){failed.value=true;data.value={}}}finally{if(!disposed&&current===loadEpoch)loading.value=false}
 }
-async function logout(){try{await ElMessageBox.confirm('确认退出系统？','提示')}catch{return}await user.logOut();await router.push('/login')}
+async function logout(){const token=getToken();try{await ElMessageBox.confirm('确认退出系统？','提示')}catch{return}if(await user.logOut(token))await router.push('/login')}
 watch([width,height],()=>nextTick(()=>instances.forEach(chart=>chart.resize())))
 onMounted(load);onBeforeUnmount(()=>{disposed=true;loadEpoch++;instances.forEach(chart=>chart.dispose())})
 </script>

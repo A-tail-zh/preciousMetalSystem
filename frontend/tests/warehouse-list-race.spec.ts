@@ -6,7 +6,7 @@ function setup(){
  const pending:Array<{resolve:(r:any)=>void,reject:(e:Error)=>void}>=[]
  const warehouseList=()=>new Promise((resolve,reject)=>pending.push({resolve,reject}))
  const tab={value:'RAW'},loading={value:false},failed={value:false},rows={value:[]as any[]},total={value:0},selected={value:[]}
- const load=new Function('warehouseList','kind','query','tabs','tab','loading','failed','rows','total','selected','appliedFilters','let loadEpoch=0;'+source+';return load')(warehouseList,'inventory',{pageNum:1},[1],tab,loading,failed,rows,total,selected,{value:{}})
+ const load=new Function('warehouseList','kind','query','tabs','tab','loading','failed','rows','total','selected','appliedFilters','let loadEpoch=0;const saving={value:false},adjustVisible={value:false};function invalidateAdjustment(){}'+source+';return load')(warehouseList,'inventory',{pageNum:1},[1],tab,loading,failed,rows,total,selected,{value:{}})
  return{load,pending,tab,loading,failed,rows,total}
 }
 test('older tab response cannot overwrite newest rows and total',async()=>{

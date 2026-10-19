@@ -65,6 +65,7 @@
 </template>
 
 <script setup lang="ts">
+import {getToken} from '@/utils/auth'
 import { ElMessageBox } from 'element-plus'
 import Breadcrumb from '@/components/Breadcrumb/index.vue'
 import TopNav from './TopNav/index.vue'
@@ -110,12 +111,14 @@ function handleCommand(command: string): void {
 }
 
 function logout(): void {
+  const token=getToken()
   ElMessageBox.confirm('确定注销并退出系统吗？', '提示', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
     type: 'warning'
   }).then(() => {
-    userStore.logOut().then(() => {
+    userStore.logOut(token).then(cleared => {
+    if(!cleared)return
       location.href = '/index'
     })
   }).catch(() => { })

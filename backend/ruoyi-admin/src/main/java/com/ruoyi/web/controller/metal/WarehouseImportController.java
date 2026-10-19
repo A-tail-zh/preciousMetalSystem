@@ -32,12 +32,20 @@ public class WarehouseImportController {
    for(int i=0;i<columns.size();i++){row.createCell(i).setCellValue(columns.get(i).label());sheet.setColumnWidth(i,4500);sheet.setDefaultColumnStyle(i,textStyle);}
    var note=book.createSheet("填写说明");String[] notes={
     type==null?"分类：RAW原材料、FINISHED成品、SEMI半成品":"本模板单据类型："+type+"；分类由当前入库类型确定，不需要填写。",
-    "物料／产品ID（旧模板为资料ID）取自物料选择框的[ID:数字]；原料填写物料ID，成品和半成品填写产品ID。旧模板出库填写库存ID，还库填写原出库明细ID。",
+    type==null?"资料ID填写系统内部物料或产品ID，不能填写物料／产品编号；旧通用模板的库存ID、原出库明细ID请向系统管理员核对，不从下拉显示文字中提取。入库建议按入库类型重新下载含ID参考表的新模板。":
+    "物料／产品ID：在本文件的“ID参考”工作表，按编号、名称和规格型号查找并复制ID列；原料使用物料ID，半成品和成品使用产品ID。ID不是编号，不要把下拉显示文字填入ID列。",
     "实测净重单位g，必填且大于0，最多6位小数；原料填写毛重时，净重须等于毛重减杂质；净重留空且毛重已填时自动计算。",
     "原料毛重、杂质可不填；原料数量自动为0；成品和半成品数量(件)必填且为正整数；纯度、单位名称、用途、备注可不填。",
     batchBound?"已自动绑定加工批次，不填写批次号。":"非生产入库批次号可空，由系统生成；生产产出批次号必须留空。",
     "最多1000行，禁止公式；导入只填充待确认明细，点击单据确认后才过账。编号和ID请使用文本格式，避免Excel自动改写。"};
    for(int i=0;i<notes.length;i++)note.createRow(i).createCell(0).setCellValue(notes[i]);
+   note.setColumnWidth(0,120*256);var noteStyle=book.createCellStyle();noteStyle.setWrapText(true);for(var noteRow:note){noteRow.getCell(0).setCellStyle(noteStyle);noteRow.setHeightInPoints(48);}
+   if(type!=null){
+    var reference=book.createSheet("ID参考");String[] headings={"ID","编号","名称","规格型号"};String[] keys={"id","code","name","specification"};var heading=reference.createRow(0);
+    for(int i=0;i<headings.length;i++){heading.createCell(i).setCellValue(headings[i]);reference.setColumnWidth(i,(i==3?60:i==0?20:30)*256);reference.setDefaultColumnStyle(i,textStyle);}
+    int rowIndex=1;for(var item:imports.templateReferences(type)){var referenceRow=reference.createRow(rowIndex++);for(int i=0;i<keys.length;i++){var cell=referenceRow.createCell(i);cell.setCellStyle(textStyle);cell.setCellValue(Objects.toString(item.get(keys[i]),""));}}
+    reference.createFreezePane(0,1);
+   }
    response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");response.setHeader("Content-Disposition","attachment; filename=warehouse-lines.xlsx");book.write(response.getOutputStream());
   }
  }

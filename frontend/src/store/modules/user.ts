@@ -52,8 +52,11 @@ const useUserStore = defineStore(
       },
       // 获取用户信息
       getInfo() {
+        const sessionToken=getToken()
         return new Promise((resolve, reject) => {
+          if(!sessionToken){reject(new Error("会话已失效"));return}
           getInfo().then(res => {
+            if(getToken()!==sessionToken){reject(new Error("会话已切换"));return}
             const user = res.user
             let avatar = user.avatar || ''
             if (!isHttp(avatar)) {
@@ -64,6 +67,7 @@ const useUserStore = defineStore(
               this.permissions = res.permissions
             } else {
               this.roles = ['ROLE_DEFAULT']
+              this.permissions = []
             }
             this.id = user.userId || ''
             this.name = user.userName || ''
@@ -74,13 +78,13 @@ const useUserStore = defineStore(
             /* 初始密码提示 */
             if(res.isDefaultModifyPwd) {
               ElMessageBox.confirm('您的密码还是初始密码，请修改密码！',  '安全提示', {  confirmButtonText: '确定',  cancelButtonText: '取消',  type: 'warning' }).then(() => {
-                router.push({ name: 'Profile', params: { activeTab: 'resetPwd' } })
+                if(getToken()===sessionToken)router.push({ name: 'Profile', params: { activeTab: 'resetPwd' } })
               }).catch(() => {})
             }
             /* 过期密码提示 */
             if(!res.isDefaultModifyPwd && res.isPasswordExpired) {
               ElMessageBox.confirm('您的密码已过期，请尽快修改密码！',  '安全提示', {  confirmButtonText: '确定',  cancelButtonText: '取消',  type: 'warning' }).then(() => {
-                router.push({ name: 'Profile', params: { activeTab: 'resetPwd' } })
+                if(getToken()===sessionToken)router.push({ name: 'Profile', params: { activeTab: 'resetPwd' } })
               }).catch(() => {})
             }
             resolve(res)
@@ -91,21 +95,15 @@ const useUserStore = defineStore(
       },
       clearSession() { this.sessionReady=false; this.id=''; cache.session.remove('sessionObj'); this.token=''; this.roles=[]; this.permissions=[]; removeToken() },
       // 退出系统
-      logOut() {
-        return new Promise<void>((resolve, reject) => {
-          logout().then(() => {
-            cache.session.remove('sessionObj')
-            this.sessionReady=false
-            this.id=''
-            this.token = ''
-            this.roles = []
-            this.permissions = []
-            removeToken()
-            resolve()
-          }).catch((error: any) => {
-            reject(error)
-          })
-        })
+      async logOut(expectedToken=getToken()):Promise<boolean> {
+        if(!expectedToken||getToken()!==expectedToken)return false
+        try{await logout(expectedToken)}catch(error:any){
+          if(getToken()!==expectedToken)return false
+          if(error?.response?.status!==401&&error!=='无效的会话，或者会话已过期，请重新登录。')throw error
+        }
+        if(getToken()!==expectedToken)return false
+        this.clearSession()
+        return true
       }
     }
   })

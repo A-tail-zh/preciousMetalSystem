@@ -1,11 +1,14 @@
 <template>
   <section class="factory-page">
     <div class="factory-toolbar">
-      <el-button v-hasPermi="['metal:factory:add']" class="add-button" @click="openAdd">添加</el-button>
+<BusinessFilters kind="factory" @apply="applyFilters"><template #actions>
+<el-button v-hasPermi="['metal:factory:add']" class="add-button" @click="openAdd">添加</el-button>
       <el-button v-hasPermi="['metal:factory:edit']" class="edit-button" :disabled="selected.length !== 1" @click="openEdit(selected[0])">编辑</el-button>
       <el-button v-hasPermi="['metal:factory:remove']" class="delete-button" :disabled="!selected.length || deleting" @click="remove(selected)">删除</el-button>
-      <BusinessFilters kind="factory" @apply="applyFilters"/>
+</template></BusinessFilters>
     </div>
+    <div v-if="editLoading" role="status">正在加载编辑资料… <el-button link @click="cancelEdit">取消加载</el-button></div>
+    <div v-if="editError" role="alert">编辑资料加载失败 <el-button link @click="retryEdit()">重试</el-button></div>
     <el-table ref="tableRef" v-loading="loading" :data="rows" border class="factory-table" @selection-change="selected = $event">
       <el-table-column v-if="showActions" type="selection" width="54" align="center" />
       <el-table-column label="工厂ID" min-width="98" align="center">
@@ -20,7 +23,7 @@
       </el-table-column>
       <el-table-column label="详细地址" prop="address" min-width="113" align="center" />
       <el-table-column label="工厂简介" prop="introduction" min-width="230" align="center" />
-      <el-table-column label="更新时间" prop="updateTime" width="168" align="center" />
+      <el-table-column label="更新时间" prop="updateTime" :formatter="dateTimeCell" width="168" align="center" />
       <el-table-column v-if="showActions" label="操作" width="163" align="center">
         <template #default="{row}">
           <el-button v-hasPermi="['metal:factory:edit']" class="edit-button row-button" @click="openEdit(row)">编辑</el-button>
@@ -33,18 +36,18 @@
       <el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :page-sizes="[16,32,64]" :total="total"
         layout="total, sizes, prev, pager, next, jumper" @size-change="changeSize" @current-change="load" />
     </div>
-    <el-dialog class="base-info-form-dialog" v-model="dialogOpen" :title="form.factoryId ? '编辑工厂' : '添加工厂'" width="min(760px, 94vw)" :close-on-click-modal="false" :close-on-press-escape="!saving" :show-close="!saving" @closed="resetForm">
+    <el-dialog class="base-info-form-dialog" v-model="dialogOpen" :title="form.factoryId ? '编辑工厂' : '添加工厂'" width="min(760px, 94vw)" :close-on-click-modal="false" :close-on-press-escape="!saving" :show-close="!saving" >
       <el-form ref="formRef" :model="form" :rules="rules" label-width="160px" label-position="left" :disabled="saving">
         <el-form-item label="工厂名称" prop="factoryName"><el-input v-model="form.factoryName" maxlength="100" /></el-form-item>
         <el-form-item label="占地面积（万㎡）" prop="area"><el-input v-model="form.area" inputmode="decimal" placeholder="请输入大于0的面积，最多4位小数" /></el-form-item>
-        <el-form-item label="关联产线" prop="productionLineIds">
-          <el-select @visible-change="resetSelectScroll" fit-input-width :teleported="false" v-model="form.productionLineIds" multiple filterable style="width:100%" placeholder="请选择产线（可不选）">
+        <el-form-item label="关联产线" prop="productionLineIds" :required="!form.factoryId">
+          <el-select @visible-change="resetSelectScroll" fit-input-width :teleported="false" v-model="form.productionLineIds" multiple filterable style="width:100%" :placeholder="form.factoryId?'请选择关联产线':'请选择至少一条关联产线'">
             <el-option v-for="line in options" :key="line.productionLineId" :label="line.productionLineName" :value="line.productionLineId" />
           </el-select>
         </el-form-item>
         <el-form-item label="详细地址" prop="address"><el-input v-model="form.address" type="textarea" :rows="2" maxlength="500" /></el-form-item>
         <el-form-item label="工厂简介" prop="introduction"><el-input v-model="form.introduction" type="textarea" :rows="4" maxlength="5000" show-word-limit /></el-form-item>
-        <el-form-item v-if="updateTime" label="更新时间"><el-input :model-value="updateTime" disabled /></el-form-item>
+        <el-form-item v-if="updateTime" label="更新时间"><el-input :model-value="displayDateTime(updateTime)" disabled /></el-form-item>
       </el-form>
       <template #footer>
         <el-button :disabled="saving" @click="dialogOpen = false">取消</el-button>
@@ -55,8 +58,9 @@
 </template>
 
 <script setup lang="ts" name="Factory">
+import {displayDateTime,dateTimeCell} from '@/utils/display-date-time'
 import { resetSelectScroll } from '@/utils/reset-select-scroll'
-import { computed, reactive, ref, onMounted } from 'vue'
+import { computed, reactive, ref, onMounted, watch, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules, TableInstance } from 'element-plus'
 import { listFactories, getFactory, lineOptions, saveFactory, deleteFactories } from '@/api/metal/factory'
@@ -74,8 +78,9 @@ const query = reactive({pageNum: 1, pageSize: 16})
 const blank = (): FactoryForm => ({factoryName: '', area: '', address: '', introduction: '', productionLineIds: []})
 const form = reactive<FactoryForm>(blank())
 const rules: FormRules = {
+  productionLineIds:[{validator:(_rule,value,callback)=>callback(form.factoryId||Array.isArray(value)&&value.length?undefined:new Error('请选择至少一条关联产线')),trigger:'change'}],
   factoryName: [{required: true, whitespace: true, message: '请输入工厂名称', trigger: 'blur'}, {max: 100, message: '工厂名称不能超过100个字符', trigger: 'blur'}],
-  area: [{validator: (_rule, value, callback) => {
+  area: [{required:true,message:'请输入占地面积',trigger:'blur'},{validator: (_rule, value, callback) => {
     const s = String(value).trim()
     if (!/^(0|[1-9]\d{0,9})(\.\d{1,4})?$/.test(s) || !/[1-9]/.test(s)) callback(new Error('面积须大于0，最多10位整数、4位小数'))
     else callback()
@@ -99,24 +104,28 @@ function displayArea(value: string) { return value.replace(/(\.\d*?[1-9])0+$|\.0
 function resetForm() {
   delete form.factoryId; delete form.version; Object.assign(form, blank()); updateTime.value = ''; formRef.value?.clearValidate()
 }
-async function openAdd() {
-  resetForm()
-  try { options.value = (await lineOptions()).data; dialogOpen.value = true } catch { /* request interceptor displays the error */ }
+const editLoading=ref(false),editError=ref(false)
+let editEpoch=0,disposed=false,retryEdit:()=>void=()=>{}
+function cancelEdit(){if(saving.value)return;++editEpoch;editLoading.value=false;editError.value=false;dialogOpen.value=false}
+watch(dialogOpen,open=>{if(!open&&!saving.value){++editEpoch;editLoading.value=false}},{flush:'sync'})
+onBeforeUnmount(()=>{disposed=true;++editEpoch;++loadSequence})
+async function openEditor(row?:Factory){
+ if(saving.value||disposed)return;dialogOpen.value=false;const epoch=++editEpoch;editLoading.value=true;editError.value=false;retryEdit=()=>{void openEditor(row)}
+ const valid=()=>!disposed&&epoch===editEpoch
+ try{const [detail,available]=await Promise.all([row?getFactory(row.factoryId):Promise.resolve({data:blank()}),lineOptions(row?.factoryId)]);if(!valid())return;resetForm();Object.assign(form,detail.data,{introduction:detail.data.introduction??'',productionLineIds:[...detail.data.productionLineIds]});updateTime.value=row?(detail.data as Factory).updateTime:'';options.value=available.data;dialogOpen.value=true}catch{if(valid()){resetForm();options.value=[];editError.value=true}}finally{if(valid())editLoading.value=false}
 }
-async function openEdit(row: Factory) {
-  try {
-    const [detail, available] = await Promise.all([getFactory(row.factoryId), lineOptions(row.factoryId)])
-    resetForm(); Object.assign(form, detail.data, {introduction: detail.data.introduction ?? '', productionLineIds: [...detail.data.productionLineIds]})
-    updateTime.value = detail.data.updateTime; options.value = available.data; dialogOpen.value = true
-  } catch { /* preserve the list on failure */ }
-}
+async function openAdd(){await openEditor()}
+async function openEdit(row:Factory){await openEditor(row)}
 async function submit() {
-  if (saving.value || !await formRef.value?.validate().catch(() => false)) return
+  if (saving.value || editLoading.value || !dialogOpen.value) return
+  const epoch=editEpoch
   saving.value = true
   try {
+    if(!await formRef.value?.validate().catch(()=>false)||disposed||epoch!==editEpoch)return
     const isNew = !form.factoryId
     await saveFactory({factoryId: form.factoryId, version: form.version, factoryName: form.factoryName.trim(), area: form.area.trim(),
       address: form.address.trim(), introduction: form.introduction, productionLineIds: [...form.productionLineIds]})
+    if(disposed||epoch!==editEpoch)return
     ElMessage.success(isNew ? '添加成功' : '修改成功'); dialogOpen.value = false
     if (isNew) query.pageNum = Math.max(1, Math.ceil((total.value + 1) / query.pageSize))
     await load()
@@ -141,10 +150,10 @@ onMounted(load)
 </script>
 
 <style scoped>
-.factory-page { background:#f8fbff; min-height:calc(var(--design-height,100vh) - 82px); padding:9px 23px 24px 6px; display:flex; flex-direction:column; }
-.factory-toolbar { display:flex;align-items:center;gap:18px;margin-bottom:30px;flex-wrap:nowrap;overflow-x:auto;flex-shrink:0; }
+.factory-page {min-width:0;max-width:100%;box-sizing:border-box; background:#f8fbff; min-height:calc(var(--design-height,100vh) - 82px); padding:9px 23px 24px 6px; display:flex; flex-direction:column; }
+.factory-toolbar{min-width:0;max-width:100%;margin-bottom:16px;flex-shrink:0}
 .factory-toolbar>*{flex-shrink:0}
-.factory-toolbar .el-button { width:89px; height:35px; padding:0; margin:0; font-size:14px; }
+.factory-toolbar>.el-button { width:89px; height:35px; padding:0; margin:0; font-size:14px; }
 .add-button { --el-button-bg-color:#577bef; --el-button-border-color:#577bef; --el-button-text-color:white; --el-button-hover-bg-color:#7795ff; --el-button-hover-text-color:white; }
 .edit-button { --el-button-bg-color:#ee9b58; --el-button-border-color:#ee9b58; --el-button-text-color:white; --el-button-hover-bg-color:#f8b47f; --el-button-hover-text-color:white; }
 .delete-button { --el-button-bg-color:#ee6658; --el-button-border-color:#ee6658; --el-button-text-color:white; --el-button-hover-bg-color:#fc887f; --el-button-hover-text-color:white; }
@@ -157,7 +166,7 @@ onMounted(load)
 .factory-pagination :deep(.el-pagination) { font-size:14px; flex-wrap:wrap; justify-content:center; }
 .factory-page :deep(.el-dialog) { --el-font-size-base:15px; }
 .factory-page :deep(.el-dialog .el-select-dropdown__wrap) { max-height:180px; }
-.factory-toolbar .el-button:disabled { color:#fff; background:var(--el-button-bg-color); border-color:var(--el-button-border-color); opacity:.6; }
+.factory-toolbar>.el-button:disabled { color:#fff; background:var(--el-button-bg-color); border-color:var(--el-button-border-color); opacity:.6; }
 .factory-pagination :deep(.el-pagination) { color:#757575; --el-text-color-regular:#757575; --el-text-color-primary:#757575; --el-fill-color-blank:transparent; --el-disabled-bg-color:transparent; }
 .factory-pagination :deep(.el-pagination button), .factory-pagination :deep(.el-pager li) { background:transparent; color:#757575; }
 .factory-pagination :deep(.el-pager li.is-active) { color:#409eff; }

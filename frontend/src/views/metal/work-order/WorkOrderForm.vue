@@ -1,4 +1,6 @@
 <template>
+ <div v-if="opening" role="status">正在加载工单资料… <el-button link @click="cancelOpen">取消加载</el-button></div>
+ <div v-if="openError" role="alert">工单资料加载失败 <el-button link @click="retryOpen()">重试</el-button></div>
  <el-dialog v-model="opened" :title="form.id?'编辑工单':'添加工单'" width="min(920px,94vw)" top="5vh" class="order-dialog" :close-on-click-modal="false" :close-on-press-escape="!saving" :show-close="!saving">
   <el-form ref="formRef" :model="form" :rules="rules" label-width="120px" label-position="left" :disabled="saving||optionsLoading">
    <el-form-item label="单据编号"><el-input :model-value="form.orderNo" readonly/></el-form-item>
@@ -19,8 +21,10 @@
  </el-dialog>
 </template>
 <script setup lang="ts">
+import {personLabel} from '@/utils/person-label'
+
 import {createUUID} from '@/utils/uuid'
-import {ref,reactive,computed,nextTick} from 'vue'
+import {ref,reactive,computed,nextTick,watch,onBeforeUnmount} from 'vue'
 import {ElMessage,ElMessageBox} from 'element-plus'
 import type {FormInstance,FormRules} from 'element-plus'
 import useUserStore from '@/store/modules/user'
@@ -29,21 +33,54 @@ import {reserveOrderNumber,orderDetail,orderOptions,orderProductPlans,orderSave}
 import type {WorkOrder,WorkOrderItem,OrderOption} from '@/api/metal/work-order'
 const emit=defineEmits<{saved:[added:boolean]}>(),user=useUserStore(),isAdmin=computed(()=>String(user.id)==='1')
 const opened=ref(false),saving=ref(false),optionsLoading=ref(false),formRef=ref<FormInstance>()
-const ownerLabel=(option:OrderOption)=>`${option.roleNames||'未分配角色'}｜${option.name}｜${option.phone||'未填写手机号'}`
+const ownerLabel=personLabel
 const blankItem=():WorkOrderItem=>({key:createUUID(),productId:'',quantity:1,plans:[]})
 const today=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date())
 const blank=():WorkOrder=>({requestId:createUUID(),customer:'',factoryId:'',productionLineId:'',ownerId:'',orderDate:today(),items:[blankItem()]})
 const form=reactive<WorkOrder>(blank()),factories=ref<OrderOption[]>([]),lines=ref<OrderOption[]>([]),owners=ref<OrderOption[]>([]),availableProducts=ref<OrderOption[]>([])
 const required=(message:string)=>[{required:true,message,trigger:'change'}]
 const rules:FormRules={customer:[{required:true,whitespace:true,message:'请输入客户',trigger:'blur'}],factoryId:required('请选择工厂'),productionLineId:required('请选择产线'),ownerId:required('请选择负责人'),orderDate:required('请选择开单日期')}
-async function loadFactoryOptions(){const result=await Promise.all([orderOptions('lines',{factoryId:form.factoryId}),orderOptions('owners',{factoryId:form.factoryId})]);lines.value=result[0].data;owners.value=result[1].data}
-async function open(row?:WorkOrder){optionsLoading.value=true;try{for(const k of Object.keys(form))delete(form as unknown as Record<string,unknown>)[k];Object.assign(form,blank());if(!row?.id)form.orderNo=(await reserveOrderNumber(form.requestId!)).data;factories.value=(await orderOptions('factories')).data;if(row?.id){Object.assign(form,(await orderDetail(row.id)).data);form.items.forEach(item=>{item.key=createUUID()})}else if(!isAdmin.value)form.factoryId=factories.value[0]?.id??'';if(form.factoryId)await loadFactoryOptions();else{lines.value=[];owners.value=[]}availableProducts.value=form.productionLineId?(await orderOptions('products',{lineId:form.productionLineId})).data:[];if(form.ownerId&&!owners.value.some(o=>o.id===form.ownerId))form.ownerId='';opened.value=true;await nextTick();formRef.value?.clearValidate()}catch{}finally{optionsLoading.value=false}}
+const opening=ref(false),openError=ref(false)
+let epoch=0,dependencyEpoch=0,disposed=false,retryOpen:()=>void=()=>{}
+function cancelOpen(){if(saving.value)return;++epoch;++dependencyEpoch;opening.value=false;optionsLoading.value=false;openError.value=false;opened.value=false}
+watch(opened,value=>{if(!value&&!saving.value){++epoch;++dependencyEpoch;optionsLoading.value=false;opening.value=false}},{flush:'sync'})
+onBeforeUnmount(()=>{disposed=true;++epoch;++dependencyEpoch})
+async function loadFactoryOptions(factoryId:string){return Promise.all([orderOptions('lines',{factoryId}),orderOptions('owners',{factoryId})])}
+async function open(row?:WorkOrder){
+ if(saving.value||disposed)return;opened.value=false;const current=++epoch;++dependencyEpoch;opening.value=true;optionsLoading.value=true;openError.value=false;retryOpen=()=>{void open(row)}
+ const valid=()=>!disposed&&current===epoch
+ try{
+  const draft=row?.id?(await orderDetail(row.id)).data:blank()
+  if(!valid())return
+  if(!row?.id)draft.orderNo=(await reserveOrderNumber(draft.requestId!)).data
+  const factoryList=(await orderOptions('factories')).data
+  if(!row?.id&&!isAdmin.value)draft.factoryId=factoryList[0]?.id??''
+  const dependent=draft.factoryId?await loadFactoryOptions(draft.factoryId):[{data:[]},{data:[]}]
+  const productList=draft.productionLineId?(await orderOptions('products',{lineId:draft.productionLineId})).data:[]
+  if(!valid())return
+  draft.items.forEach(item=>item.key=createUUID());if(draft.ownerId&&!dependent[1].data.some(o=>o.id===draft.ownerId))draft.ownerId=''
+  for(const key of Object.keys(form))delete(form as unknown as Record<string,unknown>)[key]
+  Object.assign(form,draft);factories.value=factoryList;lines.value=dependent[0].data;owners.value=dependent[1].data;availableProducts.value=productList;opened.value=true
+  await nextTick();if(valid())formRef.value?.clearValidate()
+ }catch{if(valid()){Object.assign(form,blank());lines.value=[];owners.value=[];availableProducts.value=[];openError.value=true}}finally{if(valid()){opening.value=false;optionsLoading.value=false}}
+}
 async function confirmReset(){if(!form.items.some(item=>item.productId||item.plans.length)&&!form.ownerId&&!form.productionLineId)return true;try{await ElMessageBox.confirm('变更工厂或产线将清空相关产品和计划时间，是否继续？','确认变更',{confirmButtonText:'继续',cancelButtonText:'取消',type:'warning'});return true}catch{return false}}
-async function changeFactory(value:string){if(value===form.factoryId||!await confirmReset())return;optionsLoading.value=true;try{form.factoryId=value;form.productionLineId='';form.ownerId='';form.items=[blankItem()];availableProducts.value=[];await loadFactoryOptions()}catch{}finally{optionsLoading.value=false}}
-async function changeLine(value:string){if(value===form.productionLineId)return;if(form.items.some(item=>item.productId)&&!await confirmReset())return;optionsLoading.value=true;try{form.productionLineId=value;form.items=[blankItem()];availableProducts.value=(await orderOptions('products',{lineId:value})).data}catch{}finally{optionsLoading.value=false}}
-async function changeProduct(item:WorkOrderItem,value:string){if(item.productId===value&&item.plans.length)return;optionsLoading.value=true;try{const data=(await orderProductPlans(value,form.productionLineId)).data;item.productId=value;item.snapshot=data.snapshot;item.plans=data.plans}catch{}finally{optionsLoading.value=false}}
-async function submit(){if(saving.value||optionsLoading.value||!await formRef.value?.validate().catch(()=>false))return;if(!form.items.length||form.items.length>100){ElMessage.error('须填写1～100项产品');return}for(const [index,item]of form.items.entries()){if(!item.productId||!item.plans.length||!Number.isInteger(item.quantity)){ElMessage.error('第'+(index+1)+'项须选择配置工序的产品并填写整数数量');return}let previous='';for(const plan of item.plans){if(!plan.startTime||!plan.endTime||plan.startTime>=plan.endTime){ElMessage.error('第'+(index+1)+'项的工序开始时间须早于结束时间');return}if(previous&&plan.startTime<previous){ElMessage.error('后一工序不能早于前一工序结束');return}previous=plan.endTime}}
- saving.value=true;try{const added=!form.id;await orderSave(form);ElMessage.success(added?'添加成功':'修改成功');opened.value=false;emit('saved',added)}catch{}finally{saving.value=false}}
+async function changeFactory(value:string){
+ if(saving.value||value===form.factoryId)return;const current=epoch,ticket=++dependencyEpoch;if(!await confirmReset()||disposed||current!==epoch||ticket!==dependencyEpoch)return
+ optionsLoading.value=true;form.factoryId=value;form.productionLineId='';form.ownerId='';form.items=[blankItem()];availableProducts.value=[];lines.value=[];owners.value=[]
+ try{const result=await loadFactoryOptions(value);if(!disposed&&current===epoch&&ticket===dependencyEpoch&&form.factoryId===value){lines.value=result[0].data;owners.value=result[1].data}}catch{}finally{if(current===epoch&&ticket===dependencyEpoch)optionsLoading.value=false}
+}
+async function changeLine(value:string){
+ if(saving.value||value===form.productionLineId)return;const current=epoch,ticket=++dependencyEpoch,factory=form.factoryId;if(form.items.some(i=>i.productId)&&!await confirmReset())return;if(disposed||current!==epoch||ticket!==dependencyEpoch)return
+ optionsLoading.value=true;form.productionLineId=value;form.items=[blankItem()];availableProducts.value=[]
+ try{const result=(await orderOptions('products',{lineId:value})).data;if(!disposed&&current===epoch&&ticket===dependencyEpoch&&factory===form.factoryId&&value===form.productionLineId)availableProducts.value=result}catch{}finally{if(current===epoch&&ticket===dependencyEpoch)optionsLoading.value=false}
+}
+async function changeProduct(item:WorkOrderItem,value:string){
+ if(saving.value||item.productId===value&&item.plans.length)return;const current=epoch,ticket=++dependencyEpoch,line=form.productionLineId;optionsLoading.value=true;item.productId=value;item.plans=[];item.snapshot=undefined
+ try{const data=(await orderProductPlans(value,line)).data;if(!disposed&&current===epoch&&ticket===dependencyEpoch&&line===form.productionLineId&&form.items.includes(item)&&item.productId===value){item.snapshot=data.snapshot;item.plans=data.plans}}catch{}finally{if(current===epoch&&ticket===dependencyEpoch)optionsLoading.value=false}
+}
+async function submit(){if(saving.value||optionsLoading.value||!opened.value)return;const current=epoch;saving.value=true;try{if(!await formRef.value?.validate().catch(()=>false)||disposed||current!==epoch)return;if(!form.items.length||form.items.length>100){ElMessage.error('须填写1～100项产品');return}for(const [index,item]of form.items.entries()){if(!item.productId||!item.plans.length||!Number.isInteger(item.quantity)){ElMessage.error('第'+(index+1)+'项须选择配置工序的产品并填写整数数量');return}let previous='';for(const plan of item.plans){if(!plan.startTime||!plan.endTime||plan.startTime>=plan.endTime){ElMessage.error('第'+(index+1)+'项的工序开始时间须早于结束时间');return}if(previous&&plan.startTime<previous){ElMessage.error('后一工序不能早于前一工序结束');return}previous=plan.endTime}}
+ const added=!form.id;const payload=JSON.parse(JSON.stringify(form)) as WorkOrder;await orderSave(payload);if(disposed||current!==epoch)return;ElMessage.success(added?'添加成功':'修改成功');opened.value=false;emit('saved',added)}catch{}finally{saving.value=false}}
 defineExpose({open})
 </script>
 <style scoped>

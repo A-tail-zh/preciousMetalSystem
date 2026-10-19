@@ -103,7 +103,8 @@ const showError = (msg: string) => {
 
 const goLogin = () => {
   lockStore.unlockScreen()
-  userStore.logOut().then(() => {
+  userStore.logOut().then(cleared => {
+    if(!cleared)return
     router.push('/login')
   })
 }

@@ -90,7 +90,7 @@ const loginForm = ref<LoginForm>({
 })
 
 const loginRules = {
-  username: [{ required: true, trigger: "blur", message: "请输入您的账号" }],
+  username: [{ required: true, trigger: "blur", message: "请输入您的账号" }, {pattern:/^(admin|[0-9]{11})$/,trigger:"blur",message:"请输入11位手机号账号"}],
   password: [{ required: true, trigger: "blur", message: "请输入您的密码" }],
   code: [{ required: true, trigger: "change", message: "请输入验证码" }]
 }

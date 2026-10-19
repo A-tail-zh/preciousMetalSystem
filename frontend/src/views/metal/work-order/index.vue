@@ -5,7 +5,7 @@
   <el-table ref="tableRef" v-loading="loading" :data="rows" border class="order-table" @selection-change="selected=$event">
    <el-table-column v-if="can('metal:work-order:edit')||can('metal:work-order:remove')" type="selection" width="50" align="center"/><el-table-column label="工单号" prop="orderNo" min-width="150" align="center"/><el-table-column label="客户" prop="customer" min-width="75" align="center"/><el-table-column label="工厂名称" prop="factoryName" min-width="90" align="center"/><el-table-column label="产线名称" prop="lineName" min-width="90" align="center"/><el-table-column label="负责人" prop="ownerName" min-width="75" align="center"/>
    <el-table-column label="状态" min-width="130" align="center"><template #default="{row}">{{orderStatus[row.status]}}<template v-if="row.status==='REJECTED'">，原因：{{row.rejectReason}}</template></template></el-table-column>
-   <el-table-column label="创建人" prop="creatorName" min-width="65" align="center"/><el-table-column label="创建时间" prop="createTime" width="140" align="center"/><el-table-column v-if="can('metal:work-order:query')||can('metal:work-order:edit')||can('metal:work-order:remove')" class-name="order-actions" label="操作" min-width="264" align="center"><template #default="{row}"><el-button v-hasPermi="['metal:work-order:query']" class="blue row-button" @click="view(row)">查看</el-button><el-button v-hasPermi="['metal:work-order:edit']" class="orange row-button" :disabled="!orderEditable(row)" :title="row.operationDisabledReason" @click="formRef?.open(row)">编辑</el-button><el-button v-hasPermi="['metal:work-order:remove']" class="red row-button" :disabled="row.canDelete!==true||deleting" :title="row.operationDisabledReason" @click="remove([row])">删除</el-button></template></el-table-column>
+   <el-table-column label="创建人" prop="creatorName" min-width="65" align="center"/><el-table-column label="创建时间" prop="createTime" :formatter="dateTimeCell" width="140" align="center"/><el-table-column v-if="can('metal:work-order:query')||can('metal:work-order:edit')||can('metal:work-order:remove')" class-name="order-actions" label="操作" min-width="264" align="center"><template #default="{row}"><el-button v-hasPermi="['metal:work-order:query']" class="blue row-button" @click="view(row)">查看</el-button><el-button v-hasPermi="['metal:work-order:edit']" class="orange row-button" :disabled="!orderEditable(row)" :title="row.operationDisabledReason" @click="formRef?.open(row)">编辑</el-button><el-button v-hasPermi="['metal:work-order:remove']" class="red row-button" :disabled="row.canDelete!==true||deleting" :title="row.operationDisabledReason" @click="remove([row])">删除</el-button></template></el-table-column>
   </el-table>
   <div v-if="failed" class="load-error">列表加载失败 <el-button link type="primary" @click="load">重试</el-button></div>
   <div class="order-pagination"><el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :page-sizes="[16,32,64]" :total="total" layout="total, sizes, prev, pager, next, jumper" @current-change="load" @size-change="sizeChanged"/></div>
@@ -14,6 +14,7 @@
  </section>
 </template>
 <script setup lang="ts">
+import {dateTimeCell} from '@/utils/display-date-time'
 import {ref,reactive,computed,onMounted,watch} from 'vue'
 import {useRoute,useRouter} from 'vue-router'
 import {ElMessage,ElMessageBox} from 'element-plus'

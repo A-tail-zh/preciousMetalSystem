@@ -4,10 +4,13 @@ export const warehouseList=(kind:string,params:Row):Promise<{rows:Row[],total:nu
 export const warehouseDetail=(kind:string,id:string):Promise<{data:Row}>=>request({url:'/metal/'+kind+'/'+id})
 export const warehouseSave=(kind:string,data:Row)=>request({url:'/metal/'+kind,method:data.id?'put':'post',data})
 export const warehouseRemove=(kind:string,ids:string[])=>request({url:'/metal/'+kind+'/'+ids.join(','),method:'delete'})
-export const warehouseAction=(kind:string,id:string,action:string,data:Row)=>request({url:'/metal/'+kind+'/'+id+'/'+action,method:'post',data})
-export const warehouseOptions=(kind:string,factoryId?:string,referenceId?:string):Promise<{data:Row[]}>=>request({url:'/metal/warehouse/options/'+kind,params:{factoryId,referenceId}})
-export const reportSummary=(workOrderId:string):Promise<{data:Row[]}>=>request({url:'/metal/work-report/summary',params:{workOrderId}})
+export const warehouseAction=(kind:string,id:string,action:string,data:Row,isContextCurrent?:()=>boolean)=>request({url:'/metal/'+kind+'/'+id+'/'+action,method:'post',data,...(isContextCurrent?{isContextCurrent}:{})})
+export const warehouseOptions=(kind:string,factoryId?:string,referenceId?:string,isContextCurrent?:()=>boolean):Promise<{data:Row[]}>=>request({url:'/metal/warehouse/options/'+kind,params:{factoryId,referenceId},...(isContextCurrent?{isContextCurrent}:{})})
+export const reportSummary=(workOrderId:string,isContextCurrent?:()=>boolean):Promise<{data:Row[]}>=>request({url:'/metal/work-report/summary',params:{workOrderId},...(isContextCurrent?{isContextCurrent}:{})})
 export const stepReports=(itemId:string,processId:string):Promise<{data:Row[]}>=>request({url:'/metal/work-report/step',params:{itemId,processId}})
 export const importWarehouseLines=(file:File,context:Row)=>{const data=new FormData();data.append('file',file);for(const key of ['factoryId','warehouseId','type','workOrderId','itemId','processId'])if(context[key])data.append(key,String(context[key]));return request({url:'/metal/warehouse-order/import',method:'post',data,headers:{'Content-Type':'multipart/form-data'}})}
 export const orderTypeNames:Record<string,string>={PRODUCTION_OUT:'生产出库',PRODUCT_OUT:'产品出库',EXCHANGE_OUT:'还料出库',SEMI_OUT:'半成品出库',RAW_IN:'原材料入库',FINISHED_IN:'成品入库',SEMI_IN:'半成品入库',RAW_RETURN:'原料还库',PRODUCT_RETURN:'成品退还',OPENING:'期初登记',ADJUST:'库存调整'}
 export const stateNames:Record<string,string>={POSTED:'已生效',VOID:'已冲销',OPEN:'未结算',SETTLED:'已结算',PENDING:'待处理',HANDLED:'已处理',NORMAL:'正常',ABNORMAL:'异常'}
+
+export interface WarehouseWorkOrderContext {workOrderId:string;factoryId:string;customer:string;items:{id:string;productId:string;snapshot:{code:string;name:string;specification:string|null};plans:{processId:string;processName:string;sequenceNo:number}[]}[]}
+export const warehouseWorkOrderContext=(factoryId:string,workOrderId:string,isContextCurrent?:()=>boolean):Promise<{data:WarehouseWorkOrderContext}>=>request({url:'/metal/warehouse/work-order-context',params:{factoryId,workOrderId},...(isContextCurrent?{isContextCurrent}:{})})

@@ -14,7 +14,14 @@ try { if (containsSensitiveData(cache.session.getJSON('sessionObj'))) cache.sess
 
 let downloadLoadingInstance: ReturnType<typeof ElLoading.service>
 // 是否显示重新登录
-export const isRelogin = { show: false }
+export {isRelogin} from './session-expiry'
+import {isRelogin,showSessionExpiry} from './session-expiry'
+function expired(config:any){
+ const token=config?.sessionToken
+ if(!token||token!==getToken()||location.pathname.startsWith('/login'))return
+ useUserStore().sessionReady=false
+ if(!isRelogin.show)showSessionExpiry(token,()=>getToken()===token,()=>useUserStore().logOut(token))
+}
 
 axios.defaults.headers['Content-Type'] = 'application/json;charset=utf-8'
 // 创建axios实例
@@ -27,14 +34,14 @@ const service = axios.create({
 
 // request拦截器
 service.interceptors.request.use((config: any) => {
-  config.sessionToken=getToken()
+  config.sessionToken=config.headers?.isToken===false?undefined:(config.headers?.Authorization?.toString().replace(/^Bearer /,'')||getToken())
   // 是否需要设置 token
   const isToken = (config.headers || {}).isToken === false
   // 是否需要防止数据重复提交
   const isRepeatSubmit = (config.headers || {}).repeatSubmit === false
   // 间隔时间(ms)，小于此时间视为重复提交
   const interval = (config.headers || {}).interval || 1000
-  if (getToken() && !isToken) {
+  if (getToken() && !isToken && !config.headers['Authorization']) {
     config.headers['Authorization'] = 'Bearer ' + getToken() // 让每个请求携带自定义token 请根据实际情况自行修改
   }
   // get请求映射params参数
@@ -79,10 +86,14 @@ service.interceptors.request.use((config: any) => {
     Promise.reject(error)
 })
 
+// Opt-in UI context guard. Session expiry remains authoritative even after a view is closed.
+function staleContext(config:any){if(typeof config?.isContextCurrent!=='function')return false;try{return !config.isContextCurrent()}catch{return true}}
+
 // 响应拦截器
 service.interceptors.response.use((res: any) => {
     // 未设置状态码则默认成功状态
     const code = res.data.code || 200
+    if(code!==401&&staleContext(res.config))return Promise.reject(new axios.CanceledError('请求上下文已失效'))
     const trace=res.data.traceId||res.headers?.['x-trace-id'];if(code!==200&&code!==401&&trace&&useUserStore().sessionReady&&!!getToken()&&res.config?.sessionToken===getToken()&&!/\/(login|logout|captchaImage|getInfo)(?:\?|$)/.test(res.config?.url??'')&&!location.pathname.startsWith('/login'))ElNotification({title:'故障追踪',message:h('button',{onClick:()=>copyText(trace).then(()=>ElMessage.success('追踪ID已复制')).catch(()=>ElMessage.warning('复制失败，请手动选择追踪ID'))},'复制追踪ID：'+trace),duration:10000})
     // 获取错误信息
     const msg = errorCode[code] || res.data.msg || errorCode['default']
@@ -91,18 +102,7 @@ service.interceptors.response.use((res: any) => {
       return res.data
     }
     if (code === 401) {
-      useUserStore().sessionReady=false
-      if (!isRelogin.show&&!location.pathname.startsWith('/login')) {
-        isRelogin.show = true
-        ElMessageBox.confirm('登录状态已过期，您可以继续留在该页面，或者重新登录', '系统提示', { confirmButtonText: '重新登录', cancelButtonText: '取消', type: 'warning' }).then(() => {
-          isRelogin.show = false
-          useUserStore().logOut().then(() => {
-            location.href = '/index'
-          })
-      }).catch(() => {
-        isRelogin.show = false
-      })
-    }
+      expired(res.config)
       return Promise.reject('无效的会话，或者会话已过期，请重新登录。')
     } else if (code === 500) {
       ElMessage({ message: msg, type: 'error' })
@@ -118,6 +118,8 @@ service.interceptors.response.use((res: any) => {
     }
   },
   (error: any) => {
+    if(error.response?.status===401){expired(error.config);return Promise.reject(error)}
+    if(staleContext(error.config))return Promise.reject(error)
     console.log('err' + error)
     let { message } = error
     if (message == "Network Error") {

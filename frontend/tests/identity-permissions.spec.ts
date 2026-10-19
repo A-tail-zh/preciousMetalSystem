@@ -87,7 +87,7 @@ test('只读工作人员：角色和人员页面隐藏写入按钮，账号状�
   const token=await login(phone,password);f.sessions.add(token)
   for(const path of ['/system/user','/system/role']){
    await authenticated(page,token,path);await expect(page.locator('.master-table .el-table__body-wrapper tbody tr')).toHaveCount(1)
-   for(const name of ['添加','编辑','删除','导出'])await expect(page.locator('.master-toolbar').getByRole('button',{name,exact:true})).toHaveCount(0);await expect(page.locator('.master-toolbar').getByRole('button',{name:'筛选条件',exact:true})).toBeVisible();await expect(page.locator('.master-table button')).toHaveCount(0)
+   for(const name of ['添加','编辑','删除','导出'])await expect(page.locator('.master-toolbar').getByRole('button',{name,exact:true})).toHaveCount(0);await expect(page.locator('.master-toolbar').getByRole('button',{name:'查询',exact:true})).toBeVisible();await expect(page.locator('.master-table button')).toHaveCount(0)
    await expect(page.locator('.master-table .el-switch')).toHaveClass(/is-disabled/)
   }
   expect((await api(`/system/user/${user}`,token,'DELETE')).code).toBe(403)

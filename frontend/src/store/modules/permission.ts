@@ -1,3 +1,4 @@
+import {getToken} from '@/utils/auth'
 import auth from '@/plugins/auth'
 import router, { constantRoutes, dynamicRoutes } from '@/router'
 import { getRouters } from '@/api/menu'
@@ -32,25 +33,23 @@ const usePermissionStore = defineStore(
       setSidebarRouters(routes: any[]) {
         this.sidebarRouters = routes
       },
-      generateRoutes(roles?: any[]): Promise<any[]> {
-        return new Promise(resolve => {
-          // 向后端请求路由数据
-          getRouters().then(res => {
-            const sdata = JSON.parse(JSON.stringify(res.data))
-            const rdata = JSON.parse(JSON.stringify(res.data))
-            const defaultData = JSON.parse(JSON.stringify(res.data))
-            const sidebarRoutes = filterAsyncRouter(sdata)
-            const rewriteRoutes = filterAsyncRouter(rdata, false, true)
-            const defaultRoutes = filterAsyncRouter(defaultData)
-            const asyncRoutes = filterDynamicRoutes(dynamicRoutes)
-            asyncRoutes.forEach(route => { router.addRoute(route) })
-            this.setRoutes(rewriteRoutes)
-            this.setSidebarRouters(constantRoutes.concat(sidebarRoutes))
-            this.setDefaultRoutes(sidebarRoutes)
-            this.setTopbarRoutes(defaultRoutes)
-            resolve(rewriteRoutes)
-          })
-        })
+      async generateRoutes(expectedToken=getToken()): Promise<any[]> {
+        if(!expectedToken||getToken()!==expectedToken)throw new Error('会话已切换')
+        const res=await getRouters()
+        if(getToken()!==expectedToken)throw new Error('会话已切换')
+        const sdata=JSON.parse(JSON.stringify(res.data))
+        const rdata=JSON.parse(JSON.stringify(res.data))
+        const defaultData=JSON.parse(JSON.stringify(res.data))
+        const sidebarRoutes=filterAsyncRouter(sdata)
+        const rewriteRoutes=filterAsyncRouter(rdata,false,true)
+        const defaultRoutes=filterAsyncRouter(defaultData)
+        const asyncRoutes=filterDynamicRoutes(dynamicRoutes)
+        asyncRoutes.forEach(route=>router.addRoute(route))
+        this.setRoutes(rewriteRoutes)
+        this.setSidebarRouters(constantRoutes.concat(sidebarRoutes))
+        this.setDefaultRoutes(sidebarRoutes)
+        this.setTopbarRoutes(defaultRoutes)
+        return rewriteRoutes
       }
     }
   })

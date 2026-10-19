@@ -14,7 +14,7 @@
     <button v-else-if="!item.to" class="nav-item child muted" @click="unavailable(item.title)">{{item.title}}</button>
    </template>
   </template>
-  <router-link v-if="group.key==='quote'&&can('metal:work-order:list')" class="nav-item" :class="{active:route.path==='/metal/work-order'}" to="/metal/work-order">工单管理</router-link>
+  <router-link v-if="group.key==='quote'&&can('metal:work-order:list')" class="nav-item" :class="{active:route.path==='/metal/work-order'}" to="/metal/work-order">生产工单管理</router-link>
  </template>
 </nav>
         <button class="logout" @click="logout">⇥　登出</button>
@@ -27,6 +27,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import {getToken} from '@/utils/auth'
 import { useRouter, useRoute } from 'vue-router'
 import { computed, reactive } from 'vue'
 import { useWindowSize } from '@vueuse/core'
@@ -38,7 +39,7 @@ const expanded=reactive<Record<string,boolean>>({base:true,quote:true,warehouse:
 const menuGroups=[
  {key:'base',title:'基础信息管理',items:[{title:'工厂管理',to:'/metal/factory',permission:'metal:factory:list'},{title:'产品管理',to:'/metal/product',permission:'metal:product:list'},{title:'产线管理',to:'/metal/production-line',permission:'metal:production-line:list'},{title:'物料管理',to:'/metal/material',permission:'metal:material:list'},{title:'工序管理',to:'/metal/process',permission:'metal:process:list'}]},
  {key:'quote',title:'报价管理',items:[{title:'报价规则管理',to:'/metal/quote-rule',permission:'metal:quote-rule:list'},{title:'自动报价单',to:'/metal/quotation',permission:'metal:quotation:list'}]},
- {key:'warehouse',title:'仓储管理',items:[{title:'库存管理',to:'/metal/inventory',permission:'metal:inventory:list'},{title:'仓储工单管理',to:'/metal/warehouse-order',permission:'metal:warehouse-order:list'},{title:'仓库字典',to:'/metal/warehouse',permission:'metal:warehouse:list'}]},
+ {key:'warehouse',title:'仓储管理',items:[{title:'库存管理',to:'/metal/inventory',permission:'metal:inventory:list'},{title:'仓储工单管理',to:'/metal/warehouse-order',permission:'metal:warehouse-order:list'},{title:'仓库管理',to:'/metal/warehouse',permission:'metal:warehouse:list'}]},
  {key:'user',title:'用户管理',items:[{title:'人员管理',to:'/system/user',permission:'system:user:list'},{title:'角色管理',to:'/system/role',permission:'system:role:list'}]},
  {key:'logs',title:'系统管理',items:[{title:'操作日志',to:'/audit/operations',permission:'monitor:operlog:list'},{title:'登录日志',to:'/audit/logins',permission:'monitor:logininfor:list'},{title:'系统运行日志',to:'/audit/runtime',permission:'monitor:runtime-log:list'},{title:'日志配置',to:'/audit/config',permission:'monitor:log-config:query'}]},
  {key:'alert',title:'预警管理',items:[{title:'预警记录',to:'/metal/warning-record',permission:'metal:warning-record:list'}]}
@@ -47,8 +48,9 @@ const groups=computed(()=>menuGroups.map(group=>({...group,items:group.items.fil
 function unavailable(title:string){ElMessage.info(`${title}不在本期实施范围`)}
 function can(permission: string) { return user.permissions.some((p: string) => p === '*:*:*' || p === permission) }
 async function logout() {
+  const token=getToken()
   try { await ElMessageBox.confirm('确认退出系统？', '提示', {confirmButtonText:'确定',cancelButtonText:'取消'}) } catch { return }
-  await user.logOut(); await router.push('/login')
+  if(await user.logOut(token))await router.push('/login')
 }
 </script>
 <style scoped>

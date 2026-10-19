@@ -157,5 +157,7 @@ public class WarehouseController extends BaseController {
  /**
   * 获取当前业务可选择的关联资料。
   */
- @GetMapping("/warehouse/options/{kind}") @PreAuthorize("@ss.hasAnyPermi('metal:warehouse:list,metal:inventory:list,metal:warehouse-order:list,metal:process-batch:list,metal:warning-rule:list,metal:warning-record:list')") public AjaxResult options(@PathVariable String kind,@RequestParam(required=false) Long factoryId,@RequestParam(required=false) Long referenceId){return success(service.options(kind,factoryId,referenceId));}
+ @GetMapping("/warehouse/work-order-context") @PreAuthorize("@ss.hasAnyPermi('metal:warehouse-order:add,metal:warehouse-order:import')")
+ public AjaxResult workOrderContext(@RequestParam @Positive Long factoryId,@RequestParam @Positive Long workOrderId){return success(service.workOrderContext(factoryId,workOrderId));}
+ @GetMapping("/warehouse/options/{kind}") @PreAuthorize("isAuthenticated()") public AjaxResult options(@PathVariable String kind,@RequestParam(required=false) Long factoryId,@RequestParam(required=false) Long referenceId){return success(service.options(kind,factoryId,referenceId));}
 }

@@ -37,6 +37,12 @@ public class AsyncFactory
     public static TimerTask recordLogininfor(final String username, final String status, final String message,
             final Object... args)
     {
+        Long accountId=null;
+        try{var account=SpringUtils.getBean(com.ruoyi.system.service.ISysUserService.class).selectUserByUserName(username);if(account!=null)accountId=account.getUserId();}catch(Exception unavailable){/* Audit delivery must never prevent login. */}
+        return recordLogininforForUser(accountId,username,status,message,args);
+    }
+    public static TimerTask recordLogininforForUser(final Long accountUserId, final String username, final String status, final String message,final Object... args)
+    {
         final String auditTrace = org.slf4j.MDC.get("traceId");
         final String userAgent = ServletUtils.getRequest().getHeader("User-Agent");
         final String ip = IpUtils.getIpAddr();
@@ -61,6 +67,7 @@ public class AsyncFactory
                 String browser = UserAgentUtils.getBrowser(userAgent);
                 // 封装对象
                 SysLogininfor logininfor = new SysLogininfor();
+                logininfor.setAccountUserId(accountUserId);
                 logininfor.setEventId(java.util.UUID.randomUUID().toString());
                 logininfor.setReasonCategory(status.equals(Constants.LOGOUT)?"LOGOUT":message.contains("验证码")?"CAPTCHA_REJECTED":status.equals(Constants.LOGIN_FAIL)?"LOGIN_REJECTED":"LOGIN_SUCCESS");
                 logininfor.setTraceId(auditTrace);
@@ -80,7 +87,7 @@ public class AsyncFactory
                     logininfor.setStatus(Constants.FAIL);
                 }
                 // 插入数据
-                try{SpringUtils.getBean(ISysLogininforService.class).insertLogininfor(logininfor);}catch(Exception unavailable){java.util.Map<String,Object> event=new java.util.LinkedHashMap<>();event.put("kind","login");event.put("event",logininfor.getEventId());event.put("trace",auditTrace);event.put("actor",logininfor.getUserName());event.put("ip",ip);event.put("browser",browser);event.put("status",logininfor.getStatus());event.put("reason",logininfor.getReasonCategory());event.put("message",logininfor.getMsg());event.put("time",java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Shanghai")).toString());com.ruoyi.framework.audit.AuditRecorder.fallback(event);}finally{org.slf4j.MDC.remove("traceId");}
+                try{SpringUtils.getBean(ISysLogininforService.class).insertLogininfor(logininfor);}catch(Exception unavailable){java.util.Map<String,Object> event=new java.util.LinkedHashMap<>();event.put("kind","login");event.put("event",logininfor.getEventId());event.put("trace",auditTrace);event.put("actor",logininfor.getUserName());event.put("accountUserId",logininfor.getAccountUserId());event.put("ip",ip);event.put("browser",browser);event.put("status",logininfor.getStatus());event.put("reason",logininfor.getReasonCategory());event.put("message",logininfor.getMsg());event.put("time",java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Shanghai")).toString());com.ruoyi.framework.audit.AuditRecorder.fallback(event);}finally{org.slf4j.MDC.remove("traceId");}
             }
         };
     }

@@ -41,13 +41,16 @@ router.beforeEach(async (to, from) => {
       return { path: '/' }
     }
     if (useUserStore().roles.length === 0) {
+      const initializingToken=getToken()
       isRelogin.show = true
       try {
         // 拉取user_info信息
         await useUserStore().getInfo()
+        if(getToken()!==initializingToken)return false
         isRelogin.show = false
         // 根据roles权限生成可访问的路由
-        const accessRoutes = await usePermissionStore().generateRoutes()
+        const accessRoutes = await usePermissionStore().generateRoutes(initializingToken)
+        if(getToken()!==initializingToken)return false
         accessRoutes.forEach((route: any) => {
           if (!isHttp(route.path)) {
             router.addRoute(route)
@@ -56,7 +59,9 @@ router.beforeEach(async (to, from) => {
         // 重新导航到目标路由，确保动态路由已注册
         return { ...to, replace: true }
       } catch (err) {
-        await useUserStore().logOut()
+        if(getToken()!==initializingToken)return false
+        isRelogin.show=false
+        if(!await useUserStore().logOut(initializingToken))return false
         ElMessage.error(String(err))
         return { path: '/' }
       }

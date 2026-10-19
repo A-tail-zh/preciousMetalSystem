@@ -10,7 +10,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 public class LineRecord extends MasterRecord {
     @NotBlank @Size(max=64)  private String code;
     @NotBlank @Size(max=100)  private String name;
-    @NotNull @Positive @JsonFormat(shape=JsonFormat.Shape.STRING) private Long factoryId;
+    @Positive @JsonFormat(shape=JsonFormat.Shape.STRING) private Long factoryId;
     @NotNull @tools.jackson.databind.annotation.JsonSerialize(contentUsing=tools.jackson.databind.ser.std.ToStringSerializer.class) private List<Long> productIds = new ArrayList<>();
      private List<String> productNames = new ArrayList<>();
      private String factoryName;
