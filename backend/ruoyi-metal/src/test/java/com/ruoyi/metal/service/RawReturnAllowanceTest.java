@@ -8,4 +8,6 @@ class RawReturnAllowanceTest {
  @Test void sharedBudgetRejectsSecondSourceOverdraw(){RawReturnAllowance.require(n("100"),n("90"),n("60"),"OPEN");assertThrows(ServiceException.class,()->RawReturnAllowance.require(n("200"),n("30"),n("31"),"OPEN"));}
  @Test void sixDecimalsAreExact(){assertEquals(n("0.000001"),RawReturnAllowance.remaining("300.000003","300.000001","0.000001"));}
  @Test void rejectsHistoricalAndClosed(){assertThrows(ServiceException.class,()->RawReturnAllowance.require(n("300"),n("-1"),n("1"),"OPEN"));assertThrows(ServiceException.class,()->RawReturnAllowance.require(n("300"),n("90"),n("1"),"SETTLED"));}
+ @Test void zeroReturnIsValidAndNeverConsumesAllowance(){assertDoesNotThrow(()->RawReturnAllowance.require(n("280"),n("90"),n("0"),"OPEN"));assertDoesNotThrow(()->RawReturnAllowance.require(n("280"),n("90"),n("0.000000"),"OPEN"));assertThrows(ServiceException.class,()->RawReturnAllowance.require(n("280"),n("90"),n("-0.000001"),"OPEN"));}
+ @Test void zeroDoesNotBypassClosedOrHistoricalState(){assertThrows(ServiceException.class,()->RawReturnAllowance.require(n("280"),n("90"),n("0"),"SETTLED"));assertThrows(ServiceException.class,()->RawReturnAllowance.require(n("280"),n("-1"),n("0"),"OPEN"));}
 }

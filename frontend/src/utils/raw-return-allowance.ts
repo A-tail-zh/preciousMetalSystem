@@ -11,6 +11,9 @@ export function rawReturnAvailable(source:Row,sources:Row[],drafts:Row[],editing
  }
  return format([row,batch,cap].reduce((a,b)=>a<b?a:b)>0n?[row,batch,cap].reduce((a,b)=>a<b?a:b):0n)
 }
+export function rawReturnSourceUsable(source:Row):boolean{
+ try{const valid=units(source.remainingWeight)>=0n&&units(source.batchRemainingWeight)>=0n&&units(source.returnableWeight)>=0n;return valid&&(source.batchStatus!=null?source.batchStatus==='OPEN':units(source.returnableWeight)>0n)}catch{return false}
+}
 export function rawReturnError(source:Row,sources:Row[],drafts:Row[],weight:any,editingIndex=-1):string{
- try{const available=rawReturnAvailable(source,sources,drafts,editingIndex);if(units(source.batchRemainingWeight)<0n||units(source.remainingWeight)<0n)return '历史重量异常，剩余可退净重为0，请人工核对';if(units(weight)<=0n||units(weight)>units(available))return `剩余可退净重最多${available}g（已扣除产出及本单其他待还明细）`;return ''}catch{return '额度数据未加载，请重试'}
+ try{const available=rawReturnAvailable(source,sources,drafts,editingIndex);if(units(source.batchRemainingWeight)<0n||units(source.remainingWeight)<0n)return '历史重量异常，剩余可退净重为0，请人工核对';if(!rawReturnSourceUsable(source))return '来源批次已结算、已冲销或状态无效，请重新选择';if(units(weight)<0n)return '实测净重不能小于0';if(units(weight)>units(available))return `剩余可退净重最多${available}g（已扣除产出及本单其他待还明细）`;return ''}catch{return '额度数据未加载，请重试'}
 }

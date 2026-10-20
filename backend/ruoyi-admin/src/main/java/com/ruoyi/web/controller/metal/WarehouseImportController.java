@@ -34,7 +34,7 @@ public class WarehouseImportController {
     type==null?"分类：RAW原材料、FINISHED成品、SEMI半成品":"本模板单据类型："+type+"；分类由当前入库类型确定，不需要填写。",
     type==null?"资料ID填写系统内部物料或产品ID，不能填写物料／产品编号；旧通用模板的库存ID、原出库明细ID请向系统管理员核对，不从下拉显示文字中提取。入库建议按入库类型重新下载含ID参考表的新模板。":
     "物料／产品ID：在本文件的“ID参考”工作表，按编号、名称和规格型号查找并复制ID列；原料使用物料ID，半成品和成品使用产品ID。ID不是编号，不要把下拉显示文字填入ID列。",
-    "实测净重单位g，必填且大于0，最多6位小数；原料填写毛重时，净重须等于毛重减杂质；净重留空且毛重已填时自动计算。",
+    "实测净重单位g，必填；原料还库允许0，其他单据须大于0，最多6位小数；原料填写毛重时，净重须等于毛重减杂质；净重留空且毛重已填时自动计算。",
     "原料毛重、杂质可不填；原料数量自动为0；成品和半成品数量(件)必填且为正整数；纯度、单位名称、用途、备注可不填。",
     batchBound?"已自动绑定加工批次，不填写批次号。":"非生产入库批次号可空，由系统生成；生产产出批次号必须留空。",
     "最多1000行，禁止公式；导入只填充待确认明细，点击单据确认后才过账。编号和ID请使用文本格式，避免Excel自动改写。"};
@@ -63,7 +63,7 @@ public class WarehouseImportController {
      BigDecimal gross=dec(at.apply("grossWeight")),impurity=dec(at.apply("impurity")),net=dec(at.apply("netWeight"));if(net==null&&gross!=null)net=gross.subtract(impurity==null?BigDecimal.ZERO:impurity);
      String category=positions.containsKey("category")?at.apply("category"):WarehouseTemplateLayout.category(type);
      Line line=new Line(id(at.apply("inventoryId")),id(at.apply("sourceLineId")),category==null||category.isEmpty()?null:category,id(at.apply("referenceId")),at.apply("batchNo"),net,at.apply("quantity").isEmpty()?0L:Long.valueOf(at.apply("quantity")),gross,impurity,dec(at.apply("purity")),at.apply("organization"),at.apply("purpose"),at.apply("remark"),at.apply("receivingOrganization"));
-     var errors=validator.validate(line);if(!errors.isEmpty())throw new IllegalArgumentException(errors.iterator().next().getMessage());if(net==null||net.signum()<=0||line.quantity()<0)throw new IllegalArgumentException("净重须大于0，数量不能为负");result.add(line);
+     var errors=validator.validate(line);if(!errors.isEmpty())throw new IllegalArgumentException(errors.iterator().next().getMessage());if(net==null||net.signum()<0||(!"RAW_RETURN".equals(type)&&net.signum()==0)||line.quantity()<0)throw new IllegalArgumentException("RAW_RETURN".equals(type)?"净重不能小于0，数量不能为负":"净重须大于0，数量不能为负");result.add(line);
     }catch(Exception e){throw new ServiceException("第"+(n+1)+"行数据无效："+e.getMessage());}
    }
   }
