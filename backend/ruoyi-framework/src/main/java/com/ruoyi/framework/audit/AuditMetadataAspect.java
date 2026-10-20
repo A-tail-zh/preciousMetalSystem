@@ -1,0 +1,5 @@
+package com.ruoyi.framework.audit;
+import java.util.*;import java.security.MessageDigest;import org.aspectj.lang.JoinPoint;import org.aspectj.lang.annotation.*;import org.springframework.stereotype.Component;import org.springframework.web.multipart.MultipartFile;
+@Aspect @Component public class AuditMetadataAspect{
+ @Before("execution(public * com.ruoyi.web.controller..*(..))") public void metadata(JoinPoint p){AuditContext c=AuditContext.CURRENT.get();if(c==null||c.title.isEmpty())return;List<Map<String,Object>> files=new ArrayList<>();for(Object x:p.getArgs())if(x instanceof MultipartFile file){try{MessageDigest hash=MessageDigest.getInstance("SHA-256");try(var input=file.getInputStream()){byte[] buffer=new byte[8192];int count;while((count=input.read(buffer))!=-1)hash.update(buffer,0,count);}files.add(Map.of("fileName",AuditRedactor.text(file.getOriginalFilename()==null?"upload":file.getOriginalFilename()),"bytes",file.getSize(),"sha256",HexFormat.of().formatHex(hash.digest())));}catch(Exception error){files.add(Map.of("fileName","unavailable"));}}if(!files.isEmpty())c.request=AuditRedactor.json(Map.of("files",files),4096);}
+}

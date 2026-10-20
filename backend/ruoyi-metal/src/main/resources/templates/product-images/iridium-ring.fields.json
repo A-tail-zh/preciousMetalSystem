@@ -1,0 +1,34 @@
+{
+  "image": "iridium-ring.png",
+  "width": 1536,
+  "height": 1024,
+  "unit": "cm",
+  "coordinateOrigin": "top-left",
+  "note": "Inner value boxes at original resolution; center text and fit font to rectangle.",
+  "fields": [
+    {
+      "key": "outerDiameter",
+      "label": "外径",
+      "x": 1178,
+      "y": 303,
+      "width": 217,
+      "height": 109
+    },
+    {
+      "key": "innerDiameter",
+      "label": "内径",
+      "x": 1180,
+      "y": 517,
+      "width": 215,
+      "height": 109
+    },
+    {
+      "key": "height",
+      "label": "高度",
+      "x": 1180,
+      "y": 731,
+      "width": 215,
+      "height": 109
+    }
+  ]
+}

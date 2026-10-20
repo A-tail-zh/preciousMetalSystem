@@ -1,0 +1,1 @@
+<template><WarehousePage kind="warning-rule"/></template><script setup lang="ts">import WarehousePage from '../warehouse-common/WarehousePage.vue'</script>

@@ -1,0 +1,24 @@
+.m2/
+.npm-cache/
+.runtime/
+**/target/
+**/node_modules/
+**/dist/
+.env
+/.env.*
+!/.env.example
+**/.env.local
+**/.env.*.local
+**/playwright-report/
+**/coverage/
+.idea/
+.vscode/
+*.tmp
+tools/.db-bootstrap.sql
+*.log
+uploads/
+logs/
+test-results/
+
+# Local verification artifacts may contain account or business data
+outputs/

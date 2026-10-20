@@ -1,0 +1,18 @@
+.filter-toolbar-card {
+ box-sizing:border-box;min-width:0;max-width:100%;padding:16px;border:1px solid #e5eaf3;border-radius:12px;background:#fff;
+ .filter-action-group {display:flex;flex-wrap:wrap;flex:0 0 auto;align-items:center;gap:12px;max-width:100%;}
+ .el-button {flex:0 0 auto;width:89px;max-width:100%;height:35px;margin:0;padding:0 12px;font-size:14px;border-radius:6px;}
+ .el-input__wrapper,.el-select__wrapper {height:35px;min-height:35px;box-sizing:border-box;border-radius:6px;}
+ .filter-query-button {--el-button-bg-color:#246fb4;--el-button-border-color:#246fb4;--el-button-hover-bg-color:#3d83c5;--el-button-hover-border-color:#3d83c5;}
+ .filter-export-button {--el-button-bg-color:#fff;--el-button-border-color:#b3cdef;--el-button-text-color:#246fb4;--el-button-hover-bg-color:#eef5ff;--el-button-hover-border-color:#246fb4;--el-button-hover-text-color:#246fb4;}
+ .business-filter-actions>.add-button,.business-filter-actions>.filter-add {--el-button-bg-color:#67c23a;--el-button-border-color:#67c23a;--el-button-text-color:#fff;--el-button-hover-bg-color:#85ce61;--el-button-hover-border-color:#85ce61;--el-button-hover-text-color:#fff;background:var(--el-button-bg-color);border-color:var(--el-button-border-color);color:#fff;}
+ .business-filter-actions>.orange{--el-button-bg-color:#ee9b58;--el-button-border-color:#ee9b58;--el-button-text-color:#fff;}
+ .business-filter-actions>.red{--el-button-bg-color:#ee6658;--el-button-border-color:#ee6658;--el-button-text-color:#fff;}
+ .business-filter-actions:empty{display:none;}
+ .business-filter-actions>.el-button:disabled{color:var(--el-button-text-color);background:var(--el-button-bg-color);border-color:var(--el-button-border-color);opacity:.6;}
+}
+@media(max-width:700px){
+ .filter-toolbar-date-panel.el-date-range-picker,.filter-toolbar-date-panel .el-date-range-picker{width:calc(100vw - 24px);max-width:100%;}
+ .filter-toolbar-date-panel .el-picker-panel__body{min-width:0;display:flex;flex-direction:column;}
+ .filter-toolbar-date-panel .el-date-range-picker__content{width:100%;box-sizing:border-box;}
+}
