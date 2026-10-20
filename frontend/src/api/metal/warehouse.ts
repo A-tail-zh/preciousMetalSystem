@@ -14,3 +14,6 @@ export const stateNames:Record<string,string>={POSTED:'已生效',VOID:'已冲�
 
 export interface WarehouseWorkOrderContext {workOrderId:string;factoryId:string;customer:string;items:{id:string;productId:string;snapshot:{code:string;name:string;specification:string|null};plans:{processId:string;processName:string;sequenceNo:number}[]}[]}
 export const warehouseWorkOrderContext=(factoryId:string,workOrderId:string,isContextCurrent?:()=>boolean):Promise<{data:WarehouseWorkOrderContext}>=>request({url:'/metal/warehouse/work-order-context',params:{factoryId,workOrderId},...(isContextCurrent?{isContextCurrent}:{})})
+
+export const processConsumption=(level:'steps'|'batches'|'orders'|'order-lines',params:Row,isContextCurrent?:()=>boolean):Promise<{data:Row}>=>request({url:'/metal/work-report/consumption/'+level,params,...(isContextCurrent?{isContextCurrent}:{})})
+export const consumptionStates:Record<string,string>={NOT_STARTED:'未开始',NO_ACTIVE:'无有效批次',OPEN:'未结算／暂算',PARTIAL:'部分结算',SETTLED:'已结算',REVIEW:'待核对',VOID:'已冲销'}

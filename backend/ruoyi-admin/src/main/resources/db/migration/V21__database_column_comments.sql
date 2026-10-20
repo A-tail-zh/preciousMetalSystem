@@ -472,4 +472,3 @@ ALTER TABLE `sys_user`
   MODIFY COLUMN `version` int NOT NULL DEFAULT '0' COMMENT '数据版本号，用于乐观锁校验',
   MODIFY COLUMN `unique_phone` varchar(11) COLLATE utf8mb4_unicode_ci GENERATED ALWAYS AS (nullif(`phonenumber`,_utf8mb4'')) STORED COMMENT '手机号唯一索引辅助列，将空字符串映射为NULL',
   MODIFY COLUMN `auth_version` bigint NOT NULL DEFAULT '0' COMMENT '账号认证版本号，用于识别权限及会话变更';
-

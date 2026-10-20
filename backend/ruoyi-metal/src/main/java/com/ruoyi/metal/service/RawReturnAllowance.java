@@ -15,7 +15,8 @@ final class RawReturnAllowance {
   if (!"OPEN".equals(status)) throw new ServiceException("批次已结算、已冲销或不存在，不能新增原料还库");
   if (batch.signum()<0 || source.signum()<0) throw new ServiceException("历史重量异常，剩余可退净重为0，请人工核对");
   BigDecimal available=limit(source,batch,status);
-  if (requested.signum()<=0 || requested.compareTo(available)>0) throw new ServiceException("剩余可退净重最多"+available.toPlainString()+"g（已扣除有效产出和已还原料）");
+  if (requested.signum()<0) throw new ServiceException("实测净重不能小于0");
+  if (requested.compareTo(available)>0) throw new ServiceException("剩余可退净重最多"+available.toPlainString()+"g（已扣除有效产出和已还原料）");
  }
  record Snapshot(BigDecimal remaining,String status) {}
  static Snapshot load(JdbcTemplate jdbc,Long batchId) {

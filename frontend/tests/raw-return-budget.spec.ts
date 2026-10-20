@@ -17,3 +17,9 @@ test('closed, missing fields and historical negatives fail closed',()=>{
  expect(error({...a,batchRemainingWeight:'-1'},[a],[],'1')).toContain('人工核对')
  expect(error({...a,returnableWeight:undefined},[a],[],'1')).toContain('未加载')
 })
+
+test('raw return accepts zero and six-place zero but rejects negative weight',()=>{
+ expect(error(a,[a],[],'0')).toBe('');expect(error(a,[a],[],'0.000000')).toBe('');expect(error(a,[a],[],'-0.000001')).not.toBe('');expect(available(a,[a],[{sourceLineId:'a',netWeight:'0'}])).toBe('90.000000')
+})
+
+test('zero return never bypasses an explicitly closed source batch',()=>{expect(error({...a,batchStatus:'SETTLED'},[a],[],'0')).not.toBe('');expect(error({...a,batchStatus:'VOID'},[a],[],'0')).not.toBe('')})
