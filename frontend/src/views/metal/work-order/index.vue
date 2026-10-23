@@ -1,11 +1,11 @@
 <template>
  <WorkOrderDetail v-if="detailId" :id="detailId" @back="back"/>
  <section v-else class="work-order-page">
-  <div class="order-toolbar"><el-button v-hasPermi="['metal:work-order:add']" class="blue" @click="formRef?.open()">添加</el-button><el-button v-hasPermi="['metal:work-order:edit']" class="orange" :disabled="selected.length!==1||!orderEditable(selected[0])" @click="formRef?.open(selected[0])">编辑</el-button><el-button v-hasPermi="['metal:work-order:remove']" class="red" :disabled="!selected.length||selected.some(row=>row.canDelete!==true)||deleting" @click="remove(selected)">删除</el-button></div>
+  <div class="order-toolbar"><el-button v-if="actionPermission.hasAny(['metal:work-order:add'])"  class="blue" @click="formRef?.open()">添加</el-button><el-button v-if="actionPermission.hasAny(['metal:work-order:edit'])"  class="orange" :disabled="selected.length!==1||!orderEditable(selected[0])" @click="formRef?.open(selected[0])">编辑</el-button><el-button v-if="actionPermission.hasAny(['metal:work-order:remove'])"  class="red" :disabled="!selected.length||selected.some(row=>row.canDelete!==true)||deleting" @click="remove(selected)">删除</el-button></div>
   <el-table ref="tableRef" v-loading="loading" :data="rows" border class="order-table" @selection-change="selected=$event">
    <el-table-column v-if="can('metal:work-order:edit')||can('metal:work-order:remove')" type="selection" width="50" align="center"/><el-table-column label="工单号" prop="orderNo" min-width="150" align="center"/><el-table-column label="客户" prop="customer" min-width="75" align="center"/><el-table-column label="工厂名称" prop="factoryName" min-width="90" align="center"/><el-table-column label="产线名称" prop="lineName" min-width="90" align="center"/><el-table-column label="负责人" prop="ownerName" min-width="75" align="center"/>
    <el-table-column label="状态" min-width="130" align="center"><template #default="{row}">{{orderStatus[row.status]}}<template v-if="row.status==='REJECTED'">，原因：{{row.rejectReason}}</template></template></el-table-column>
-   <el-table-column label="创建人" prop="creatorName" min-width="65" align="center"/><el-table-column label="创建时间" prop="createTime" :formatter="dateTimeCell" width="140" align="center"/><el-table-column v-if="can('metal:work-order:query')||can('metal:work-order:edit')||can('metal:work-order:remove')" class-name="order-actions" label="操作" min-width="264" align="center"><template #default="{row}"><el-button v-hasPermi="['metal:work-order:query']" class="blue row-button" @click="view(row)">查看</el-button><el-button v-hasPermi="['metal:work-order:edit']" class="orange row-button" :disabled="!orderEditable(row)" :title="row.operationDisabledReason" @click="formRef?.open(row)">编辑</el-button><el-button v-hasPermi="['metal:work-order:remove']" class="red row-button" :disabled="row.canDelete!==true||deleting" :title="row.operationDisabledReason" @click="remove([row])">删除</el-button></template></el-table-column>
+   <el-table-column label="创建人" prop="creatorName" min-width="65" align="center"/><el-table-column label="创建时间" prop="createTime" :formatter="dateTimeCell" width="140" align="center"/><el-table-column v-if="can('metal:work-order:query')||can('metal:work-order:edit')||can('metal:work-order:remove')" class-name="order-actions" label="操作" min-width="264" align="center"><template #default="{row}"><el-button v-if="actionPermission.hasAny(['metal:work-order:query'])"  class="blue row-button" @click="view(row)">查看</el-button><el-button v-if="actionPermission.hasAny(['metal:work-order:edit'])"  class="orange row-button" :disabled="!orderEditable(row)" :title="row.operationDisabledReason" @click="formRef?.open(row)">编辑</el-button><el-button v-if="actionPermission.hasAny(['metal:work-order:remove'])"  class="red row-button" :disabled="row.canDelete!==true||deleting" :title="row.operationDisabledReason" @click="remove([row])">删除</el-button></template></el-table-column>
   </el-table>
   <div v-if="failed" class="load-error">列表加载失败 <el-button link type="primary" @click="load">重试</el-button></div>
   <div class="order-pagination"><el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :page-sizes="[16,32,64]" :total="total" layout="total, sizes, prev, pager, next, jumper" @current-change="load" @size-change="sizeChanged"/></div>
@@ -14,6 +14,8 @@
  </section>
 </template>
 <script setup lang="ts">
+import { useActionPermission } from '@/composables/useActionPermission'
+const actionPermission = useActionPermission()
 import {dateTimeCell} from '@/utils/display-date-time'
 import {ref,reactive,computed,onMounted,watch} from 'vue'
 import {useRoute,useRouter} from 'vue-router'
@@ -25,7 +27,7 @@ import type {WorkOrder} from '@/api/metal/work-order'
 import WorkOrderForm from './WorkOrderForm.vue'
 import WorkOrderDetail from './WorkOrderDetail.vue'
 const user=useUserStore(),route=useRoute(),router=useRouter(),detailId=computed(()=>typeof route.query.id==='string'?route.query.id:'')
-const can=(permission:string)=>user.permissions.some((v:string)=>v==='*:*:*'||v===permission)
+const can=(permission:string)=>actionPermission.has(permission)
 const query=reactive({pageNum:1,pageSize:16}),rows=ref<WorkOrder[]>([]),selected=ref<WorkOrder[]>([]),total=ref(0),loading=ref(false),failed=ref(false),deleting=ref(false)
 const formRef=ref<InstanceType<typeof WorkOrderForm>>(),tableRef=ref<TableInstance>()
 let epoch=0

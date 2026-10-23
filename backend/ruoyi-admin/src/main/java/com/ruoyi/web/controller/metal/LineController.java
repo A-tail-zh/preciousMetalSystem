@@ -27,7 +27,12 @@ public class LineController extends BaseController {
         this.service = service;
     }
 
-    /**
+       /** Minimal existing form DTO under edit permission; service enforces factory scope. */
+    @GetMapping("/{id}/edit-context")
+    @PreAuthorize("@ss.hasPermi('metal:production-line:edit')")
+    public AjaxResult editContext(@PathVariable @Positive Long id) { return success(service.detail(id)); }
+
+ /**
      * 查询列表并补充关联资料。
      */
     @GetMapping("/list")

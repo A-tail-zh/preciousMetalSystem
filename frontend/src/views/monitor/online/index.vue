@@ -48,7 +48,7 @@
          </el-table-column>
          <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
             <template #default="scope">
-               <el-button link type="primary" icon="Delete" @click="handleForceLogout(scope.row)" v-hasPermi="['monitor:online:forceLogout']">强退</el-button>
+               <el-button v-if="actionPermission.hasAny(['monitor:online:forceLogout'])" link type="primary" icon="Delete" @click="handleForceLogout(scope.row)" >强退</el-button>
             </template>
          </el-table-column>
       </el-table>
@@ -58,6 +58,8 @@
 </template>
 
 <script setup lang="ts" name="Online">
+import { useActionPermission } from '@/composables/useActionPermission'
+const actionPermission = useActionPermission()
 import { forceLogout, list as initData } from "@/api/monitor/online"
 import type { SysUserOnline, OnlineQueryParams } from '@/types/api/monitor/online'
 

@@ -18,6 +18,11 @@ import com.ruoyi.metal.service.ProductService;
 @RestController @Validated @RequestMapping("/metal/product")
 public class ProductController extends BaseController {
  private final ProductService service;private final com.ruoyi.metal.service.ProductDimensionImage images; public ProductController(ProductService service,com.ruoyi.metal.service.ProductDimensionImage images){this.service=service;this.images=images;}
+    /** Minimal existing form DTO under edit permission; service enforces factory scope. */
+    @GetMapping("/{id}/edit-context")
+    @PreAuthorize("@ss.hasPermi('metal:product:edit')")
+    public AjaxResult editContext(@PathVariable @Positive Long id) { return success(service.detail(id)); }
+
  /**
   * 查询列表并补充关联资料。
   */

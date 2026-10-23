@@ -19,4 +19,5 @@ class VolumeCalculatorTest {
   var result=service.calculate(input);assertEquals("1570.000000",result.get("volume"));assertEquals("35560.500000",result.get("unitPrice"));assertEquals("71121.000000",result.get("totalPrice"));
   rule.setBasePrice(new BigDecimal("7"));assertEquals("21980.000000",service.calculate(input).get("totalPrice"));
  }
+ @Test void scientificAndSignedDimensionInputIsRejected(){for(String value:new String[]{"1e1","+10","NaN","0.0000001"})assertThrows(RuntimeException.class,()->VolumeCalculator.calculate("铱杆实心",Map.of("diameter",value,"length","20"),pi));}
 }

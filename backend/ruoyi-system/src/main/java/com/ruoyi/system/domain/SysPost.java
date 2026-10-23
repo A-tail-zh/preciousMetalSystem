@@ -24,10 +24,12 @@ public class SysPost extends BaseEntity
 
     /** 岗位编码 */
     @Excel(name = "岗位编码")
+    @jakarta.validation.constraints.Size(max=64)
     private String postCode;
 
     /** 岗位名称 */
     @Excel(name = "岗位名称")
+    @jakarta.validation.constraints.Size(max=50)
     private String postName;
 
     /** 岗位排序 */
@@ -36,6 +38,8 @@ public class SysPost extends BaseEntity
 
     /** 状态（0正常 1停用） */
     @Excel(name = "状态", readConverterExp = "0=正常,1=停用")
+    @jakarta.validation.constraints.Size(max=1)
+    @jakarta.validation.constraints.Pattern(regexp="[01]")
     private String status;
 
     /** 用户是否存在此岗位标识 默认不存在 */
@@ -121,4 +125,7 @@ public class SysPost extends BaseEntity
             .append("remark", getRemark())
             .toString();
     }
+    @Override
+    @jakarta.validation.constraints.Size(max=500,message="备注最多500个字符")
+    public String getRemark() { return super.getRemark(); }
 }

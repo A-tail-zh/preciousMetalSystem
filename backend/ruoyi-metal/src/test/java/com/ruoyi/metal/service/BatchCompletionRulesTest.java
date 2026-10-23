@@ -1,0 +1,9 @@
+package com.ruoyi.metal.service;
+import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.Test;
+class BatchCompletionRulesTest {
+ @Test void explicitImportBatchDisambiguatesParallelBatches(){assertEquals(7L,BatchCompletionRules.selectBatch(java.util.List.of(7L,8L),7L));assertThrows(RuntimeException.class,()->BatchCompletionRules.selectBatch(java.util.List.of(7L,8L),null));assertThrows(RuntimeException.class,()->BatchCompletionRules.selectBatch(java.util.List.of(7L,8L),9L));assertEquals(7L,BatchCompletionRules.selectBatch(java.util.List.of(7L),null));}
+ @Test void phaseRequiresExplicitReturnConfirmation(){assertEquals("AWAITING_OUTPUT",BatchCompletionRules.phase("OPEN",0,false));assertEquals("AWAITING_RETURN",BatchCompletionRules.phase("OPEN",1,false));assertEquals("SETTLED",BatchCompletionRules.phase("SETTLED",1,true));assertEquals("VOID",BatchCompletionRules.phase("VOID",1,true));}
+ @Test void onlyOneEffectiveOutput(){assertDoesNotThrow(()->BatchCompletionRules.requireOutput(0));assertThrows(RuntimeException.class,()->BatchCompletionRules.requireOutput(1));assertThrows(RuntimeException.class,()->BatchCompletionRules.requireOutput(2));}
+ @Test void confirmationNeedsOutputAndPhysicalCheck(){assertThrows(RuntimeException.class,()->BatchCompletionRules.requireConfirmation(0,"NONE",true,0));assertThrows(RuntimeException.class,()->BatchCompletionRules.requireConfirmation(1,"NONE",false,0));assertThrows(RuntimeException.class,()->BatchCompletionRules.requireConfirmation(1,"NONE",true,1));assertThrows(RuntimeException.class,()->BatchCompletionRules.requireConfirmation(1,"RETURNED",true,0));assertDoesNotThrow(()->BatchCompletionRules.requireConfirmation(1,"NONE",true,0));assertDoesNotThrow(()->BatchCompletionRules.requireConfirmation(1,"RETURNED",true,2));}
+}

@@ -111,7 +111,7 @@
 
       <!-- 添加或修改公告对话框 -->
       <el-dialog :title="title" v-model="open" width="780px" append-to-body>
-         <el-form ref="noticeRef" :model="form" :rules="rules" label-width="80px">
+         <el-form ref="noticeRef" :model="form" :rules="rules" label-width="80px" scroll-to-error>
             <el-row>
                <el-col :span="12">
                   <el-form-item label="公告标题" prop="noticeTitle">
@@ -161,6 +161,7 @@
 </template>
 
 <script setup lang="ts" name="Notice">
+import {applyFieldErrors} from '@/utils/input-validation'
 import NoticeDetailView from "@/layout/components/HeaderNotice/DetailView.vue"
 import ReadUsersDialog from "./ReadUsers.vue"
 import { listNotice, getNotice, delNotice, addNotice, updateNotice } from "@/api/system/notice"
@@ -189,8 +190,9 @@ const data = reactive({
     status: undefined
   } as NoticeQueryParams,
   rules: {
-    noticeTitle: [{ required: true, message: "公告标题不能为空", trigger: "blur" }],
-    noticeType: [{ required: true, message: "公告类型不能为空", trigger: "change" }]
+    status: [{max:1,message:"该字段最多1个字符",trigger:"blur"}],
+    noticeTitle: [{max:50,message:"该字段最多50个字符",trigger:"blur"},{ required: true, whitespace:true, message: "公告标题不能为空", trigger: "blur" }],
+    noticeType: [{max:1,message:"该字段最多1个字符",trigger:"blur"},{ required: true, message: "公告类型不能为空", trigger: "change" }]
   },
 })
 
@@ -263,20 +265,21 @@ function handleUpdate(row?: SysNotice) {
 
 /** 提交按钮 */
 function submitForm() {
+  const submittedForm=form.value
   ;(proxy.$refs["noticeRef"] as import('element-plus').FormInstance).validate((valid: boolean) => {
-    if (valid) {
+    if (valid && form.value===submittedForm) {
       if (form.value.noticeId != undefined) {
         updateNotice(form.value).then(() => {
           proxy.$modal.msgSuccess("修改成功")
           open.value = false
           getList()
-        })
+        }).catch(error=>{if(form.value===submittedForm&&open.value)applyFieldErrors(proxy.$refs["noticeRef"] as import('element-plus').FormInstance,error)})
       } else {
         addNotice(form.value).then(() => {
           proxy.$modal.msgSuccess("新增成功")
           open.value = false
           getList()
-        })
+        }).catch(error=>{if(form.value===submittedForm&&open.value)applyFieldErrors(proxy.$refs["noticeRef"] as import('element-plus').FormInstance,error)})
       }
     }
   })

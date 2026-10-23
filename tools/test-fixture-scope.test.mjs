@@ -1,0 +1,9 @@
+import {test}from'node:test';import assert from'node:assert/strict';import{assertEnvironment,assertFixtureOwnership,fixtureEnvironment,discoverFixtureResources}from'./test-fixture-scope.mjs';
+const prefix='工单验收_1790000000000_ab12cd';
+test('reject isolated manifest in default business environment before touching rows',()=>{let calls=0;assert.throws(()=>assertEnvironment({...fixtureEnvironment(),schema:'foreign'},()=>{calls++;return''}),/environment mismatch/);assert.equal(calls,0)});
+test('check actual SQL schema and port before cleanup',()=>{assert.throws(()=>assertEnvironment(fixtureEnvironment(),q=>q==='SELECT DATABASE()'?'foreign':fixtureEnvironment().port),/identity/)});
+test('numeric factory collision cannot authorize warehouse cleanup',()=>{const queries=[];assert.throws(()=>assertFixtureOwnership(prefix,{factories:['7']},q=>{queries.push(q);return'真实业务工厂'}),/ownership/);assert(queries.every(q=>q.startsWith('SELECT ')))});
+test('all recorded resources must belong to prefix; absent already-cleaned rows allowed',()=>{assert.doesNotThrow(()=>assertFixtureOwnership(prefix,{factories:['7'],materials:['8'],users:['9']},q=>q.includes('material')?'WH_M1_1790000000000_ab12cd':q.includes('sys_user')?'':prefix+'厂'));assert.throws(()=>assertFixtureOwnership(prefix,{users:['9']},()=> '其他人员'),/ownership/)});
+test('malformed resource and manifest fields rejected',()=>{assert.throws(()=>assertFixtureOwnership(prefix,{unknown:['7']},()=>''),/resource/);assert.throws(()=>assertFixtureOwnership(prefix,{factories:['7;DELETE']},()=>''),/resource/)});
+
+test('recovery discovers a committed resource whose response was lost',()=>{const made={factories:[],lines:[],products:[],processes:[],roles:[],users:[],materials:[]};discoverFixtureResources(prefix,made,q=>q.includes('metal_factory')?'77':'');assert.deepEqual(made.factories,['77']);assert.throws(()=>discoverFixtureResources("foreign",made,()=>''),/prefix/)});

@@ -24,14 +24,18 @@ public class SysDictType extends BaseEntity
 
     /** 字典名称 */
     @Excel(name = "字典名称")
+    @jakarta.validation.constraints.Size(max=100)
     private String dictName;
 
     /** 字典类型 */
     @Excel(name = "字典类型")
+    @jakarta.validation.constraints.Size(max=100)
     private String dictType;
 
     /** 状态（0正常 1停用） */
     @Excel(name = "状态", readConverterExp = "0=正常,1=停用")
+    @jakarta.validation.constraints.Size(max=1)
+    @jakarta.validation.constraints.Pattern(regexp="[01]")
     private String status;
 
     public Long getDictId()
@@ -93,4 +97,7 @@ public class SysDictType extends BaseEntity
             .append("remark", getRemark())
             .toString();
     }
+    @Override
+    @jakarta.validation.constraints.Size(max=500,message="备注最多500个字符")
+    public String getRemark() { return super.getRemark(); }
 }

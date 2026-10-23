@@ -38,50 +38,50 @@
 
       <el-row :gutter="10" class="mb8">
          <el-col :span="1.5">
-            <el-button
+            <el-button v-if="actionPermission.hasAny(['monitor:job:add'])"
                type="primary"
                plain
                icon="Plus"
                @click="handleAdd"
-               v-hasPermi="['monitor:job:add']"
+
             >新增</el-button>
          </el-col>
          <el-col :span="1.5">
-            <el-button
+            <el-button v-if="actionPermission.hasAny(['monitor:job:edit'])"
                type="success"
                plain
                icon="Edit"
                :disabled="single"
                @click="handleUpdate()"
-               v-hasPermi="['monitor:job:edit']"
+
             >修改</el-button>
          </el-col>
          <el-col :span="1.5">
-            <el-button
+            <el-button v-if="actionPermission.hasAny(['monitor:job:remove'])"
                type="danger"
                plain
                icon="Delete"
                :disabled="multiple"
                @click="handleDelete()"
-               v-hasPermi="['monitor:job:remove']"
+
             >删除</el-button>
          </el-col>
          <el-col :span="1.5">
-            <el-button
+            <el-button v-if="actionPermission.hasAny(['monitor:job:export'])"
                type="warning"
                plain
                icon="Download"
                @click="handleExport"
-               v-hasPermi="['monitor:job:export']"
+
             >导出</el-button>
          </el-col>
          <el-col :span="1.5">
-            <el-button
+            <el-button v-if="actionPermission.hasAny(['monitor:job:query'])"
                type="info"
                plain
                icon="Operation"
                @click="handleJobLog()"
-               v-hasPermi="['monitor:job:query']"
+
             >日志</el-button>
          </el-col>
          <right-toolbar v-model:showSearch="showSearch" @queryTable="getList"></right-toolbar>
@@ -115,16 +115,16 @@
          <el-table-column label="操作" align="center" width="200" class-name="small-padding fixed-width">
             <template #default="scope">
                <el-tooltip content="修改" placement="top">
-                  <el-button link type="primary" icon="Edit" @click="handleUpdate(scope.row)" v-hasPermi="['monitor:job:edit']"></el-button>
+                  <el-button v-if="actionPermission.hasAny(['monitor:job:edit'])" link type="primary" icon="Edit" @click="handleUpdate(scope.row)" ></el-button>
                </el-tooltip>
                <el-tooltip content="删除" placement="top">
-                  <el-button link type="primary" icon="Delete" @click="handleDelete(scope.row)" v-hasPermi="['monitor:job:remove']"></el-button>
+                  <el-button v-if="actionPermission.hasAny(['monitor:job:remove'])" link type="primary" icon="Delete" @click="handleDelete(scope.row)" ></el-button>
                </el-tooltip>
                <el-tooltip content="执行一次" placement="top">
-                  <el-button link type="primary" icon="CaretRight" @click="handleRun(scope.row)" v-hasPermi="['monitor:job:changeStatus']"></el-button>
+                  <el-button v-if="actionPermission.hasAny(['monitor:job:changeStatus'])" link type="primary" icon="CaretRight" @click="handleRun(scope.row)" ></el-button>
                </el-tooltip>
                <el-tooltip content="调度日志" placement="top">
-                  <el-button link type="primary" icon="Operation" @click="handleJobLog(scope.row)" v-hasPermi="['monitor:job:query']"></el-button>
+                  <el-button v-if="actionPermission.hasAny(['monitor:job:query'])" link type="primary" icon="Operation" @click="handleJobLog(scope.row)" ></el-button>
                </el-tooltip>
             </template>
          </el-table-column>
@@ -140,7 +140,7 @@
 
       <!-- 添加或修改定时任务对话框 -->
       <el-dialog :title="title" v-model="open" width="820px" append-to-body>
-         <el-form ref="jobRef" :model="form" :rules="rules" label-width="120px">
+         <el-form ref="jobRef" :model="form" :rules="rules" label-width="120px" scroll-to-error>
             <el-row>
                <el-col :span="12">
                   <el-form-item label="任务名称" prop="jobName">
@@ -239,6 +239,8 @@
 </template>
 
 <script setup lang="ts" name="Job">
+import { useActionPermission } from '@/composables/useActionPermission'
+const actionPermission = useActionPermission()
 import JobDetail from './detail.vue'
 import Crontab from '@/components/Crontab/index.vue'
 import { listJob, getJob, delJob, addJob, updateJob, runJob, changeJobStatus } from "@/api/monitor/job"

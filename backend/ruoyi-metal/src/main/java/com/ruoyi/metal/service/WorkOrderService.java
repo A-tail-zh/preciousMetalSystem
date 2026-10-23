@@ -28,6 +28,8 @@ public class WorkOrderService {
     private final WorkOrderMapper mapper;
     private final FactoryScope scope;
     private final ProductService products;
+    @org.springframework.beans.factory.annotation.Value("${metal.auto-semi-release-enabled:true}")
+    private boolean autoSemiReleaseEnabled=true;
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final String HEADER = "SELECT CAST(work_order_id AS CHAR) id,order_no orderNo,customer,CAST(factory_id AS CHAR) factoryId,CAST(production_line_id AS CHAR) productionLineId,CAST(owner_id AS CHAR) ownerId,factory_name factoryName,line_name lineName,owner_name ownerName,DATE_FORMAT(order_date,'%Y-%m-%d') orderDate,status,reject_reason rejectReason,create_by createBy,creator_name creatorName,DATE_FORMAT(create_time,'%Y-%m-%d %H:%i:%s') createTime,version,(EXISTS(SELECT 1 FROM metal_process_batch b WHERE b.work_order_id=metal_work_order.work_order_id) OR EXISTS(SELECT 1 FROM metal_warehouse_order o WHERE o.work_order_id=metal_work_order.work_order_id) OR EXISTS(SELECT 1 FROM metal_work_report r JOIN metal_work_order_item i ON i.item_id=r.item_id WHERE i.work_order_id=metal_work_order.work_order_id)) hasBusinessReferences FROM metal_work_order WHERE work_order_id=? AND del_flag='0'";
 
@@ -338,6 +340,7 @@ public class WorkOrderService {
         String lineName = text(line(request.productionLineId(), request.factoryId(), true), "name");
         String ownerName = text(owner(request.factoryId(), request.ownerId(), true), "name");
         long orderId = insert("INSERT INTO metal_work_order(order_no,request_id,request_hash,request_actor,customer,factory_id,production_line_id,owner_id,factory_name,line_name,owner_name,order_date,create_by,creator_name,update_by,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'WAITING_MATERIAL')", reservedNumber, request.requestId(), fingerprint, SecurityUtils.getUserId(), request.customer().strip(), request.factoryId(), request.productionLineId(), request.ownerId(), factory, lineName, ownerName, java.sql.Date.valueOf(request.orderDate()), SecurityUtils.getUsername(), actorName(), SecurityUtils.getUsername());
+        jdbc.update("UPDATE metal_work_order SET auto_semi_release_eligible=? WHERE work_order_id=?",autoSemiReleaseEnabled,orderId);
         writeItems(orderId, prepared);
         review(orderId, "CREATE", null, "WAITING_MATERIAL", null);
         return Long.toString(orderId);

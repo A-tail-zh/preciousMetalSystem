@@ -74,7 +74,7 @@ public class LineService extends MasterService<LineRecord> {
             scope.adminOnly();
             WorkOrderReferences.lineMove(jdbc, row.getId());
         }
-        if(row.getFactoryId()==null)scope.adminOnly();
+        if (row.getFactoryId() == null) throw new ServiceException("请选择所属工厂");
         scope.lockFactories(Collections.singletonList(row.getFactoryId()));
         if (row.getProductIds() == null || row.getProductIds().size() > 1000 || row.getProductIds().stream().anyMatch(i -> i == null || i <= 0) || new HashSet<>(row.getProductIds()).size() != row.getProductIds().size())
             throw new ServiceException("产品关联无效或重复");
@@ -120,7 +120,7 @@ public class LineService extends MasterService<LineRecord> {
     @Override
     protected void deletable(LineRecord row) {
         WorkOrderReferences.lineDelete(jdbc, row.getId());
-        if (row.getFactoryId() != null || jdbc.queryForObject("SELECT COUNT(*) FROM metal_line_product WHERE production_line_id=?", Integer.class, row.getId()) > 0)
-            throw new ServiceException("请先解除产线的工厂和产品关联：" + row.getName());
+        if (jdbc.queryForObject("SELECT COUNT(*) FROM metal_line_product WHERE production_line_id=?", Integer.class, row.getId()) > 0)
+            throw new ServiceException("请先解除产线的产品关联：" + row.getName());
     }
 }

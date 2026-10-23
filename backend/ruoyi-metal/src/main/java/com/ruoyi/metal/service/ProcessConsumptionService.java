@@ -43,7 +43,7 @@ public class ProcessConsumptionService {
         SELECT b.batch_id batchId,b.batch_no batchNo,b.item_id itemId,b.process_id processId,b.sequence_no sequenceNo,
         b.status,b.version batchVersion,b.planned_quantity plannedQuantity,b.completed_quantity batchCompletedQuantity,
         COALESCE(x.rawIssuedWeight,0) rawIssuedWeight,COALESCE(x.semiIssuedWeight,0) semiIssuedWeight,
-        COALESCE(x.rawReturnedWeight,0) rawReturnedWeight,COALESCE(x.outputWeight,0) outputWeight,
+        COALESCE(x.rawReturnedWeight,0) rawReturnedWeight,COALESCE(x.semiReturnedWeight,0) semiReturnedWeight,COALESCE(x.processRawReturnedWeight,0) processRawReturnedWeight,COALESCE(x.outputWeight,0) outputWeight,
         COALESCE(x.outputQuantity,0) outputQuantity,COALESCE(x.documentCount,0) documentCount,
         r.report_id reportId,r.issued_weight reportIssuedWeight,r.returned_weight reportReturnedWeight,
         r.loss_weight reportLossWeight,r.average_loss reportAverageLoss,r.completed_quantity reportCompletedQuantity,
@@ -53,6 +53,8 @@ public class ProcessConsumptionService {
           SUM(CASE WHEN o.type='PRODUCTION_OUT' AND l.category='RAW' THEN l.net_weight ELSE 0 END) rawIssuedWeight,
           SUM(CASE WHEN o.type='PRODUCTION_OUT' AND l.category='SEMI' THEN l.net_weight ELSE 0 END) semiIssuedWeight,
           SUM(CASE WHEN o.type='RAW_RETURN' THEN l.net_weight ELSE 0 END) rawReturnedWeight,
+          SUM(CASE WHEN o.type='SEMI_RETURN' THEN l.net_weight ELSE 0 END) semiReturnedWeight,
+          SUM(CASE WHEN o.type='PROCESS_RAW_RETURN' THEN l.net_weight ELSE 0 END) processRawReturnedWeight,
           SUM(CASE WHEN o.type IN ('SEMI_IN','FINISHED_IN') THEN l.net_weight ELSE 0 END) outputWeight,
           SUM(CASE WHEN o.type IN ('SEMI_IN','FINISHED_IN') THEN l.quantity ELSE 0 END) outputQuantity,
           COUNT(DISTINCT o.order_id) documentCount
@@ -98,13 +100,13 @@ public class ProcessConsumptionService {
     public Map<String,Object> lines(Long work,Long item,Long process,Long batch,Long order,int n,int size){
         page(n,size);context(work,item,process,batch,order);
         Long total=jdbc.queryForObject("SELECT COUNT(*) FROM metal_warehouse_order_line WHERE order_id=?",Long.class,order);
-        var rows=cleanRows(jdbc.queryForList("SELECT l.line_id lineId,l.inventory_id inventoryId,l.sequence_no sequenceNo,l.code,l.name,l.category,l.specification,l.batch_no batchNo,l.gross_weight grossWeight,l.impurity,l.net_weight netWeight,l.quantity,l.organization,l.purpose,l.remark,source.order_no sourceOrderNo FROM metal_warehouse_order_line l LEFT JOIN metal_warehouse_order_line original ON original.line_id=l.source_line_id LEFT JOIN metal_warehouse_order source ON source.order_id=original.order_id WHERE l.order_id=? ORDER BY l.sequence_no LIMIT ? OFFSET ?",order,size,((long)n-1)*size));
+        var rows=cleanRows(jdbc.queryForList("SELECT l.line_id lineId,l.inventory_id inventoryId,l.sequence_no sequenceNo,l.code,l.name,l.category,l.specification,l.batch_no batchNo,l.gross_weight grossWeight,l.impurity,l.net_weight netWeight,l.quantity,l.organization,l.purpose,l.remark,source.order_no sourceOrderNo,u.release_id releaseId,sw.order_no sourceWorkOrderNo,ss.process_name sourceProcessName FROM metal_warehouse_order_line l LEFT JOIN metal_warehouse_order_line original ON original.line_id=l.source_line_id LEFT JOIN metal_warehouse_order source ON source.order_id=original.order_id LEFT JOIN metal_semi_release_use u ON u.line_id=COALESCE(l.source_line_id,l.line_id) LEFT JOIN metal_inventory si ON si.inventory_id=l.inventory_id LEFT JOIN metal_process_batch sb ON sb.batch_id=si.origin_batch_id LEFT JOIN metal_work_order sw ON sw.work_order_id=sb.work_order_id LEFT JOIN metal_work_order_step ss ON ss.item_id=sb.item_id AND ss.process_id=sb.process_id WHERE l.order_id=? ORDER BY l.sequence_no LIMIT ? OFFSET ?",order,size,((long)n-1)*size));
         var out=paged(work,item,rows,total==null?0:total,n,size);out.put("orderId",String.valueOf(order));out.put("batchId",String.valueOf(batch));out.put("processId",String.valueOf(process));return out;
     }
     static Map<String,Object> calculateBatch(Map<String,Object> b){
-        BigDecimal raw=dec(b.get("rawIssuedWeight")),semi=dec(b.get("semiIssuedWeight")),returned=dec(b.get("rawReturnedWeight")),output=dec(b.get("outputWeight"));
+        BigDecimal raw=dec(b.get("rawIssuedWeight")),semi=dec(b.get("semiIssuedWeight")),returned=dec(b.get("rawReturnedWeight")).add(dec(b.get("semiReturnedWeight")).add(dec(b.get("processRawReturnedWeight")))),output=dec(b.get("outputWeight"));
         BigDecimal issued=raw.add(semi),net=issued.subtract(returned),difference=net.subtract(output);
-        for(String key:List.of("rawIssuedWeight","semiIssuedWeight","rawReturnedWeight","outputWeight"))b.put(key,weight(b.get(key)));
+        for(String key:List.of("rawIssuedWeight","semiIssuedWeight","rawReturnedWeight","semiReturnedWeight","processRawReturnedWeight","outputWeight"))b.put(key,weight(b.get(key)));
         b.put("issuedWeight",weight(issued));b.put("netInputWeight",weight(net));b.put("balanceDifferenceWeight",weight(difference));
         b.put("settledLossWeight",null);b.put("provisionalDifferenceWeight",null);b.put("settledCompletedQuantity",null);b.put("averageLoss",null);
         String state=String.valueOf(b.get("status"));
@@ -124,7 +126,7 @@ public class ProcessConsumptionService {
     static Map<String,Object> summarize(List<Map<String,Object>> batches){
         var out=new LinkedHashMap<String,Object>();
         var active=batches.stream().filter(b->!"VOID".equals(b.get("status"))).toList();
-        for(String key:List.of("rawIssuedWeight","semiIssuedWeight","issuedWeight","rawReturnedWeight","outputWeight","netInputWeight"))out.put(key,weight(active.stream().map(b->dec(b.get(key))).reduce(BigDecimal.ZERO,BigDecimal::add)));
+        for(String key:List.of("rawIssuedWeight","semiIssuedWeight","issuedWeight","rawReturnedWeight","semiReturnedWeight","processRawReturnedWeight","outputWeight","netInputWeight"))out.put(key,weight(active.stream().map(b->dec(b.get(key))).reduce(BigDecimal.ZERO,BigDecimal::add)));
         long open=active.stream().filter(b->"OPEN".equals(b.get("status"))).count(),settled=active.stream().filter(b->"SETTLED".equals(b.get("status"))).count();
         boolean missing=active.stream().anyMatch(b->"SETTLED".equals(b.get("status"))&&(b.get("settledLossWeight")==null||b.get("settledCompletedQuantity")==null));
         BigDecimal loss=active.stream().map(b->dec(b.get("settledLossWeight"))).reduce(BigDecimal.ZERO,BigDecimal::add);

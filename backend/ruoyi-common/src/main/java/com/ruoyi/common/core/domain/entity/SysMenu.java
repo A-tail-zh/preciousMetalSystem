@@ -22,6 +22,7 @@ public class SysMenu extends BaseEntity
     private Long menuId;
 
     /** 菜单名称 */
+    @jakarta.validation.constraints.Size(max=50)
     private String menuName;
 
     /** 父菜单名称 */
@@ -34,36 +35,50 @@ public class SysMenu extends BaseEntity
     private Integer orderNum;
 
     /** 路由地址 */
+    @jakarta.validation.constraints.Size(max=200)
     private String path;
 
     /** 组件路径 */
+    @jakarta.validation.constraints.Size(max=255)
     private String component;
 
     /** 路由参数 */
+    @jakarta.validation.constraints.Size(max=255)
     private String query;
 
     /** 路由名称，默认和路由地址相同的驼峰格式（注意：因为vue3版本的router会删除名称相同路由，为避免名字的冲突，特殊情况可以自定义） */
+    @jakarta.validation.constraints.Size(max=50)
     private String routeName;
 
     /** 是否为外链（0是 1否） */
+    @jakarta.validation.constraints.Pattern(regexp="[01]")
     private String isFrame;
 
     /** 是否缓存（0缓存 1不缓存） */
+    @jakarta.validation.constraints.Pattern(regexp="[01]")
     private String isCache;
 
     /** 类型（M目录 C菜单 F按钮） */
+    @jakarta.validation.constraints.Size(max=1)
+    @jakarta.validation.constraints.Pattern(regexp="[MCF]")
     private String menuType;
 
     /** 显示状态（0显示 1隐藏） */
+    @jakarta.validation.constraints.Size(max=1)
+    @jakarta.validation.constraints.Pattern(regexp="[01]")
     private String visible;
 
     /** 菜单状态（0正常 1停用） */
+    @jakarta.validation.constraints.Size(max=1)
+    @jakarta.validation.constraints.Pattern(regexp="[01]")
     private String status;
 
     /** 权限字符串 */
+    @jakarta.validation.constraints.Size(max=100)
     private String perms;
 
     /** 菜单图标 */
+    @jakarta.validation.constraints.Size(max=100)
     private String icon;
 
     /** 子菜单 */
@@ -271,4 +286,7 @@ public class SysMenu extends BaseEntity
             .append("remark", getRemark())
             .toString();
     }
+    @Override
+    @jakarta.validation.constraints.Size(max=500,message="备注最多500个字符")
+    public String getRemark() { return super.getRemark(); }
 }

@@ -45,6 +45,16 @@ public class WorkOrderController extends BaseController {
         return success(service.detail(id));
     }
 
+    @GetMapping("/{id}/edit-context")
+    @PreAuthorize("@ss.hasPermi('metal:work-order:edit')")
+    public AjaxResult editContext(@PathVariable @Positive Long id) {
+        var context=new java.util.LinkedHashMap<>(service.detail(id));
+        context.remove("reviews");
+        context.remove("reports");
+        context.remove("reportingAvailable");
+        return success(context);
+    }
+
     public record NumberRequest(
             @NotBlank @Pattern(regexp = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}") String requestId) {
     }

@@ -28,10 +28,12 @@ import com.ruoyi.metal.security.FactoryScope;
 public class WarehouseService {
     private final JdbcTemplate jdbc;
     private final FactoryScope scope;
+    private final SemiFlowService semi;
 
     public WarehouseService(JdbcTemplate jdbc, FactoryScope scope) {
         this.jdbc = jdbc;
         this.scope = scope;
+        this.semi = new SemiFlowService(jdbc, scope);
     }
 
     private static ServiceException fail(String message) {
@@ -143,7 +145,7 @@ public class WarehouseService {
 
     private String reportWeightColumns(String alias) {
         String base = " FROM metal_warehouse_order o JOIN metal_warehouse_order_line l ON l.order_id=o.order_id WHERE o.batch_id=" + alias + ".batch_id AND o.status='POSTED' AND o.type ";
-        return ",CASE WHEN " + alias + ".voided=FALSE THEN (SELECT COALESCE(SUM(l.net_weight),0)" + base + "='RAW_RETURN') ELSE NULL END raw_returned_weight,CASE WHEN " + alias + ".voided=FALSE THEN (SELECT COALESCE(SUM(l.net_weight),0)" + base + "IN ('SEMI_IN','FINISHED_IN')) ELSE NULL END output_weight";
+        return ",CASE WHEN " + alias + ".voided=FALSE THEN (SELECT COALESCE(SUM(l.net_weight),0)" + base + "='RAW_RETURN') ELSE NULL END raw_returned_weight,CASE WHEN " + alias + ".voided=FALSE THEN (SELECT COALESCE(SUM(l.net_weight),0)" + base + "='SEMI_RETURN') ELSE NULL END semi_returned_weight,CASE WHEN " + alias + ".voided=FALSE THEN (SELECT COALESCE(SUM(l.net_weight),0)" + base + "IN ('SEMI_IN','FINISHED_IN')) ELSE NULL END output_weight";
     }
 
     private String extraColumns(String key) {
@@ -223,8 +225,9 @@ public class WarehouseService {
         result.put("factoryName", str(one("SELECT factory_name FROM metal_factory WHERE factory_id=?", row.get("factory_id")).get("factory_name")));
         if (key.equals("warehouse-order")) {
             if (row.get("batch_id") != null) {
-                var batchInfo = one("SELECT batch_no,status,version,planned_quantity,completed_quantity FROM metal_process_batch WHERE batch_id=?", row.get("batch_id"));
+                var batchInfo = one("SELECT batch_no,status,version,planned_quantity,completed_quantity,completion_policy FROM metal_process_batch WHERE batch_id=?", row.get("batch_id"));
                 result.put("batchNo", batchInfo.get("batch_no"));
+                result.put("completionPolicy", batchInfo.get("completion_policy"));
                 result.put("batchStatus", batchInfo.get("status"));
                 result.put("batchVersion", batchInfo.get("version"));
                 result.put("plannedQuantity", batchInfo.get("planned_quantity"));
@@ -246,6 +249,8 @@ public class WarehouseService {
             result.put("processName", str(one("SELECT process_name FROM metal_process WHERE process_id=?", row.get("process_id")).get("process_name")));
         }
         if (key.equals("inventory")) {
+            if("SEMI".equals(row.get("category")))result.putAll(semi.inventoryBalance(row));
+            if("RAW".equals(row.get("category")))result.putAll(clean(new ProcessRawReturnService(jdbc,scope).provenance(id)));
             result.put("businessReferenced", !rows("SELECT l.line_id FROM metal_warehouse_order_line l JOIN metal_warehouse_order o ON o.order_id=l.order_id WHERE l.inventory_id=? AND (o.type NOT IN ('OPENING','ADJUST','RAW_IN','FINISHED_IN','SEMI_IN') OR o.batch_id IS NOT NULL) LIMIT 1", id).isEmpty());
             result.put("warehouseName", str(one("SELECT name FROM metal_warehouse WHERE warehouse_id=?", row.get("warehouse_id")).get("name")));
             result.put("ledger", cleaned(rows("SELECT l.*,l.ledger_id id,o.order_no,CASE WHEN o.type<>'ADJUST' THEN NULL WHEN l.reversal_of IS NOT NULL THEN CASE WHEN NULLIF(TRIM(o.reason),'') IS NOT NULL THEN CONCAT('冲销：',o.reason) ELSE NULL END WHEN NULLIF(TRIM(d.remark),'') IS NOT NULL THEN d.remark WHEN o.status='POSTED' AND NULLIF(TRIM(o.reason),'') IS NOT NULL THEN o.reason ELSE NULL END adjustment_reason,(CASE WHEN l.reversal_of IS NULL THEN 1 ELSE -1 END)*(CASE WHEN o.kind='OUT' THEN -1 ELSE 1 END)*d.gross_weight delta_gross_weight,(CASE WHEN l.reversal_of IS NULL THEN 1 ELSE -1 END)*(CASE WHEN o.kind='OUT' THEN -1 ELSE 1 END)*d.impurity delta_impurity FROM metal_stock_ledger l JOIN metal_warehouse_order o ON o.order_id=l.order_id LEFT JOIN metal_warehouse_order_line d ON d.line_id=l.line_id WHERE l.inventory_id=? ORDER BY l.ledger_id", id)));
@@ -435,10 +440,10 @@ public class WarehouseService {
         var s = step(input.itemId(), input.processId());
         if (!input.workOrderId().equals(number(s.get("work_order_id")))) throw fail("产品明细不属于所选工单");
         int seq = number(s.get("sequence_no")).intValue();
-        long max = seq == 1 ? number(s.get("item_quantity")) : sumQuantity(input.itemId(), seq - 1, "SETTLED");
+        long max = number(s.get("item_quantity")) - semi.credit(input.itemId(), seq);
         long used = sumQuantity(input.itemId(), seq, "SETTLED") + sumQuantity(input.itemId(), seq, "OPEN");
         if (input.plannedQuantity() > max - used) throw fail("加工数量超过工单或前工序可用数量");
-        long saved = insert("INSERT INTO metal_process_batch(request_id,request_hash,request_actor,factory_id,work_order_id,item_id,process_id,sequence_no,planned_quantity) VALUES(?,?,?,?,?,?,?,?,?)", input.requestId(), hash, SecurityUtils.getUserId(), w.get("factory_id"), input.workOrderId(), input.itemId(), input.processId(), seq, input.plannedQuantity());
+        long saved = insert("INSERT INTO metal_process_batch(request_id,request_hash,request_actor,factory_id,work_order_id,item_id,process_id,sequence_no,planned_quantity,completion_policy) VALUES(?,?,?,?,?,?,?,?,?,?)", input.requestId(), hash, SecurityUtils.getUserId(), w.get("factory_id"), input.workOrderId(), input.itemId(), input.processId(), seq, input.plannedQuantity(), BatchCompletionRules.POLICY);
         var product = JSON.parseObject(str(s.get("product_snapshot")));
         LocalDateTime stamp = LocalDateTime.now(ZoneId.of("Asia/Shanghai"));
         String no;
@@ -489,7 +494,9 @@ public class WarehouseService {
             case "RAW_IN" -> new Type("IN", "RAW", 1);
             case "FINISHED_IN" -> new Type("IN", "FINISHED", 1);
             case "SEMI_IN" -> new Type("IN", "SEMI", 1);
+            case "PROCESS_RAW_RETURN" -> new Type("RET", "RAW", 1);
             case "RAW_RETURN" -> new Type("RET", "RAW", 1);
+            case "SEMI_RETURN" -> new Type("RET", "SEMI", 1);
             case "PRODUCT_RETURN" -> new Type("RET", "FINISHED", 1);
             case "OPENING", "ADJUST" -> new Type("ADJ", null, 1);
             default -> throw fail("单据类型无效");
@@ -542,7 +549,7 @@ public class WarehouseService {
         if (open.isEmpty()) {
             if (!x.type().equals("PRODUCTION_OUT")) throw fail("请先生产领料，系统将自动生成批次号");
             int seq = number(s.get("sequence_no")).intValue();
-            long available = (seq == 1 ? number(s.get("item_quantity")) : sumQuantity(x.itemId(), seq - 1, "SETTLED")) - sumQuantity(x.itemId(), seq, "SETTLED");
+            long available = number(s.get("item_quantity")) - semi.credit(x.itemId(), seq) - sumQuantity(x.itemId(), seq, "SETTLED");
             if (available <= 0) throw fail("当前工序没有可加工数量，请先完成前道工序");
             id = Long.valueOf(createBatch(new Batch(UUID.randomUUID().toString(), x.workOrderId(), x.itemId(), x.processId(), (int) available)));
         } else id = number(open.get(0).get("batch_id"));
@@ -551,12 +558,23 @@ public class WarehouseService {
     }
 
     private String postInternal(Order input, boolean internal) {
+        return postInternal(input, internal, false);
+    }
+
+    // Package-private: only the transactional return confirmation orchestrator uses this path.
+    String postCompletionDocument(Order input) { return postInternal(input, false, true); }
+
+    private String postInternal(Order input, boolean internal, boolean completion) {
         scope.lockFactories(List.of(input.factoryId()));
         Type t = type(input.type());
         String reservedNo = reserveOrderNumber(input.requestId(), t.kind());
         String hash = fingerprint(input), existing = duplicate("metal_warehouse_order", "order_id", input.requestId(), hash);
         if (existing != null) return existing;
-        if (input.itemId() != null || input.processId() != null) input = autoBind(input);
+        if (ProcessRawReturnService.TYPE.equals(input.type())) {
+            var ctx = new ProcessRawReturnService(jdbc,scope).context(input.factoryId(),input.workOrderId(),input.itemId(),input.processId(),input.batchId());
+            if(input.batchId()==null||input.batchVersion()==null||!input.batchId().toString().equals(ctx.get("batchId"))||input.batchVersion().longValue()!=number(ctx.get("version")))throw new ServiceException("加工余料批次版本已变化，请刷新后重试",409);
+            if(input.reason()==null||input.reason().isBlank()||input.reason().length()>500)throw fail("请填写1至500字加工余料还库原因");
+        } else if (input.batchId() == null && (input.itemId() != null || input.processId() != null)) input = autoBind(input);
         lockPostingSources(input);
         var h = warehouse(input.warehouseId(), input.factoryId(), true);
         List<Long> operators = input.operatorIds() == null ? (input.operatorId() == null ? List.of() : List.of(input.operatorId())) : input.operatorIds();
@@ -573,14 +591,25 @@ public class WarehouseService {
             batch = record("process-batch", input.batchId(), true);
             if (!input.factoryId().equals(number(batch.get("factory_id")))) throw fail("批次不属于所选工厂");
             version(batch, input.batchVersion());
+            if(input.itemId()!=null&&!input.itemId().equals(number(batch.get("item_id")))||input.processId()!=null&&!input.processId().equals(number(batch.get("process_id"))))throw fail("产品明细、工序和指定批次不一致");
             if (!"OPEN".equals(batch.get("status"))) throw fail("批次已结算或已冲销");
-            if (!Set.of("PRODUCTION_OUT", "RAW_RETURN", "FINISHED_IN", "SEMI_IN").contains(input.type()))
+            if (BatchCompletionRules.POLICY.equals(batch.get("completion_policy"))) {
+                if (Set.of("SEMI_IN","FINISHED_IN").contains(input.type())) {
+                    long count = jdbc.queryForObject("SELECT COUNT(*) FROM metal_warehouse_order WHERE batch_id=? AND status='POSTED' AND type IN ('SEMI_IN','FINISHED_IN')",Long.class,input.batchId());
+                    BatchCompletionRules.requireOutput(count);
+                }
+                if (Boolean.TRUE.equals(input.settle())) throw fail("请先登记产出，再确认全部还料或无余料；不能直接结算");
+                if (Set.of("RAW_RETURN","SEMI_RETURN","PROCESS_RAW_RETURN").contains(input.type()) && !completion)
+                    throw fail("本批次须从全部还料确认入口一次提交全部还料");
+            }
+
+            if (!Set.of("PRODUCTION_OUT", "RAW_RETURN", "SEMI_RETURN", "PROCESS_RAW_RETURN", "FINISHED_IN", "SEMI_IN").contains(input.type()))
                 throw fail("该单据类型不能参与生产批次");
             w = workOrder(number(batch.get("work_order_id")));
             s = step(number(batch.get("item_id")), number(batch.get("process_id")));
             if (input.workOrderId() != null && !input.workOrderId().equals(number(batch.get("work_order_id"))))
                 throw fail("生产工单和批次不一致");
-        } else if (Set.of("PRODUCTION_OUT", "RAW_RETURN").contains(input.type()) || Boolean.TRUE.equals(input.settle()))
+        } else if (Set.of("PRODUCTION_OUT", "RAW_RETURN", "SEMI_RETURN", "PROCESS_RAW_RETURN").contains(input.type()) || Boolean.TRUE.equals(input.settle()))
             throw fail("生产领料、回料和结算必须关联加工批次");
         if (input.workOrderId() != null && batch == null && Set.of("FINISHED_IN", "SEMI_IN").contains(input.type()))
             throw fail("生产产出须关联加工批次；外部入库请不选择生产工单");
@@ -592,7 +621,8 @@ public class WarehouseService {
         Long workId = batch == null ? input.workOrderId() : number(batch.get("work_order_id"));
         long docId = insert("INSERT INTO metal_warehouse_order(order_no,request_id,request_hash,request_actor,factory_id,warehouse_id,kind,type,order_date,work_order_id,batch_id,operator_id,keeper_id,recipient_id,inspector_id,reviewer_id,operator_name,keeper_name,recipient_name,inspector_name,reviewer_name,warehouse_name,reason) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", no, input.requestId(), hash, SecurityUtils.getUserId(), input.factoryId(), input.warehouseId(), t.kind(), input.type(), input.orderDate(), workId, input.batchId(), operators.isEmpty() ? null : operators.get(0), input.keeperId(), input.recipientId(), input.inspectorId(), input.reviewerId(), op, keeper, recipient, inspector, reviewer, h.get("name"), input.reason());
         jdbc.update("UPDATE metal_warehouse_order SET operator_ids=? WHERE order_id=?", JSON.toJSONString(operators.stream().map(String::valueOf).toList()), docId);
-        if (input.type().equals("RAW_RETURN")) {
+        if (input.type().equals("SEMI_RETURN") && (input.reason()==null||input.reason().isBlank())) throw fail("请填写半成品还库原因");
+        if (Set.of("RAW_RETURN", "SEMI_RETURN").contains(input.type())) {
             var sourceIds = input.lines().stream().map(Line::sourceLineId).filter(Objects::nonNull).toList();
             if (!sourceIds.isEmpty()) {
                 String placeholders = String.join(",", Collections.nCopies(sourceIds.size(), "?"));
@@ -605,7 +635,14 @@ public class WarehouseService {
             index++;
             postLine(input, line, t, docId, no, index, batch, s);
         }
-        if (batch != null && Set.of("SEMI_IN", "FINISHED_IN", "RAW_RETURN").contains(input.type()))
+        if (batch != null) {
+            semi.checkCapacity(number(batch.get("item_id")));
+            if(input.type().equals("SEMI_RETURN")){
+                long produced=jdbc.queryForObject("SELECT COALESCE(SUM(l.quantity),0) FROM metal_warehouse_order o JOIN metal_warehouse_order_line l ON l.order_id=o.order_id WHERE o.batch_id=? AND o.status='POSTED' AND o.type IN ('SEMI_IN','FINISHED_IN')",Long.class,input.batchId());
+                if(produced>0)validateDownstreamOutput(batch,produced);
+            }
+        }
+        if (batch != null && Set.of("SEMI_IN", "FINISHED_IN", "RAW_RETURN", "SEMI_RETURN", "PROCESS_RAW_RETURN").contains(input.type()))
             validateBatchWeight(input.batchId());
         if (batch != null) {
             jdbc.update("UPDATE metal_process_batch SET version=version+1 WHERE batch_id=?", input.batchId());
@@ -613,7 +650,7 @@ public class WarehouseService {
                 jdbc.update("UPDATE metal_work_order SET status='IN_PROGRESS',version=version+1,update_time=NOW() WHERE work_order_id=?", workId);
             if (Boolean.TRUE.equals(input.settle())) {
                 permit("metal:process-batch:settle");
-                if (!Set.of("RAW_RETURN", "FINISHED_IN", "SEMI_IN").contains(input.type()))
+                if (!Set.of("RAW_RETURN", "SEMI_RETURN", "PROCESS_RAW_RETURN", "FINISHED_IN", "SEMI_IN").contains(input.type()))
                     throw fail("只有回料或产出单据可结算");
                 settleInternal(record("process-batch", input.batchId(), true), input.completedQuantity());
             }
@@ -628,7 +665,7 @@ public class WarehouseService {
             throw fail("工序已删除");
     }
 
-    private void lockPostingSources(Order input) {
+    void lockPostingSources(Order input) {
         var refs = new TreeMap<String, Map.Entry<String, Long>>();
         for (Line line : input.lines()) {
             String category = line.category();
@@ -667,6 +704,12 @@ public class WarehouseService {
     }
 
     private void postLine(Order input, Line line, Type t, long docId, String no, int sequence, Map<String, Object> batch, Map<String, Object> step) {
+        Map<String,Object> recoveryContext = null;
+        if(ProcessRawReturnService.TYPE.equals(input.type())) {
+            recoveryContext=new ProcessRawReturnService(jdbc,scope).context(input.factoryId(),input.workOrderId(),input.itemId(),input.processId(),input.batchId());
+            ProcessRawReturnService.validateLine(line,(String)recoveryContext.get("customer"));
+            ProcessRawReturnService.require(new BigDecimal(recoveryContext.get("remainingWeight").toString()),line.netWeight());
+        }
         BigDecimal weight = line.netWeight();
         long qty = line.quantity() == null ? 0 : line.quantity();
         boolean adjust = input.type().equals("ADJUST");
@@ -687,14 +730,16 @@ public class WarehouseService {
             if (!input.factoryId().equals(number(origin.get("source_factory"))) || !"POSTED".equals(origin.get("source_status")))
                 throw fail("来源出库单无效");
             boolean raw = input.type().equals("RAW_RETURN");
+            if (input.type().equals("SEMI_RETURN") && (!"PRODUCTION_OUT".equals(origin.get("source_type")) || !Objects.equals(input.batchId(), number(origin.get("source_batch"))) || !"SEMI".equals(origin.get("category")))) throw fail("半成品还库须关联当前批次有效半成品领料行");
             if (raw && (!"PRODUCTION_OUT".equals(origin.get("source_type")) || !Objects.equals(input.batchId(), number(origin.get("source_batch"))) || !"RAW".equals(origin.get("category"))))
                 throw fail("原料还库须关联同批次原料领料行");
             if (input.type().equals("PRODUCT_RETURN") && !"PRODUCT_OUT".equals(origin.get("source_type")))
                 throw fail("成品退还须关联产品出库行");
-            if (!Set.of("RAW_RETURN", "PRODUCT_RETURN").contains(input.type())) throw fail("该单据不能关联退还来源");
+            if (!Set.of("RAW_RETURN", "SEMI_RETURN", "PRODUCT_RETURN").contains(input.type())) throw fail("该单据不能关联退还来源");
             var sum = one("SELECT COALESCE(SUM(l.net_weight),0) weight,COALESCE(SUM(l.quantity),0) quantity FROM metal_warehouse_order_line l JOIN metal_warehouse_order o ON o.order_id=l.order_id WHERE l.source_line_id=? AND o.status='POSTED'", line.sourceLineId());
             if (decimal(sum.get("weight")).add(weight).compareTo(decimal(origin.get("net_weight"))) > 0 || number(sum.get("quantity")) + qty > number(origin.get("quantity")))
                 throw fail("累计退还超过原出库数量或净重");
+            if(input.type().equals("SEMI_RETURN"))SemiFlowRules.release(number(origin.get("quantity"))-number(sum.get("quantity")),decimal(origin.get("net_weight")).subtract(decimal(sum.get("weight"))),qty,weight);
             if (raw) {
                 var allowance = RawReturnAllowance.load(jdbc, input.batchId());
                 RawReturnAllowance.require(decimal(origin.get("net_weight")).subtract(decimal(sum.get("weight"))), allowance.remaining(), weight, allowance.status());
@@ -702,7 +747,7 @@ public class WarehouseService {
             category = str(origin.get("category"));
             reference = number(origin.get("reference_id"));
             batchNo = str(origin.get("batch_no"));
-        } else if (Set.of("RAW_RETURN", "PRODUCT_RETURN").contains(input.type())) throw fail("请选择原出库明细");
+        } else if (Set.of("RAW_RETURN", "SEMI_RETURN", "PRODUCT_RETURN").contains(input.type())) throw fail("请选择原出库明细");
         if (t.sign() < 0 || adjust) {
             if (line.inventoryId() == null) throw fail("请选择库存记录");
             stock = record("inventory", line.inventoryId(), true);
@@ -713,6 +758,8 @@ public class WarehouseService {
             batchNo = str(stock.get("batch_no"));
         }
         if (stock != null && (t.sign() < 0 || adjust)) validateOwnership(stock);
+        if(adjust && stock!=null)semi.guardStock(number(stock.get("inventory_id")));
+        if(stock!=null && "RAW".equals(category) && (t.sign()<0||adjust)) new ProcessRawReturnService(jdbc,scope).guardStock(number(stock.get("inventory_id")),batch==null?null:str(workOrder(number(batch.get("work_order_id"))).get("customer")),input.type().equals("PRODUCTION_OUT"),adjust);
         if (category == null || reference == null) throw fail("请选择物料、产品或库存来源");
         if (t.category() != null && !t.category().equals(category)) throw fail("物料分类与单据类型不匹配");
         if ("RAW".equals(category)) {
@@ -725,14 +772,10 @@ public class WarehouseService {
         }
         if (input.type().equals("PRODUCTION_OUT")) {
             if (!Set.of("RAW", "SEMI").contains(category)) throw fail("生产领料仅支持原料或前工序半成品");
-            if ("SEMI".equals(category)) {
-                Long upstream = number(stock.get("origin_batch_id"));
-                if (upstream == null) throw fail("半成品须来自前工序生产批次");
-                var prev = record("process-batch", upstream, true);
-                if (!Objects.equals(reference, number(step.get("product_id"))) || !Objects.equals(prev.get("work_order_id"), batch.get("work_order_id")) || !Objects.equals(prev.get("factory_id"), batch.get("factory_id")) || !"SETTLED".equals(prev.get("status")) || !prev.get("item_id").equals(batch.get("item_id")) || number(prev.get("sequence_no")) + 1 != number(batch.get("sequence_no")))
-                    throw fail("半成品必须来自同一产品明细的前一道已结算工序");
-            }
-        }
+            if ("SEMI".equals(category)) semi.validateSource(stock,batch,line.releaseId(),line.skipPermitId(),line.skipPermitVersion());
+            else if(line.releaseId()!=null||line.skipPermitId()!=null||line.skipPermitVersion()!=null) throw fail("原料不能关联释放记录");
+        } else if(stock!=null && t.sign()<0) semi.guardStock(number(stock.get("inventory_id")));
+
         if (batch != null && Set.of("FINISHED_IN", "SEMI_IN").contains(input.type())) {
             if (!reference.equals(number(step.get("product_id")))) throw fail("产出产品必须属于批次产品明细");
             long last = jdbc.queryForObject("SELECT MAX(sequence_no) FROM metal_work_order_step WHERE item_id=?", Long.class, batch.get("item_id"));
@@ -752,13 +795,15 @@ public class WarehouseService {
         else if (origin != null) organization = normalizeOrganization(str(origin.get("organization")));
         else if (stock != null) organization = normalizeOrganization(str(stock.get("organization")));
 
+        if(recoveryContext!=null){organization=(String)recoveryContext.get("customer");batchNo="REC-"+no+"-"+sequence;}
         var source = source(category, reference);
+        if(batch!=null && Set.of("SEMI_IN","FINISHED_IN").contains(input.type())){source=new LinkedHashMap<>(source);var snapshot=JSON.parseObject(str(step.get("product_snapshot")));source.put("code",snapshot.getString("code"));source.put("name",snapshot.getString("name"));source.put("specification",snapshot.getString("specification"));}
         if (batchNo == null || batchNo.isBlank())
             batchNo = "RAW".equals(category) ? "" : input.orderDate().toString().replace("-", "") + "-" + no + "-" + sequence;
         Long expectedOrigin = batch != null && !"RAW".equals(category) ? input.batchId() : null;
         if (origin != null && !"RAW".equals(category))
             expectedOrigin = number(one("SELECT origin_batch_id FROM metal_inventory WHERE inventory_id=?", origin.get("inventory_id")).get("origin_batch_id"));
-        if (origin != null && "RAW".equals(category)) {
+        if (origin != null && ("RAW".equals(category) || input.type().equals("SEMI_RETURN"))) {
             stock = record("inventory", number(origin.get("inventory_id")), true);
             if (!input.warehouseId().equals(number(stock.get("warehouse_id"))))
                 throw fail("原料还库须退回原出库库存所在仓库");
@@ -766,12 +811,14 @@ public class WarehouseService {
         }
         if (stock == null) {
             var existing = "RAW".equals(category) ? rows("SELECT *,inventory_id id FROM metal_inventory WHERE factory_id=? AND warehouse_id=? AND category=? AND reference_id=? AND batch_no=? AND raw_organization=? AND ownership_status='NORMAL' FOR UPDATE", input.factoryId(), input.warehouseId(), category, reference, batchNo, organization) : rows("SELECT *,inventory_id id FROM metal_inventory WHERE factory_id=? AND warehouse_id=? AND category=? AND reference_id=? AND batch_no=? FOR UPDATE", input.factoryId(), input.warehouseId(), category, reference, batchNo);
+            if(recoveryContext!=null&&!existing.isEmpty())throw fail("加工余料库存批号冲突，请重新创建单据；不能合并已有库存");
             if (existing.isEmpty()) {
                 Long originBatch = expectedOrigin;
                 long stockId = insert("INSERT INTO metal_inventory(factory_id,warehouse_id,category,reference_id,batch_no,code,name,specification,purity,organization,origin_batch_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)", input.factoryId(), input.warehouseId(), category, reference, batchNo, source.get("code"), source.get("name"), source.get("specification"), line.purity(), organization, originBatch);
                 stock = record("inventory", stockId, true);
             } else {
                 stock = existing.get(0);
+                if("RAW".equals(category))new ProcessRawReturnService(jdbc,scope).guardAppend(number(stock.get("inventory_id")));
                 validateProductStockIdentity(category, str(stock.get("organization")), organization, number(stock.get("origin_batch_id")), expectedOrigin);
                 if (!"0".equals(stock.get("del_flag"))) {
                     if (decimal(stock.get("net_weight")).signum() != 0 || number(stock.get("quantity")) != 0 || !rows("SELECT l.line_id FROM metal_warehouse_order_line l JOIN metal_warehouse_order o ON o.order_id=l.order_id WHERE l.inventory_id=? AND (o.type NOT IN ('OPENING','ADJUST','RAW_IN','FINISHED_IN','SEMI_IN') OR o.batch_id IS NOT NULL) LIMIT 1", stock.get("inventory_id")).isEmpty())
@@ -783,6 +830,9 @@ public class WarehouseService {
         }
         Long stockId = number(stock.get("inventory_id"));
         long lineId = insert("INSERT INTO metal_warehouse_order_line(order_id,inventory_id,source_line_id,sequence_no,category,reference_id,code,name,specification,batch_no,net_weight,quantity,gross_weight,impurity,purity,organization,purpose,remark,receiving_organization) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", docId, stockId, line.sourceLineId(), sequence, category, reference, stock.get("code"), stock.get("name"), stock.get("specification"), batchNo, weight, qty, line.grossWeight(), line.impurity(), line.purity(), organization, line.purpose(), line.remark(), line.receivingOrganization());
+        if(recoveryContext!=null)new ProcessRawReturnService(jdbc,scope).register(lineId,stockId,input.batchId(),recoveryContext);
+        if(input.type().equals("PRODUCTION_OUT")&&"SEMI".equals(category))new SemiSourcePolicyService(jdbc,scope).bind(stock,batch,line.skipPermitId(),line.skipPermitVersion(),lineId);
+        if (input.type().equals("PRODUCTION_OUT") && line.releaseId()!=null) semi.reserveUse(line.releaseId(),lineId,stock,batch,qty,weight);
         balance(stock, weight.multiply(BigDecimal.valueOf(t.sign())), qty * t.sign(), docId, lineId, null);
     }
 
@@ -807,7 +857,7 @@ public class WarehouseService {
     }
 
     private void validateBatchWeight(Long batchId) {
-        var totals = one("SELECT COALESCE(SUM(CASE WHEN o.type='PRODUCTION_OUT' THEN l.net_weight ELSE 0 END),0) issued,COALESCE(SUM(CASE WHEN o.type IN ('RAW_RETURN','SEMI_IN','FINISHED_IN') THEN l.net_weight ELSE 0 END),0) returned FROM metal_warehouse_order o JOIN metal_warehouse_order_line l ON l.order_id=o.order_id WHERE o.batch_id=? AND o.status='POSTED'", batchId);
+        var totals = one("SELECT COALESCE(SUM(CASE WHEN o.type='PRODUCTION_OUT' THEN l.net_weight ELSE 0 END),0) issued,COALESCE(SUM(CASE WHEN o.type IN ('RAW_RETURN','SEMI_RETURN','PROCESS_RAW_RETURN','SEMI_IN','FINISHED_IN') THEN l.net_weight ELSE 0 END),0) returned FROM metal_warehouse_order o JOIN metal_warehouse_order_line l ON l.order_id=o.order_id WHERE o.batch_id=? AND o.status='POSTED'", batchId);
         validateProductionWeight(decimal(totals.get("issued")), decimal(totals.get("returned")));
     }
 
@@ -825,8 +875,7 @@ public class WarehouseService {
     }
 
     static long eligibleSemiQuantity(JdbcTemplate jdbc, Map<String, Object> batch) {
-        Long issued = jdbc.queryForObject("SELECT COALESCE(SUM(l.quantity),0) FROM metal_warehouse_order o JOIN metal_warehouse_order_line l ON l.order_id=o.order_id JOIN metal_inventory i ON i.inventory_id=l.inventory_id JOIN metal_process_batch p ON p.batch_id=i.origin_batch_id WHERE o.batch_id=? AND o.status='POSTED' AND o.type='PRODUCTION_OUT' AND l.category='SEMI' AND i.category='SEMI' AND p.status='SETTLED' AND p.item_id=? AND p.sequence_no=? AND p.work_order_id=? AND p.factory_id=o.factory_id AND l.reference_id=i.reference_id", Long.class, batch.get("batch_id"), batch.get("item_id"), number(batch.get("sequence_no")) - 1, batch.get("work_order_id"));
-        return issued == null ? 0 : issued;
+        return SemiFlowService.netIssued(jdbc, number(batch.get("batch_id")));
     }
 
     private void validateDownstreamOutput(Map<String, Object> batch, long output) {
@@ -880,6 +929,7 @@ public class WarehouseService {
     public String adjustStock(Long id, Adjustment input) {
         permit("metal:inventory:adjust");
         var stock = lock("inventory", id);
+        semi.guardStock(id);
         uuid(input.requestId());
         String hash = fingerprint(input.toString() + ":" + id);
         String prior = creation("inventory-adjust", input.requestId(), hash);
@@ -906,7 +956,16 @@ public class WarehouseService {
         lockBatchSources(initial);
         var batch = lock("process-batch", id);
         version(batch, input.version());
+        if (BatchCompletionRules.POLICY.equals(batch.get("completion_policy"))) throw fail("请使用全部还料或无余料确认完成批次结算");
         settleInternal(batch, input.completedQuantity());
+    }
+
+    void settleConfirmed(Long batchId, int completed) {
+        permit("metal:process-batch:settle");
+        var batch=record("process-batch",batchId,true);
+        if (!BatchCompletionRules.POLICY.equals(batch.get("completion_policy"))) throw fail("历史批次请使用原结算流程");
+        if (jdbc.queryForObject("SELECT COUNT(*) FROM metal_batch_return_confirmation WHERE batch_id=? AND status='ACTIVE'",Long.class,batchId)!=1L) throw fail("请先确认全部还料或无余料");
+        settleInternal(batch,completed);
     }
 
     private void settleInternal(Map<String, Object> batch, Integer completed) {
@@ -914,7 +973,7 @@ public class WarehouseService {
         if (completed == null || completed < 1 || completed > number(batch.get("planned_quantity")))
             throw fail("完成数量须为1至批次加工数量");
         Long batchId = number(batch.get("batch_id"));
-        var totals = one("SELECT COALESCE(SUM(CASE WHEN o.type='PRODUCTION_OUT' THEN l.net_weight ELSE 0 END),0) issued,COALESCE(SUM(CASE WHEN o.type IN ('RAW_RETURN','SEMI_IN','FINISHED_IN') THEN l.net_weight ELSE 0 END),0) returned,COALESCE(SUM(CASE WHEN o.type IN ('SEMI_IN','FINISHED_IN') THEN l.quantity ELSE 0 END),0) output_qty FROM metal_warehouse_order o JOIN metal_warehouse_order_line l ON l.order_id=o.order_id WHERE o.batch_id=? AND o.status='POSTED'", batchId);
+        var totals = one("SELECT COALESCE(SUM(CASE WHEN o.type='PRODUCTION_OUT' THEN l.net_weight ELSE 0 END),0) issued,COALESCE(SUM(CASE WHEN o.type IN ('RAW_RETURN','SEMI_RETURN','PROCESS_RAW_RETURN','SEMI_IN','FINISHED_IN') THEN l.net_weight ELSE 0 END),0) returned,COALESCE(SUM(CASE WHEN o.type IN ('SEMI_IN','FINISHED_IN') THEN l.quantity ELSE 0 END),0) output_qty FROM metal_warehouse_order o JOIN metal_warehouse_order_line l ON l.order_id=o.order_id WHERE o.batch_id=? AND o.status='POSTED'", batchId);
         validateDownstreamOutput(batch, completed.longValue());
         if (number(totals.get("output_qty")) != completed.longValue())
             throw fail("半成品或成品产出数量合计必须等于实际完成数量");
@@ -935,16 +994,20 @@ public class WarehouseService {
             history(warning, "GENERATED", rule == null ? "按工单工序理论损耗快照判定" : "按配置规则生成");
         }
         jdbc.update("UPDATE metal_process_batch SET status='SETTLED',completed_quantity=?,version=version+1 WHERE batch_id=?", completed, batchId);
+        semi.checkCapacity(number(batch.get("item_id")));
         refreshOrder(number(batch.get("work_order_id")));
     }
 
     private void refreshOrder(Long id) {
-        long incomplete = jdbc.queryForObject("SELECT COUNT(*) FROM metal_work_order_step s JOIN metal_work_order_item i ON i.item_id=s.item_id WHERE i.work_order_id=? AND i.quantity<>(SELECT COALESCE(SUM(b.completed_quantity),0) FROM metal_process_batch b WHERE b.item_id=i.item_id AND b.process_id=s.process_id AND b.status='SETTLED')", Long.class, id);
+        if ("CLOSED_PARTIAL".equals(one("SELECT status FROM metal_work_order WHERE work_order_id=?",id).get("status"))) return;
+        long incomplete=0;
+        for(var step:rows("SELECT s.item_id,s.sequence_no,i.quantity FROM metal_work_order_step s JOIN metal_work_order_item i ON i.item_id=s.item_id WHERE i.work_order_id=?",id)) if(sumQuantity(number(step.get("item_id")),number(step.get("sequence_no")).intValue(),"SETTLED")+semi.credit(number(step.get("item_id")),number(step.get("sequence_no")))!=number(step.get("quantity"))) incomplete++;
+
         long open = jdbc.queryForObject("SELECT COUNT(*) FROM metal_process_batch WHERE work_order_id=? AND status='OPEN'", Long.class, id);
         long issued = jdbc.queryForObject("SELECT COUNT(*) FROM metal_warehouse_order WHERE work_order_id=? AND type='PRODUCTION_OUT' AND status='POSTED'", Long.class, id);
         boolean newFlow = jdbc.queryForObject("SELECT COUNT(*) FROM metal_work_order_review WHERE work_order_id=? AND action='CREATE'", Long.class, id) > 0;
         String status = incomplete == 0 && open == 0 ? "COMPLETED" : issued > 0 ? "IN_PROGRESS" : newFlow ? "WAITING_MATERIAL" : "APPROVED";
-        jdbc.update("UPDATE metal_work_order SET status=?,version=version+1,update_time=NOW() WHERE work_order_id=?", status, id);
+        WorkOrderCompletionService.transition(jdbc,id,status,SecurityUtils.getUserId());
     }
 
     /**
@@ -989,9 +1052,18 @@ public class WarehouseService {
     public void reverseOrder(Long id, Action input) {
         var doc = lock("warehouse-order", id);
         version(doc, input.version());
-        if (doc.get("batch_id") != null) throw fail("生产单据请整体冲销关联加工批次");
+        if (doc.get("batch_id") != null) {
+            var batch=record("process-batch",number(doc.get("batch_id")),true);
+            boolean output=BatchCompletionRules.POLICY.equals(batch.get("completion_policy"))&&Set.of("SEMI_IN","FINISHED_IN").contains(doc.get("type"))&&"OPEN".equals(batch.get("status"))&&jdbc.queryForObject("SELECT COUNT(*) FROM metal_batch_return_confirmation WHERE batch_id=? AND status='ACTIVE'",Long.class,doc.get("batch_id"))==0;
+            if(!output){
+                if(!ProcessRawReturnService.TYPE.equals(doc.get("type")))throw fail("生产单据请整体冲销关联加工批次");
+                if(!"OPEN".equals(batch.get("status")))throw fail("已结算加工余料请整体冲销关联加工批次");
+                if(BatchCompletionRules.POLICY.equals(batch.get("completion_policy")))throw fail("本批次全部还料须整体冲销关联加工批次");
+            }
+        }
         if (input.reason() == null || input.reason().isBlank()) throw fail("请填写冲销原因");
         reverseDocuments(List.of(doc), input.reason());
+        if(doc.get("batch_id")!=null)jdbc.update("UPDATE metal_process_batch SET version=version+1 WHERE batch_id=?",doc.get("batch_id"));
     }
 
     /**
@@ -1001,14 +1073,14 @@ public class WarehouseService {
         var batch = lock("process-batch", id);
         version(batch, input.version());
         if ("VOID".equals(batch.get("status"))) throw fail("批次已冲销");
+        if("COMPLETED".equals(one("SELECT status FROM metal_work_order WHERE work_order_id=?",batch.get("work_order_id")).get("status")))semi.guardWork(number(batch.get("work_order_id")));
+        semi.guardBatch(id);
+        if ("CLOSED_PARTIAL".equals(one("SELECT status FROM metal_work_order WHERE work_order_id=?",batch.get("work_order_id")).get("status"))) throw fail("请先撤销部分关闭再冲销批次");
         if (input.reason() == null || input.reason().isBlank()) throw fail("请填写冲销原因");
-        int seq = number(batch.get("sequence_no")).intValue();
-        long after = sumQuantity(number(batch.get("item_id")), seq + 1, "SETTLED") + sumQuantity(number(batch.get("item_id")), seq + 1, "OPEN");
-        long remaining = sumQuantity(number(batch.get("item_id")), seq, "SETTLED") - ("SETTLED".equals(batch.get("status")) ? number(batch.get("completed_quantity")) : 0);
-        if (after > remaining) throw fail("批次存在后续工序数量引用，不能冲销");
         var docs = rows("SELECT *,order_id id FROM metal_warehouse_order WHERE batch_id=? AND status='POSTED' ORDER BY order_id DESC FOR UPDATE", id);
         reverseDocuments(docs, input.reason());
         jdbc.update("UPDATE metal_process_batch SET status='VOID',version=version+1 WHERE batch_id=?", id);
+        jdbc.update("UPDATE metal_batch_return_confirmation SET status='VOID',version=version+1 WHERE batch_id=?",id);
         jdbc.update("UPDATE metal_work_report SET voided=TRUE WHERE batch_id=?", id);
         for (var warning : rows("SELECT w.warning_id FROM metal_warning_record w JOIN metal_work_report r ON r.report_id=w.report_id WHERE r.batch_id=? FOR UPDATE", id)) {
             jdbc.update("UPDATE metal_warning_record SET source_void=TRUE,version=version+1 WHERE warning_id=?", warning.get("warning_id"));
@@ -1021,9 +1093,20 @@ public class WarehouseService {
         Set<Long> ids = new HashSet<>();
         docs.forEach(d -> ids.add(number(d.get("order_id"))));
         if (docs.stream().anyMatch(d -> !"POSTED".equals(d.get("status")))) throw fail("单据已冲销");
+        // Releases carry no physical ledger. Check their relationships separately for ADJUST,
+        // without blocking legitimate production-batch reversals that restore released stock.
+        var adjustedSemis = new TreeSet<Long>();
+        for (var doc : docs) {
+            if (!"ADJUST".equals(doc.get("type"))) continue;
+            for (var stock : rows("SELECT DISTINCT i.inventory_id FROM metal_stock_ledger l JOIN metal_inventory i ON i.inventory_id=l.inventory_id JOIN metal_warehouse_order o ON o.order_id=l.order_id WHERE o.order_id=? AND o.type='ADJUST' AND i.category='SEMI' AND l.reversal_of IS NULL", doc.get("order_id")))
+                adjustedSemis.add(number(stock.get("inventory_id")));
+        }
+        for (Long stock : adjustedSemis) record("inventory", stock, true);
+        for (Long stock : adjustedSemis) semi.guardAdjustmentReversal(stock);
         Set<Long> originStocks = new HashSet<>();
         for (var doc : docs) {
             Long id = number(doc.get("order_id"));
+            if(ProcessRawReturnService.TYPE.equals(doc.get("type")))for(var recovered:rows("SELECT r.inventory_id FROM metal_process_raw_return_line r JOIN metal_warehouse_order_line l ON l.line_id=r.line_id WHERE l.order_id=?",id))originStocks.add(number(recovered.get("inventory_id")));
             for (var stock : rows("SELECT DISTINCT l.inventory_id FROM metal_warehouse_order_line l JOIN metal_inventory i ON i.inventory_id=l.inventory_id WHERE l.order_id=? AND (i.origin_batch_id IS NOT NULL AND ? IN ('SEMI_IN','FINISHED_IN') OR ?='OPENING')", id, doc.get("type"), doc.get("type")))
                 originStocks.add(number(stock.get("inventory_id")));
             for (var ref : rows("SELECT DISTINCT o.order_id FROM metal_warehouse_order_line x JOIN metal_warehouse_order o ON o.order_id=x.order_id JOIN metal_warehouse_order_line source ON source.line_id=x.source_line_id WHERE source.order_id=? AND o.status='POSTED'", id))
@@ -1105,20 +1188,42 @@ public class WarehouseService {
     }
 
     private List<Map<String, Object>> outLines(Long factoryId) {
-        var data = rows("SELECT l.line_id id,o.order_id,o.order_no,CONCAT(o.order_no,' / ',l.name) name,l.code,l.specification,l.organization,l.category,l.reference_id,l.net_weight,l.quantity,o.batch_id,o.type,l.inventory_id,l.batch_no,i.warehouse_id,l.net_weight-COALESCE(r.returned,0) remaining_weight,b.batch_status,b.issued_weight,b.output_weight,b.returned_weight FROM metal_warehouse_order_line l JOIN metal_warehouse_order o ON o.order_id=l.order_id LEFT JOIN metal_inventory i ON i.inventory_id=l.inventory_id LEFT JOIN (" + RawReturnAllowance.totalsSql(true) + ") b ON b.batch_id=o.batch_id LEFT JOIN (SELECT rl.source_line_id,SUM(rl.net_weight) returned FROM metal_warehouse_order_line rl JOIN metal_warehouse_order ro ON ro.order_id=rl.order_id WHERE ro.factory_id=? AND ro.status='POSTED' AND rl.source_line_id IS NOT NULL GROUP BY rl.source_line_id) r ON r.source_line_id=l.line_id WHERE o.factory_id=? AND o.kind='OUT' AND o.status='POSTED' ORDER BY l.line_id", factoryId, factoryId, factoryId);
+        var data = rows("SELECT l.line_id id,o.order_id,o.order_no,CONCAT(o.order_no,' / ',l.name) name,l.code,l.specification,l.organization,l.category,l.reference_id,l.net_weight,l.quantity,o.batch_id,o.type,l.inventory_id,l.batch_no,i.warehouse_id,sb.sequence_no origin_process_sequence,ss.process_name origin_process_name,sw.order_no origin_work_order_no,l.net_weight-COALESCE(r.returned,0) remaining_weight,b.batch_status,b.issued_weight,b.output_weight,b.returned_weight FROM metal_warehouse_order_line l JOIN metal_warehouse_order o ON o.order_id=l.order_id LEFT JOIN metal_inventory i ON i.inventory_id=l.inventory_id LEFT JOIN metal_process_batch sb ON sb.batch_id=i.origin_batch_id LEFT JOIN metal_work_order_step ss ON ss.item_id=sb.item_id AND ss.process_id=sb.process_id LEFT JOIN metal_work_order sw ON sw.work_order_id=sb.work_order_id LEFT JOIN (" + RawReturnAllowance.totalsSql(true) + ") b ON b.batch_id=o.batch_id LEFT JOIN (SELECT rl.source_line_id,SUM(rl.net_weight) returned FROM metal_warehouse_order_line rl JOIN metal_warehouse_order ro ON ro.order_id=rl.order_id WHERE ro.factory_id=? AND ro.status='POSTED' AND rl.source_line_id IS NOT NULL GROUP BY rl.source_line_id) r ON r.source_line_id=l.line_id WHERE o.factory_id=? AND o.kind='OUT' AND o.status='POSTED' ORDER BY l.line_id", factoryId, factoryId, factoryId);
         for (var row : data) {
-            if ("PRODUCTION_OUT".equals(row.get("type")) && "RAW".equals(row.get("category"))) {
+            if ("PRODUCTION_OUT".equals(row.get("type")) && Set.of("RAW","SEMI").contains(str(row.get("category")))) {
                 var available = RawReturnAllowance.remaining(row.get("issued_weight"), row.get("output_weight"), row.get("returned_weight"));
                 row.put("batch_remaining_weight", available);
                 row.put("returnable_weight", RawReturnAllowance.limit(decimal(row.get("remaining_weight")), available, row.get("batch_status")));
             }
-            if (!"PRODUCTION_OUT".equals(row.get("type")) || !"RAW".equals(row.get("category"))) row.remove("batch_status");
+            if (!"PRODUCTION_OUT".equals(row.get("type")) || !Set.of("RAW","SEMI").contains(str(row.get("category")))) row.remove("batch_status");
+            if("SEMI".equals(row.get("category")) && row.get("batch_id")!=null){long issued=SemiFlowService.netIssued(jdbc,number(row.get("batch_id")));long produced=jdbc.queryForObject("SELECT COALESCE(SUM(l.quantity),0) FROM metal_warehouse_order o JOIN metal_warehouse_order_line l ON l.order_id=o.order_id WHERE o.batch_id=? AND o.status='POSTED' AND o.type IN ('SEMI_IN','FINISHED_IN')",Long.class,row.get("batch_id"));row.put("batch_returnable_quantity",Math.max(0,issued-produced));}
+            row.put("remaining_quantity", SemiFlowService.num(row.get("quantity")) - java.util.Optional.ofNullable(jdbc.queryForObject("SELECT COALESCE(SUM(l.quantity),0) FROM metal_warehouse_order_line l JOIN metal_warehouse_order o ON o.order_id=l.order_id WHERE l.source_line_id=? AND o.status='POSTED'", Long.class, row.get("id"))).orElse(0L));
             row.remove("issued_weight");
             row.remove("output_weight");
             row.remove("returned_weight");
         }
         return cleaned(data);
     }
+
+    public record ProductionStockSnapshot(List<Map<String,Object>> stocks,Map<String,Object> entryContext) {}
+
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+    public ProductionStockSnapshot productionStockSnapshot(Long factoryId,Long warehouseId,Long workOrderId,Long itemId,Long processId) {
+        permitOption("stocks");
+        if(factoryId==null||warehouseId==null||workOrderId==null||itemId==null||processId==null)throw fail("请先选择工厂、仓库、工单、产品明细和工序");
+        scope.check(factoryId);
+        var h=one("SELECT factory_id,status FROM metal_warehouse WHERE warehouse_id=? AND del_flag='0'",warehouseId);
+        if(!factoryId.equals(number(h.get("factory_id"))))throw new ServiceException("库房不属于本厂",403);
+        if(!"0".equals(h.get("status")))throw fail("库房已停用");
+        var stocks=cleaned(semi.candidates(factoryId,warehouseId,workOrderId,itemId,processId));
+        var target=one("SELECT s.sequence_no FROM metal_work_order_step s JOIN metal_work_order_item i ON i.item_id=s.item_id WHERE s.item_id=? AND s.process_id=? AND i.work_order_id=?",itemId,processId,workOrderId);
+        long capacity=semi.entryCapacity(itemId,number(target.get("sequence_no")));
+        return new ProductionStockSnapshot(stocks,Map.of("factoryId",factoryId.toString(),"warehouseId",warehouseId.toString(),"workOrderId",workOrderId.toString(),"itemId",itemId.toString(),"processId",processId.toString(),"externalEntryCapacity",Long.toString(capacity)));
+    }
+
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+    public Map<String,Object> processRawReturnContext(Long factoryId,Long workOrderId,Long itemId,Long processId,Long batchId){permitOption("work-order-context");return new ProcessRawReturnService(jdbc,scope).context(factoryId,workOrderId,itemId,processId,batchId);}
+    public List<Map<String,Object>> productionStocks(Long factoryId,Long warehouseId,Long workOrderId,Long itemId,Long processId){permitOption("stocks");return cleaned(semi.candidates(factoryId,warehouseId,workOrderId,itemId,processId));}
 
     public List<Map<String, Object>> options(String kind, Long factoryId, Long referenceId) {
         permitOption(kind);
@@ -1142,9 +1247,9 @@ public class WarehouseService {
             case "work-orders" ->
                     cleaned(rows("SELECT work_order_id id,order_no name,status FROM metal_work_order WHERE factory_id=? AND del_flag='0' AND status IN ('WAITING_MATERIAL','IN_PROGRESS') ORDER BY work_order_id", factoryId));
             case "stocks" ->
-                    cleaned(rows("SELECT i.inventory_id id,i.name,i.code,i.specification,i.batch_no,i.category,i.warehouse_id,i.reference_id,i.net_weight,i.quantity,i.organization,i.ownership_status,i.origin_batch_id,b.status origin_batch_status,s.process_name origin_process_name,b.sequence_no origin_process_sequence,w.order_no origin_work_order_no FROM metal_inventory i LEFT JOIN metal_process_batch b ON b.batch_id=i.origin_batch_id LEFT JOIN metal_work_order w ON w.work_order_id=b.work_order_id LEFT JOIN metal_work_order_step s ON s.item_id=b.item_id AND s.process_id=b.process_id WHERE i.factory_id=? AND i.del_flag='0' ORDER BY i.inventory_id", factoryId));
+                    cleaned(rows("SELECT i.inventory_id id,i.name,i.code,i.specification,i.batch_no,i.category,i.warehouse_id,i.reference_id,i.net_weight,i.quantity,i.organization,i.ownership_status,i.origin_batch_id,b.status origin_batch_status,s.process_name origin_process_name,b.sequence_no origin_process_sequence,w.order_no origin_work_order_no FROM metal_inventory i LEFT JOIN metal_process_batch b ON b.batch_id=i.origin_batch_id LEFT JOIN metal_work_order w ON w.work_order_id=b.work_order_id LEFT JOIN metal_work_order_step s ON s.item_id=b.item_id AND s.process_id=b.process_id WHERE i.factory_id=? AND i.del_flag='0' AND NOT EXISTS(SELECT 1 FROM metal_process_raw_return_line recovery WHERE recovery.inventory_id=i.inventory_id) ORDER BY i.inventory_id", factoryId));
             case "batches" ->
-                    cleaned(rows("SELECT b.batch_id id,CONCAT(b.batch_no,' / ',s.process_name) name,b.batch_no,b.planned_quantity,b.version,b.work_order_id,b.item_id,b.process_id FROM metal_process_batch b JOIN metal_work_order w ON w.work_order_id=b.work_order_id JOIN metal_work_order_step s ON s.item_id=b.item_id AND s.process_id=b.process_id WHERE b.factory_id=? AND b.status='OPEN' ORDER BY b.batch_id", factoryId));
+                    cleaned(rows("SELECT b.batch_id id,CONCAT(b.batch_no,' / ',s.process_name) name,b.batch_no,b.planned_quantity,b.version,b.completion_policy,b.work_order_id,b.item_id,b.process_id,(EXISTS(SELECT 1 FROM metal_warehouse_order io JOIN metal_warehouse_order_line il ON il.order_id=io.order_id WHERE io.batch_id=b.batch_id AND io.status='POSTED' AND io.type='PRODUCTION_OUT' AND il.category='SEMI' AND il.net_weight>0) AND EXISTS(SELECT 1 FROM metal_warehouse_order oo JOIN metal_warehouse_order_line ol ON ol.order_id=oo.order_id WHERE oo.batch_id=b.batch_id AND oo.status='POSTED' AND oo.type IN ('SEMI_IN','FINISHED_IN') AND ol.net_weight>0) AND (SELECT COALESCE(SUM(CASE WHEN ro.type='PRODUCTION_OUT' THEN rl.net_weight WHEN ro.type IN ('SEMI_IN','FINISHED_IN','RAW_RETURN','SEMI_RETURN','PROCESS_RAW_RETURN') THEN -rl.net_weight ELSE 0 END),0) FROM metal_warehouse_order ro JOIN metal_warehouse_order_line rl ON rl.order_id=ro.order_id WHERE ro.batch_id=b.batch_id AND ro.status='POSTED')>0) recovery_eligible FROM metal_process_batch b JOIN metal_work_order w ON w.work_order_id=b.work_order_id JOIN metal_work_order_step s ON s.item_id=b.item_id AND s.process_id=b.process_id WHERE b.factory_id=? AND b.status='OPEN' ORDER BY b.batch_id", factoryId));
             case "out-lines" -> outLines(factoryId);
             default -> throw fail("选项无效");
         };

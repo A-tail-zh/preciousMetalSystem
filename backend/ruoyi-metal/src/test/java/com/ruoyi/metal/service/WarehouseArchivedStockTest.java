@@ -11,7 +11,7 @@ class WarehouseArchivedStockTest {
  private void post(BigDecimal oldWeight,boolean referenced)throws Exception{
   var j=mock(JdbcTemplate.class);var scope=mock(FactoryScope.class);var service=new WarehouseService(j,scope);
   var stock=new HashMap<String,Object>(Map.of("inventory_id",99L,"del_flag","2","net_weight",oldWeight,"quantity",0L,"category","RAW","code","TEST","name","fixture"));
-  when(j.queryForList(anyString(),any(Object[].class))).thenAnswer(a->{String q=a.getArgument(0);if(q.contains("FROM metal_material"))return List.of(Map.of("code","TEST","name","fixture"));if(q.contains("FROM metal_inventory"))return List.of(stock);if(q.contains("FROM metal_warehouse_order_line"))return referenced?List.of(Map.of("line_id",1L)):List.of();throw new IllegalStateException(q);});
+  when(j.queryForList(anyString(),any(Object[].class))).thenAnswer(a->{String q=a.getArgument(0);if(q.contains("FROM metal_process_raw_return_line"))return List.of();if(q.contains("FROM metal_material"))return List.of(Map.of("code","TEST","name","fixture"));if(q.contains("FROM metal_inventory"))return List.of(stock);if(q.contains("FROM metal_warehouse_order_line"))return referenced?List.of(Map.of("line_id",1L)):List.of();throw new IllegalStateException(q);});
   doAnswer(a->{KeyHolder key=a.getArgument(1);key.getKeyList().add(new HashMap<>(Map.of("GENERATED_KEY",1L)));return 1;}).when(j).update(any(PreparedStatementCreator.class),any(KeyHolder.class));
   Line line=new Line(null,null,"RAW",7L,null,new BigDecimal("10"),0L,null,null,null,null,null,null);
   Order input=new Order(UUID.randomUUID().toString(),1L,1L,"RAW_IN",LocalDate.now(),1L,List.of(1L),1L,null,null,null,null,null,null,false,null,null,List.of(line),null,null);

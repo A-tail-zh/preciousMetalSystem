@@ -141,7 +141,7 @@
 
       <!-- 添加或修改角色配置对话框 -->
       <el-dialog :title="title" v-model="open" width="500px" append-to-body>
-         <el-form ref="roleRef" :model="form" :rules="rules" label-width="100px">
+         <el-form ref="roleRef" :model="form" :rules="rules" label-width="100px" scroll-to-error>
             <el-form-item label="角色名称" prop="roleName">
                <el-input v-model="form.roleName" placeholder="请输入角色名称" />
             </el-form-item>
@@ -242,6 +242,7 @@
 </template>
 
 <script setup lang="ts" name="Role">
+import {applyFieldErrors} from '@/utils/input-validation'
 import { addRole, changeRoleStatus, dataScope, delRole, getRole, listRole, updateRole, deptTreeSelect } from "@/api/system/role"
 import { roleMenuTreeselect, treeselect as menuTreeselect } from "@/api/system/menu"
 import type { SysRole, RoleQueryParams } from '@/types/api/system/role'
@@ -292,8 +293,9 @@ const data = reactive({
     status: undefined
   } as RoleQueryParams,
   rules: {
-    roleName: [{ required: true, message: "角色名称不能为空", trigger: "blur" }],
-    roleKey: [{ required: true, message: "权限字符不能为空", trigger: "blur" }],
+    status: [{max:1,message:"该字段最多1个字符",trigger:"blur"}],
+    roleName: [{max:100,message:"该字段最多100个字符",trigger:"blur"},{ required: true, whitespace:true, message: "角色名称不能为空", trigger: "blur" }],
+    roleKey: [{max:100,message:"该字段最多100个字符",trigger:"blur"},{ required: true, whitespace:true, message: "权限字符不能为空", trigger: "blur" }],
     roleSort: [{ required: true, message: "角色顺序不能为空", trigger: "blur" }]
   },
 })
@@ -512,22 +514,23 @@ function getMenuAllCheckedKeys(): number[] {
 
 /** 提交按钮 */
 function submitForm() {
+  const submittedForm=form.value
   ;(proxy.$refs["roleRef"] as import('element-plus').FormInstance).validate((valid: boolean) => {
-    if (valid) {
+    if (valid && form.value===submittedForm) {
       if (form.value.roleId != undefined) {
         form.value.menuIds = getMenuAllCheckedKeys()
         updateRole(form.value).then(() => {
           proxy.$modal.msgSuccess("修改成功")
           open.value = false
           getList()
-        })
+        }).catch(error=>{if(form.value===submittedForm&&open.value)applyFieldErrors(proxy.$refs["roleRef"] as import('element-plus').FormInstance,error)})
       } else {
         form.value.menuIds = getMenuAllCheckedKeys()
         addRole(form.value).then(() => {
           proxy.$modal.msgSuccess("新增成功")
           open.value = false
           getList()
-        })
+        }).catch(error=>{if(form.value===submittedForm&&open.value)applyFieldErrors(proxy.$refs["roleRef"] as import('element-plus').FormInstance,error)})
       }
     }
   })

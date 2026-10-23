@@ -14,3 +14,19 @@ export function stockAvailabilityError(stock:StockBalance,line:StockLine,lines:S
  }
  return errors.length?'库存不足：'+errors.join('；'):''
 }
+
+export function releasedTransferError(balance:Pick<StockBalance,'quantity'|'netWeight'>,lines:StockLine[]){
+ const quantity=lines.reduce((sum,row)=>sum+BigInt(row.quantity??0),0n),netWeight=lines.reduce((sum,row)=>sum+micro(row.netWeight??'0'),0n),availableQuantity=BigInt(balance.quantity),availableWeight=micro(balance.netWeight)
+ if(quantity>availableQuantity||netWeight>availableWeight)return '领用合计超过释放可用余额'
+ if((quantity===availableQuantity)!==(netWeight===availableWeight))return '全部件数与全部净重须同时领完；可用 '+availableQuantity+'件 / '+weight(availableWeight)+'g，清单合计 '+quantity+'件 / '+weight(netWeight)+'g'
+ return ''
+}
+
+export function externalEntryError(capacity:string|number,lines:{quantity?:string|number;releaseId?:string|null}[]):string{
+ const external=lines.filter(row=>row.releaseId!=null&&String(row.releaseId)!=='')
+ if(!external.length)return ''
+ if(!/^\d+$/.test(String(capacity)))return '共享接入额度未就绪，请刷新重试'
+ if(external.some(row=>!/^\d+$/.test(String(row.quantity))||BigInt(row.quantity!)<1n))return '外部接入件数须为正整数'
+ const requested=external.reduce((sum,row)=>sum+BigInt(row.quantity!),0n),available=BigInt(capacity)
+ return requested>available?'外部接入共享额度不足：本工序可接入'+available+'件，本单合计'+requested+'件，超出'+(requested-available)+'件':''
+}

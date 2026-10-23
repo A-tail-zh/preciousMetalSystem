@@ -28,28 +28,37 @@ public class SysDictData extends BaseEntity
 
     /** 字典标签 */
     @Excel(name = "字典标签")
+    @jakarta.validation.constraints.Size(max=100)
     private String dictLabel;
 
     /** 字典键值 */
     @Excel(name = "字典键值")
+    @jakarta.validation.constraints.Size(max=100)
     private String dictValue;
 
     /** 字典类型 */
     @Excel(name = "字典类型")
+    @jakarta.validation.constraints.Size(max=100)
     private String dictType;
 
     /** 样式属性（其他样式扩展） */
+    @jakarta.validation.constraints.Size(max=100)
     private String cssClass;
 
     /** 表格字典样式 */
+    @jakarta.validation.constraints.Size(max=100)
     private String listClass;
 
     /** 是否默认（Y是 N否） */
     @Excel(name = "是否默认", readConverterExp = "Y=是,N=否")
+    @jakarta.validation.constraints.Size(max=1)
+    @jakarta.validation.constraints.Pattern(regexp="[YN]")
     private String isDefault;
 
     /** 状态（0正常 1停用） */
     @Excel(name = "状态", readConverterExp = "0=正常,1=停用")
+    @jakarta.validation.constraints.Size(max=1)
+    @jakarta.validation.constraints.Pattern(regexp="[01]")
     private String status;
 
     public Long getDictCode()
@@ -173,4 +182,7 @@ public class SysDictData extends BaseEntity
             .append("remark", getRemark())
             .toString();
     }
+    @Override
+    @jakarta.validation.constraints.Size(max=500,message="备注最多500个字符")
+    public String getRemark() { return super.getRemark(); }
 }

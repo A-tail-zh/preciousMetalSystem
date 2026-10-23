@@ -18,6 +18,11 @@ import com.ruoyi.metal.service.ProcessService;
 @RestController @Validated @RequestMapping("/metal/process")
 public class ProcessController extends BaseController {
  private final ProcessService service; public ProcessController(ProcessService service){this.service=service;}
+    /** Minimal existing form DTO under edit permission; service enforces factory scope. */
+    @GetMapping("/{id}/edit-context")
+    @PreAuthorize("@ss.hasPermi('metal:process:edit')")
+    public AjaxResult editContext(@PathVariable @Positive Long id) { return success(service.detail(id)); }
+
  /**
   * 查询列表并补充关联资料。
   */

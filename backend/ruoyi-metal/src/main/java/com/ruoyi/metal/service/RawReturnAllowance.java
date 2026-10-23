@@ -26,6 +26,6 @@ final class RawReturnAllowance {
   return new Snapshot(remaining(row.get("issued_weight"),row.get("output_weight"),row.get("returned_weight")),String.valueOf(row.get("batch_status")));
  }
  static String totalsSql(boolean factory) {
-  return "SELECT b.batch_id,b.status batch_status,COALESCE(SUM(CASE WHEN o.type='PRODUCTION_OUT' THEN l.net_weight ELSE 0 END),0) issued_weight,COALESCE(SUM(CASE WHEN o.type IN ('SEMI_IN','FINISHED_IN') THEN l.net_weight ELSE 0 END),0) output_weight,COALESCE(SUM(CASE WHEN o.type='RAW_RETURN' THEN l.net_weight ELSE 0 END),0) returned_weight FROM metal_process_batch b LEFT JOIN metal_warehouse_order o ON o.batch_id=b.batch_id AND o.status='POSTED' LEFT JOIN metal_warehouse_order_line l ON l.order_id=o.order_id WHERE "+(factory?"b.factory_id=?":"b.batch_id=?")+" GROUP BY b.batch_id,b.status";
+  return "SELECT b.batch_id,b.status batch_status,COALESCE(SUM(CASE WHEN o.type='PRODUCTION_OUT' THEN l.net_weight ELSE 0 END),0) issued_weight,COALESCE(SUM(CASE WHEN o.type IN ('SEMI_IN','FINISHED_IN') THEN l.net_weight ELSE 0 END),0) output_weight,COALESCE(SUM(CASE WHEN o.type IN ('RAW_RETURN','SEMI_RETURN','PROCESS_RAW_RETURN') THEN l.net_weight ELSE 0 END),0) returned_weight FROM metal_process_batch b LEFT JOIN metal_warehouse_order o ON o.batch_id=b.batch_id AND o.status='POSTED' LEFT JOIN metal_warehouse_order_line l ON l.order_id=o.order_id WHERE "+(factory?"b.factory_id=?":"b.batch_id=?")+" GROUP BY b.batch_id,b.status";
  }
 }

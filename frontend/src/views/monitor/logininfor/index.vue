@@ -53,41 +53,41 @@
 
       <el-row :gutter="10" class="mb8">
          <el-col :span="1.5">
-            <el-button
+            <el-button v-if="actionPermission.hasAny(['monitor:logininfor:remove'])"
                type="danger"
                plain
                icon="Delete"
                :disabled="multiple"
                @click="handleDelete()"
-               v-hasPermi="['monitor:logininfor:remove']"
+
             >删除</el-button>
          </el-col>
          <el-col :span="1.5">
-            <el-button
+            <el-button v-if="actionPermission.hasAny(['monitor:logininfor:remove'])"
                type="danger"
                plain
                icon="Delete"
                @click="handleClean"
-               v-hasPermi="['monitor:logininfor:remove']"
+
             >清空</el-button>
          </el-col>
          <el-col :span="1.5">
-            <el-button
+            <el-button v-if="actionPermission.hasAny(['monitor:logininfor:unlock'])"
                type="primary"
                plain
                icon="Unlock"
                :disabled="single"
                @click="handleUnlock"
-               v-hasPermi="['monitor:logininfor:unlock']"
+
             >解锁</el-button>
          </el-col>
          <el-col :span="1.5">
-            <el-button
+            <el-button v-if="actionPermission.hasAny(['monitor:logininfor:export'])"
                type="warning"
                plain
                icon="Download"
                @click="handleExport"
-               v-hasPermi="['monitor:logininfor:export']"
+
             >导出</el-button>
          </el-col>
          <right-toolbar v-model:showSearch="showSearch" @queryTable="getList"></right-toolbar>
@@ -125,6 +125,8 @@
 </template>
 
 <script setup lang="ts" name="Logininfor">
+import { useActionPermission } from '@/composables/useActionPermission'
+const actionPermission = useActionPermission()
 import { list, delLogininfor, cleanLogininfor, unlockLogininfor } from "@/api/monitor/logininfor"
 import type { SysLogininfor, LogininforQueryParams } from '@/types/api/monitor/logininfor'
 

@@ -21,7 +21,6 @@ public class FactoryRequest {
     private String address;
     @Size(max = 5000, message = "工厂简介不能超过5000个字符")
     private String introduction;
-    @NotNull(message = "关联产线不能为空，请传入数组")
     @Size(max = 1000, message = "关联产线数量不能超过1000条")
     private List<@NotNull @Positive Long> productionLineIds;
     @Min(0)
