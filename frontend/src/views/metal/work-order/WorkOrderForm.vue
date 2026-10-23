@@ -2,25 +2,28 @@
  <div v-if="opening" role="status">正在加载工单资料… <el-button link @click="cancelOpen">取消加载</el-button></div>
  <div v-if="openError" role="alert">工单资料加载失败 <el-button link @click="retryOpen()">重试</el-button></div>
  <el-dialog v-model="opened" :title="form.id?'编辑工单':'添加工单'" width="min(920px,94vw)" top="5vh" class="order-dialog" :close-on-click-modal="false" :close-on-press-escape="!saving" :show-close="!saving">
-  <el-form ref="formRef" :model="form" :rules="rules" label-width="120px" label-position="left" :disabled="saving||optionsLoading">
+  <el-form ref="formRef" :model="form" :rules="rules" scroll-to-error label-width="120px" label-position="left" :disabled="saving||optionsLoading">
    <el-form-item label="单据编号"><el-input :model-value="form.orderNo" readonly/></el-form-item>
    <el-form-item label="客户" prop="customer"><el-input v-model="form.customer" maxlength="100" placeholder="请输入…"/></el-form-item>
-   <el-form-item label="工厂" prop="factoryId"><el-select :model-value="form.factoryId" :disabled="!isAdmin" fit-input-width :teleported="false" @visible-change="resetSelectScroll" @change="changeFactory"><el-option v-for="option in factories" :key="option.id" :value="option.id" :label="option.name"/></el-select></el-form-item>
-   <el-form-item label="产线" prop="productionLineId"><el-select :model-value="form.productionLineId" fit-input-width :teleported="false" :disabled="!form.factoryId" @visible-change="resetSelectScroll" @change="changeLine"><el-option v-for="option in lines" :key="option.id" :value="option.id" :label="option.name"/></el-select></el-form-item>
+   <el-form-item label="工厂" prop="factoryId"><el-select class="work-order-factory-select" popper-class="work-order-factory-options" :model-value="form.factoryId" :disabled="!isAdmin" fit-input-width :teleported="true" @visible-change="resetSelectScroll" @change="changeFactory"><el-option v-for="option in factories" :key="option.id" :value="option.id" :label="option.name"/></el-select></el-form-item>
+   <el-form-item label="产线" prop="productionLineId"><el-select :model-value="form.productionLineId" fit-input-width :teleported="false" :disabled="!form.factoryId" @visible-change="resetSelectScroll" @change="changeLine"><el-option v-for="option in lines" :key="option.id" :value="option.id" :label="option.name"/></el-select></el-form-item><p v-if="form.factoryId&&!optionsLoading&&!opening&&!lines.length" class="order-error">当前工厂暂无可用产线，请先在产线管理中创建并绑定</p>
    <el-form-item label="开单日期" prop="orderDate"><el-date-picker v-model="form.orderDate" type="date" value-format="YYYY-MM-DD" format="YYYY-MM-DD" :teleported="true" placeholder="请选择日期"/></el-form-item>
    <el-form-item label="负责人" prop="ownerId"><el-select v-model="form.ownerId" filterable fit-input-width :teleported="false" :disabled="!form.factoryId" @visible-change="resetSelectScroll"><el-option v-for="option in owners" :key="option.id" :value="option.id" :label="ownerLabel(option)"/></el-select></el-form-item>
    <el-button class="add-product" :disabled="!form.productionLineId||form.items.length>=100" @click="form.items.push(blankItem())">添加产品</el-button>
    <div v-for="(item,index) in form.items" :key="item.key||item.id||index" class="order-item">
-    <el-form-item :label="'选择产品'+(form.items.length>1?' '+(index+1):'')"><el-select :model-value="item.productId" fit-input-width :teleported="false" :disabled="!form.productionLineId" @visible-change="resetSelectScroll" @change="value=>changeProduct(item,value)"><el-option v-for="option in availableProducts" :key="option.id" :value="option.id" :label="option.name+(option.hasProcesses?'':'（未配置工序）')" :disabled="!option.hasProcesses"/></el-select><el-button v-if="form.items.length>1" link type="danger" @click="form.items.splice(index,1)">移除</el-button></el-form-item>
-    <el-form-item label="产品数量" :prop="'items.'+index+'.quantity'" :rules="[{required:true,type:'number',min:1,max:1000000,message:'数量须为1～1000000的整数',trigger:'change'}]"><el-input v-model.number="item.quantity" inputmode="numeric" placeholder="请输入产品数量" style="width:170px"/></el-form-item>
-    <div class="time-description">计划开始、结束时间</div><el-table :data="item.plans" border class="plan-table"><el-table-column label="工序名称" prop="processName" min-width="130"/><el-table-column label="开始时间" min-width="235"><template #default="{row}"><el-date-picker v-model="row.startTime" type="datetime" value-format="YYYY-MM-DD HH:mm:00" format="YYYY-MM-DD HH:mm" :teleported="true" placeholder="请选择开始时间"/></template></el-table-column><el-table-column label="结束时间" min-width="235"><template #default="{row}"><el-date-picker v-model="row.endTime" type="datetime" value-format="YYYY-MM-DD HH:mm:00" format="YYYY-MM-DD HH:mm" :teleported="true" placeholder="请选择结束时间"/></template></el-table-column></el-table>
+    <el-form-item :label="'选择产品'+(form.items.length>1?' '+(index+1):'')" :prop="`items.${index}.productId`" :rules="[{required:true,message:'请选择产品',trigger:'change'}]"><el-select :model-value="item.productId" fit-input-width :teleported="false" :disabled="!form.productionLineId" @visible-change="resetSelectScroll" @change="value=>changeProduct(item,value)"><el-option v-for="option in availableProducts" :key="option.id" :value="option.id" :label="option.name+(option.hasProcesses?'':'（未配置工序）')" :disabled="!option.hasProcesses"/></el-select><el-button v-if="form.items.length>1" link type="danger" @click="form.items.splice(index,1)">移除</el-button></el-form-item>
+    <el-form-item label="产品数量" required :prop="'items.'+index+'.quantity'" :rules="[fieldRule(v=>integerError(quantityInputs.get(item)??v,'产品数量'),['blur','change'])]"><el-input v-model="item.quantity" @input="value=>quantityInputs.set(item,String(value))" inputmode="numeric" placeholder="请输入产品数量" style="width:170px"/></el-form-item>
+    <div class="time-description">计划开始、结束时间</div><el-table :data="item.plans" border class="plan-table"><el-table-column label="工序名称" prop="processName" min-width="130"/><el-table-column label="开始时间" min-width="235"><template #default="{row,$index}"><el-form-item :prop="`items.${index}.plans.${$index}.startTime`" :rules="planRules(item,$index,'startTime')" label-width="0"><el-date-picker v-model="row.startTime" type="datetime" value-format="YYYY-MM-DD HH:mm:00" format="YYYY-MM-DD HH:mm" :teleported="true" placeholder="请选择开始时间"/></el-form-item></template></el-table-column><el-table-column label="结束时间" min-width="235"><template #default="{row,$index}"><el-form-item :prop="`items.${index}.plans.${$index}.endTime`" :rules="planRules(item,$index,'endTime')" label-width="0"><el-date-picker v-model="row.endTime" type="datetime" value-format="YYYY-MM-DD HH:mm:00" format="YYYY-MM-DD HH:mm" :teleported="true" placeholder="请选择结束时间"/></el-form-item></template></el-table-column></el-table>
     <div v-if="item.productId&&!item.plans.length" class="order-error">产品尚未配置工序，请先维护产品工艺</div>
    </div>
   </el-form>
-  <template #footer><el-button :disabled="saving" @click="opened=false">取消</el-button><el-button type="primary" :loading="saving" @click="submit">确认</el-button></template>
+  <template #footer><el-button :disabled="saving" @click="opened=false">取消</el-button><el-button v-if="actionPermission.has(form.id?'metal:work-order:edit':'metal:work-order:add')" type="primary" :loading="saving" @click="submit">确认</el-button></template>
  </el-dialog>
 </template>
 <script setup lang="ts">
+import {integerRules,integerError,fieldRule,textRules,applyFieldErrors} from '@/utils/input-validation'
+import { useActionPermission } from '@/composables/useActionPermission'
+const actionPermission=useActionPermission()
 import {personLabel} from '@/utils/person-label'
 
 import {createUUID} from '@/utils/uuid'
@@ -39,18 +42,21 @@ const today=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).form
 const blank=():WorkOrder=>({requestId:createUUID(),customer:'',factoryId:'',productionLineId:'',ownerId:'',orderDate:today(),items:[blankItem()]})
 const form=reactive<WorkOrder>(blank()),factories=ref<OrderOption[]>([]),lines=ref<OrderOption[]>([]),owners=ref<OrderOption[]>([]),availableProducts=ref<OrderOption[]>([])
 const required=(message:string)=>[{required:true,message,trigger:'change'}]
-const rules:FormRules={customer:[{required:true,whitespace:true,message:'请输入客户',trigger:'blur'}],factoryId:required('请选择工厂'),productionLineId:required('请选择产线'),ownerId:required('请选择负责人'),orderDate:required('请选择开单日期')}
+function planRules(item:WorkOrderItem,stepIndex:number,field:'startTime'|'endTime'){return [fieldRule(value=>{if(!value)return field==='startTime'?'请选择开始时间':'请选择结束时间';const step=item.plans[stepIndex];if(step.startTime&&step.endTime&&step.startTime>=step.endTime)return '开始时间须早于结束时间';if(field==='startTime'&&stepIndex>0&&item.plans[stepIndex-1].endTime&&(step.startTime??'')<(item.plans[stepIndex-1].endTime??''))return '不能早于上一工序结束时间';return ''},'change')]}
+const quantityInputs=new WeakMap<object,string>()
+const rules:FormRules={customer:textRules('客户',100,true),factoryId:required('请选择工厂'),productionLineId:required('请选择产线'),ownerId:required('请选择负责人'),orderDate:required('请选择开单日期')}
 const opening=ref(false),openError=ref(false)
 let epoch=0,dependencyEpoch=0,disposed=false,retryOpen:()=>void=()=>{}
 function cancelOpen(){if(saving.value)return;++epoch;++dependencyEpoch;opening.value=false;optionsLoading.value=false;openError.value=false;opened.value=false}
 watch(opened,value=>{if(!value&&!saving.value){++epoch;++dependencyEpoch;optionsLoading.value=false;opening.value=false}},{flush:'sync'})
+actionPermission.onChange(()=>{++epoch;++dependencyEpoch;opened.value=false;opening.value=false;optionsLoading.value=false;openError.value=false;form.items=[]})
 onBeforeUnmount(()=>{disposed=true;++epoch;++dependencyEpoch})
 async function loadFactoryOptions(factoryId:string){return Promise.all([orderOptions('lines',{factoryId}),orderOptions('owners',{factoryId})])}
 async function open(row?:WorkOrder){
  if(saving.value||disposed)return;opened.value=false;const current=++epoch;++dependencyEpoch;opening.value=true;optionsLoading.value=true;openError.value=false;retryOpen=()=>{void open(row)}
  const valid=()=>!disposed&&current===epoch
  try{
-  const draft=row?.id?(await orderDetail(row.id)).data:blank()
+  const draft=row?.id?(await orderDetail(row.id,undefined,!actionPermission.has('metal:work-order:query'))).data:blank()
   if(!valid())return
   if(!row?.id)draft.orderNo=(await reserveOrderNumber(draft.requestId!)).data
   const factoryList=(await orderOptions('factories')).data
@@ -79,8 +85,8 @@ async function changeProduct(item:WorkOrderItem,value:string){
  if(saving.value||item.productId===value&&item.plans.length)return;const current=epoch,ticket=++dependencyEpoch,line=form.productionLineId;optionsLoading.value=true;item.productId=value;item.plans=[];item.snapshot=undefined
  try{const data=(await orderProductPlans(value,line)).data;if(!disposed&&current===epoch&&ticket===dependencyEpoch&&line===form.productionLineId&&form.items.includes(item)&&item.productId===value){item.snapshot=data.snapshot;item.plans=data.plans}}catch{}finally{if(current===epoch&&ticket===dependencyEpoch)optionsLoading.value=false}
 }
-async function submit(){if(saving.value||optionsLoading.value||!opened.value)return;const current=epoch;saving.value=true;try{if(!await formRef.value?.validate().catch(()=>false)||disposed||current!==epoch)return;if(!form.items.length||form.items.length>100){ElMessage.error('须填写1～100项产品');return}for(const [index,item]of form.items.entries()){if(!item.productId||!item.plans.length||!Number.isInteger(item.quantity)){ElMessage.error('第'+(index+1)+'项须选择配置工序的产品并填写整数数量');return}let previous='';for(const plan of item.plans){if(!plan.startTime||!plan.endTime||plan.startTime>=plan.endTime){ElMessage.error('第'+(index+1)+'项的工序开始时间须早于结束时间');return}if(previous&&plan.startTime<previous){ElMessage.error('后一工序不能早于前一工序结束');return}previous=plan.endTime}}
- const added=!form.id;const payload=JSON.parse(JSON.stringify(form)) as WorkOrder;await orderSave(payload);if(disposed||current!==epoch)return;ElMessage.success(added?'添加成功':'修改成功');opened.value=false;emit('saved',added)}catch{}finally{saving.value=false}}
+async function submit(){if(saving.value||optionsLoading.value||!opened.value||!actionPermission.has(form.id?'metal:work-order:edit':'metal:work-order:add'))return;const current=epoch;saving.value=true;try{if(!await formRef.value?.validate().catch(()=>false)||disposed||current!==epoch||!actionPermission.has(form.id?'metal:work-order:edit':'metal:work-order:add'))return;if(!form.items.length||form.items.length>100){ElMessage.error('须填写1～100项产品');return}for(const [index,item]of form.items.entries()){item.quantity=Number(item.quantity);if(!item.productId||!item.plans.length||!Number.isInteger(item.quantity)){ElMessage.error('第'+(index+1)+'项须选择配置工序的产品并填写整数数量');return}let previous='';for(const plan of item.plans){if(!plan.startTime||!plan.endTime||plan.startTime>=plan.endTime){ElMessage.error('第'+(index+1)+'项的工序开始时间须早于结束时间');return}if(previous&&plan.startTime<previous){ElMessage.error('后一工序不能早于前一工序结束');return}previous=plan.endTime}}
+ const added=!form.id;const payload=JSON.parse(JSON.stringify(form)) as WorkOrder;await orderSave(payload);if(disposed||current!==epoch)return;ElMessage.success(added?'添加成功':'修改成功');opened.value=false;emit('saved',added)}catch(error){if(!disposed&&current===epoch)applyFieldErrors(formRef.value,error)}finally{saving.value=false}}
 defineExpose({open})
 </script>
 <style scoped>
@@ -89,4 +95,5 @@ defineExpose({open})
 
 <style>
 .order-dialog .el-dialog__body{max-height:calc(var(--design-height,100vh) - 220px);overflow-y:auto;scrollbar-gutter:stable;padding-right:20px}.order-dialog .el-select-dropdown__wrap{max-height:110px}.order-dialog .plan-table th.el-table__cell{height:56px}.order-dialog .el-form-item__label{white-space:nowrap}
+.work-order-factory-options .el-select-dropdown__wrap{max-height:min(340px,45vh)}
 </style>

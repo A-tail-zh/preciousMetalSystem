@@ -1,6 +1,6 @@
 <template>
   <div class="login">
-    <el-form ref="loginRef" :model="loginForm" :rules="loginRules" class="login-form">
+    <el-form ref="loginRef" :model="loginForm" :rules="loginRules" class="login-form" scroll-to-error>
       <h3 class="title">{{ title }}</h3>
       <el-form-item prop="username">
         <el-input

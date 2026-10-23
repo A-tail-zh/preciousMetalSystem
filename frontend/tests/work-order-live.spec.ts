@@ -4,7 +4,7 @@ import {workOrderFixture} from '../../tools/work-order-test-fixture.mjs'
 test('真实工单直接待领料、可编辑及只读历史状态',async({page,context})=>{
  test.skip(process.env.LIVE_WORK_ORDER!=='1','需要本地工单后端');test.setTimeout(90000);page.setDefaultTimeout(10000)
  const f=await workOrderFixture()
- const choose=async(scope:any,label:string,name:string)=>{const field=scope.locator('.el-form-item').filter({hasText:label});await expect(field.locator('.el-select__wrapper')).not.toHaveClass(/is-disabled/);await field.locator('.el-select__wrapper').click();await field.locator('.el-select__popper:visible').getByRole('option',{name,exact:true}).click()}
+ const choose=async(scope:any,label:string,name:string)=>{const field=scope.locator('.el-form-item').filter({hasText:label});await expect(field.locator('.el-select__wrapper')).not.toHaveClass(/is-disabled/);await field.locator('.el-select__wrapper').click();const listId=await field.getByRole('combobox').getAttribute('aria-controls');await page.locator('[id="'+listId+'"]').getByRole('option',{name,exact:true}).click()}
  const dates=async(item:any,start:number)=>{const rows=item.locator('.el-table__body .el-table__row');await expect(rows).toHaveCount(2);for(let i=0;i<2;i++){const s=rows.nth(i).getByPlaceholder('请选择开始时间'),e=rows.nth(i).getByPlaceholder('请选择结束时间');await s.fill('2026-10-14 '+String(start+i).padStart(2,'0')+':00');await s.press('Enter');await e.fill('2026-10-14 '+String(start+i+1).padStart(2,'0')+':00');await e.press('Enter')}}
  try{
   await context.addCookies([{name:'Admin-Token',value:f.admin,url:'http://127.0.0.1:5173'}]);await page.setViewportSize({width:1442,height:1026});await page.goto('/metal/work-order');await expect(page.getByRole('link',{name:'生产工单管理',exact:true})).toHaveClass(/active/)

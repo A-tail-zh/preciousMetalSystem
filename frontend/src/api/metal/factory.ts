@@ -22,14 +22,14 @@ export interface FactoryForm {
   area: string
   address: string
   introduction: string
-  productionLineIds: string[]
+  productionLineIds?: string[]
   version?: number
 }
 export function listFactories(params: { pageNum: number; pageSize: number }): Promise<{rows: Factory[]; total: number}> {
   return request({url: '/metal/factory/list', method: 'get', params})
 }
-export function getFactory(id: string): Promise<{data: Factory}> {
-  return request({url: `/metal/factory/${id}`, method: 'get'})
+export function getFactory(id: string, editing = false): Promise<{data: Factory}> {
+  return request({url: `/metal/factory/${id}${editing?'/edit-context':''}`, method: 'get'})
 }
 export function lineOptions(factoryId?: string): Promise<{data: ProductionLine[]}> {
   return request({url: '/metal/factory/line-options', method: 'get', params: {factoryId}})

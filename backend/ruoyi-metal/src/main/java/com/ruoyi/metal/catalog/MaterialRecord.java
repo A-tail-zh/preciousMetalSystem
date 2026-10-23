@@ -9,7 +9,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
  */
 public class MaterialRecord extends MasterRecord {
     @NotBlank @Size(max=64)  private String code;
-    @NotBlank  private String materialType;
+    @NotBlank @Size(max=100) private String materialType;
     @Size(max=200)  private String specification;
     public String getCode(){return code;} public void setCode(String v){code=v==null?null:v.strip();}
     public String getMaterialType(){return materialType;} public void setMaterialType(String v){materialType=v==null?null:v.strip();}

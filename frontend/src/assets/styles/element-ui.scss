@@ -94,3 +94,5 @@
 .el-dropdown .el-dropdown-link{
   color: var(--el-color-primary) !important;
 }
+// Validation messages participate in layout, including narrow screens.
+.el-form-item__error { position: relative; top: auto; white-space: normal; overflow-wrap: anywhere; flex-basis: 100%; line-height: 1.5; }

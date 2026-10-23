@@ -2,7 +2,7 @@
  <div class="process-consumption" data-testid="process-consumption">
   <div class="consumption-heading"><strong>工序消耗明细</strong><el-button size="small" :loading="loading" @click="load">{{batchScope==='SETTLED'?'刷新':'刷新全部'}}</el-button></div>
   <p class="product-context">{{productLabel}}</p><p v-if="processMeta">当前工序：第{{processMeta.sequenceNo}}道·{{processMeta.processName}}</p><p v-if="batchScope==='SETTLED'" class="consumption-note">仅统计已结算批次</p>
-  <p class="consumption-note">实际投入＝领料－原料还库；损耗＝实际投入－产出。<template v-if="batchScope!=='SETTLED'">未结算差额仅供暂算，</template>各工序投入不能相加作为整单消耗。</p>
+  <p class="consumption-note">实际投入＝领料－原料还库－半成品还库－加工余料还库；损耗＝实际投入－产出。<template v-if="batchScope!=='SETTLED'">未结算差额仅供暂算，</template>各工序投入不能相加作为整单消耗。</p>
   <div v-if="batchScope!=='SETTLED'" class="consumption-options"><el-switch v-model="includeVoided" aria-label="包含已冲销批次" active-text="包含已冲销批次（不计入汇总）"/></div>
   <p v-if="loading" role="status">正在加载工序消耗…</p>
   <div v-if="failed" role="alert">工序消耗加载失败 <el-button link type="primary" @click="load">重试</el-button></div>
@@ -21,15 +21,17 @@
  </div>
 </template>
 <script setup lang="ts">
+import { useActionPermission } from '@/composables/useActionPermission'
+const actionPermission = useActionPermission()
 import {ref,computed,watch,onBeforeUnmount,nextTick} from 'vue'
 import useUserStore from '@/store/modules/user'
 import {processConsumption,consumptionStates,type Row} from '@/api/metal/warehouse'
 import {displayDateTime} from '@/utils/display-date-time'
 import ConsumptionDocuments from './ConsumptionDocuments.vue'
 const props=withDefaults(defineProps<{workOrderId:string;itemId:string;productLabel:string;processId?:string;batchScope?:'ALL'|'SETTLED'}>(),{batchScope:'ALL'}),emit=defineEmits<{report:[processId:string,name:string,batchId?:string]}>(),user=useUserStore()
-const canDrill=computed(()=>user.permissions.some(p=>['*:*:*','metal:work-order:query','metal:work-report:query'].includes(p)))
+const canDrill=computed(()=>actionPermission.hasAny(['metal:work-order:query','metal:work-report:query']))
 const processMeta=ref<Row>();const table=ref<any>();const rows=ref<Row[]>([]),warnings=ref<string[]>([]),readAt=ref(''),loading=ref(false),failed=ref(false),includeVoided=ref(false),expanded=ref<string[]>([]),generation=ref(0)
-const columns=[{key:'rawIssuedWeight',label:'原料领用(g)'},{key:'semiIssuedWeight',label:'半成品领用(g)'},{key:'issuedWeight',label:'领料合计(g)'},{key:'rawReturnedWeight',label:'原料还库(g)'},{key:'outputWeight',label:'产出(g)'},{key:'netInputWeight',label:'实际投入(g)'}]
+const columns=[{key:'rawIssuedWeight',label:'原料领用(g)'},{key:'semiIssuedWeight',label:'半成品领用(g)'},{key:'issuedWeight',label:'领料合计(g)'},{key:'rawReturnedWeight',label:'原料还库(g)'},{key:'semiReturnedWeight',label:'半成品还库(g)'},{key:'processRawReturnedWeight',label:'加工余料还库(g)'},{key:'outputWeight',label:'产出(g)'},{key:'netInputWeight',label:'实际投入(g)'}]
 let ticket=0,disposed=false
 const signature=()=>JSON.stringify([props.workOrderId,props.itemId,props.processId,props.batchScope])
 async function load(){

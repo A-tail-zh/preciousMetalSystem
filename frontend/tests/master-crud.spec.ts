@@ -16,12 +16,13 @@ async function choose(page:Page,label:string,value:string) {
 for(const [index,c] of cases.entries()) test(`${c.title}：真实页面新增、查询、编辑、删除`,async({page,context})=>{
   test.setTimeout(60000)
   const token=await login(),suffix=`${Date.now()}_${index}`,name=`CRUD页面_${suffix}`,updated=`${name}_修改`
+  const filterCurrent=async()=>{if(c.path==='/metal/material'){await page.locator('.master-toolbar').getByPlaceholder('物料编码',{exact:true}).fill('UI'+suffix);await page.locator('.master-toolbar').getByRole('button',{name:'查询',exact:true}).click()}};
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message))
-  let id:string|undefined,factory:string|undefined
+  let id:string|undefined,factory:string|undefined,bootstrapLine:string|undefined
   try {
-    if(c.path==='/metal/production-line') factory=String(ok(await api('/metal/factory',token,'POST',{
-      factoryName:`CRUD页面厂_${suffix}`,area:'1',address:'临时页面测试地址',productionLineIds:[]
-    })).factoryId)
+    if(c.path==='/metal/production-line'){
+      factory=String(ok(await api('/metal/factory',token,'POST',{factoryName:`CRUD页面厂_${suffix}`,area:'1',address:'临时页面测试地址'})).factoryId)
+    }
     await context.addCookies([{name:'Admin-Token',value:token,url:'http://127.0.0.1:5173'}])
     await page.goto(c.path)
     await expect(page.locator('.master-table')).toBeVisible()
@@ -40,26 +41,17 @@ for(const [index,c] of cases.entries()) test(`${c.title}：真实页面新增、
     await dialog.getByRole('button',{name:'确定',exact:true}).click()
     const result=await (await saving).json();if(result.id!=null)id=String(result.id)
     expect(result.code,result.msg).toBe(200);expect(id).toBeTruthy()
-    await expect(dialog).not.toBeVisible()
+    await expect(dialog).not.toBeVisible();await filterCurrent()
     await expect(page.getByRole('row').filter({hasText:name})).toBeVisible()
-    await page.reload()
+    await page.reload();await filterCurrent()
     let row=page.getByRole('row').filter({hasText:name});await expect(row).toBeVisible()
     await row.getByRole('button',{name:'编辑',exact:true}).click()
     await expect(dialog.getByLabel(c.label,{exact:true})).toHaveValue(name)
     for(const [label,value]of Object.entries(c.fields)) await expect(dialog.getByLabel(label,{exact:true})).toHaveValue(value)
     await dialog.getByLabel(c.label,{exact:true}).fill(updated)
     await dialog.getByRole('button',{name:'确定',exact:true}).click();await expect(dialog).not.toBeVisible()
-    await page.reload();row=page.getByRole('row').filter({hasText:updated});await expect(row).toBeVisible()
+    await page.reload();await filterCurrent();row=page.getByRole('row').filter({hasText:updated});await expect(row).toBeVisible()
     expect((await detail(c.path,id!,token))[c.path==='/metal/material'?'specification':'name']).toBe(updated)
-    // A line must be detached from its factory before deletion under the current business rule.
-    if(factory) {
-      await row.getByRole('button',{name:'删除',exact:true}).click();await page.getByRole('button',{name:'确定',exact:true}).click()
-      await expect(page.getByText('请先解除产线的工厂和产品关联：'+updated,{exact:true})).toBeVisible()
-      await expect(row).toBeVisible()
-      const f=await detail('/metal/factory',factory,token)
-      ok(await api('/metal/factory',token,'PUT',{...f,productionLineIds:[]}))
-      await page.reload();row=page.getByRole('row').filter({hasText:updated})
-    }
     await row.getByRole('button',{name:'删除',exact:true}).click()
     await page.getByRole('button',{name:'取消',exact:true}).click();await expect(row).toBeVisible()
     await row.getByRole('button',{name:'删除',exact:true}).click()
@@ -70,6 +62,7 @@ for(const [index,c] of cases.entries()) test(`${c.title}：真实页面新增、
     const failures:string[]=[]
     if(factory)try{const f=await detail('/metal/factory',factory,token);ok(await api('/metal/factory',token,'PUT',{...f,productionLineIds:[]}))}catch(e){failures.push(String(e))}
     if(id)try{ok(await api(`${c.path}/${id}`,token,'DELETE'))}catch(e){failures.push(`${c.path}/${id}: ${e}`)}
+    if(bootstrapLine)try{ok(await api('/metal/production-line/'+bootstrapLine,token,'DELETE'))}catch(e){failures.push('bootstrap line: '+e)}
     if(factory)try{ok(await api(`/metal/factory/${factory}`,token,'DELETE'))}catch(e){failures.push(`/metal/factory/${factory}: ${e}`)}
     await api('/logout',token,'POST');expect(failures,'临时记录清理失败').toEqual([])
   }

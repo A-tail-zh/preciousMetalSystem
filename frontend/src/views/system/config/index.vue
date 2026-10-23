@@ -131,7 +131,7 @@
 
       <!-- 添加或修改参数配置对话框 -->
       <el-dialog :title="title" v-model="open" width="500px" append-to-body>
-         <el-form ref="configRef" :model="form" :rules="rules" label-width="80px">
+         <el-form ref="configRef" :model="form" :rules="rules" label-width="80px" scroll-to-error>
             <el-form-item label="参数名称" prop="configName">
                <el-input v-model="form.configName" placeholder="请输入参数名称" />
             </el-form-item>
@@ -165,6 +165,7 @@
 </template>
 
 <script setup lang="ts" name="Config">
+import {applyFieldErrors} from '@/utils/input-validation'
 import type { SysConfig, ConfigQueryParams } from '@/types/api/system/config'
 import { listConfig, getConfig, delConfig, addConfig, updateConfig, refreshCache } from "@/api/system/config"
 
@@ -192,9 +193,11 @@ const data = reactive({
     configType: undefined
   } as ConfigQueryParams,
   rules: {
-    configName: [{ required: true, message: "参数名称不能为空", trigger: "blur" }],
-    configKey: [{ required: true, message: "参数键名不能为空", trigger: "blur" }],
-    configValue: [{ required: true, message: "参数键值不能为空", trigger: "blur" }]
+    remark: [{max:500,message:"备注最多500个字符",trigger:"blur"}],
+    configType: [{max:1,message:"该字段最多1个字符",trigger:"blur"}],
+    configName: [{max:100,message:"该字段最多100个字符",trigger:"blur"},{ required: true, whitespace:true, message: "参数名称不能为空", trigger: "blur" }],
+    configKey: [{max:100,message:"该字段最多100个字符",trigger:"blur"},{ required: true, whitespace:true, message: "参数键名不能为空", trigger: "blur" }],
+    configValue: [{max:500,message:"该字段最多500个字符",trigger:"blur"},{ required: true, whitespace:true, message: "参数键值不能为空", trigger: "blur" }]
   }
 })
 
@@ -269,20 +272,21 @@ function handleUpdate(row?: SysConfig) {
 
 /** 提交按钮 */
 function submitForm() {
+  const submittedForm=form.value
   ;(proxy.$refs["configRef"] as import('element-plus').FormInstance).validate((valid: boolean) => {
-    if (valid) {
+    if (valid && form.value===submittedForm) {
       if (form.value.configId != undefined) {
         updateConfig(form.value).then(() => {
           proxy.$modal.msgSuccess("修改成功")
           open.value = false
           getList()
-        })
+        }).catch(error=>{if(form.value===submittedForm&&open.value)applyFieldErrors(proxy.$refs["configRef"] as import('element-plus').FormInstance,error)})
       } else {
         addConfig(form.value).then(() => {
           proxy.$modal.msgSuccess("新增成功")
           open.value = false
           getList()
-        })
+        }).catch(error=>{if(form.value===submittedForm&&open.value)applyFieldErrors(proxy.$refs["configRef"] as import('element-plus').FormInstance,error)})
       }
     }
   })

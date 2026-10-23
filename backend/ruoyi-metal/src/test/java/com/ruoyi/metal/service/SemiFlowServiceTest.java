@@ -1,0 +1,27 @@
+package com.ruoyi.metal.service;
+import java.util.*;import java.math.BigDecimal;import org.junit.jupiter.api.Test;import org.springframework.jdbc.core.JdbcTemplate;import static org.junit.jupiter.api.Assertions.*;import static org.mockito.Mockito.*;import static org.mockito.ArgumentMatchers.*;
+class SemiFlowServiceTest {
+ private static class Fixture {
+  JdbcTemplate jdbc=mock(JdbcTemplate.class);SemiFlowService service=new SemiFlowService(jdbc,null);
+  Map<String,Object> stock=new HashMap<>(Map.of("inventory_id",1L,"category","SEMI","reference_id",7L,"factory_id",1L,"origin_batch_id",100L,"ownership_status","NORMAL","organization","客户","specification","10cm"));
+  Map<String,Object> source=new HashMap<>(Map.of("batch_id",100L,"item_id",10L,"sequence_no",1L,"status","SETTLED","work_order_id",1L,"factory_id",1L,"product_id",7L,"product_snapshot","{\"specification\":\"10cm\"}","customer","客户"));
+  Map<String,Object> target=new HashMap<>(Map.of("item_id",10L,"sequence_no",2L,"work_order_id",1L));
+  Map<String,Object> item=new HashMap<>(Map.of("product_id",7L,"product_snapshot","{\"specification\":\"10cm\"}","customer","客户","factory_id",1L,"work_order_id",1L));
+  Map<String,Object> release=new HashMap<>(Map.of("release_id",9L,"inventory_id",1L,"work_order_id",1L,"status","ACTIVE","quantity",4L,"net_weight",new BigDecimal("40")));
+  List<Map<String,Object>> uses=new ArrayList<>();
+  Fixture(){source.put("work_status","IN_PROGRESS");when(jdbc.queryForList(anyString(),any(Object[].class))).thenAnswer(a->{String q=a.getArgument(0);if(q.startsWith("SELECT b.*"))return List.of(source);if(q.startsWith("SELECT i.*"))return List.of(item);if(q.startsWith("SELECT process_id"))return List.of(Map.of("process_id",11L));if(q.startsWith("SELECT * FROM metal_semi_release"))return List.of(release);if(q.startsWith("SELECT u.release_id"))return uses;throw new IllegalStateException(q);});}
+  void cross(){source.put("work_status","CLOSED_PARTIAL");target.put("item_id",20L);target.put("work_order_id",2L);item.put("work_order_id",2L);}
+ }
+ @Test void ownPreviousSemiIsAccepted(){var f=new Fixture();assertSame(f.source,f.service.validateSource(f.stock,f.target,null));}
+ @Test void cannotUseSemiInFirstStep(){var f=new Fixture();f.target.put("sequence_no",1L);assertThrows(RuntimeException.class,()->f.service.validateSource(f.stock,f.target,null));}
+ @Test void requiresCompleteRoute(){var f=new Fixture();f.source.put("sequence_no",2L);f.target.put("sequence_no",3L);assertThrows(RuntimeException.class,()->f.service.validateSource(f.stock,f.target,null));}
+ @Test void requiresSnapshotSpecification(){var f=new Fixture();f.item.put("product_snapshot","{\"specification\":\"20cm\"}");assertThrows(RuntimeException.class,()->f.service.validateSource(f.stock,f.target,null));}
+ @Test void missingOriginAndReviewStockFail(){var f=new Fixture();f.stock.remove("origin_batch_id");assertThrows(RuntimeException.class,()->f.service.validateSource(f.stock,f.target,null));f.stock.put("origin_batch_id",100L);f.stock.put("ownership_status","REVIEW");assertThrows(RuntimeException.class,()->f.service.validateSource(f.stock,f.target,null));}
+ @Test void crossRequiresReleaseAndClosedSource(){var f=new Fixture();f.cross();assertThrows(RuntimeException.class,()->f.service.validateSource(f.stock,f.target,null));assertDoesNotThrow(()->f.service.validateSource(f.stock,f.target,9L));f.source.put("work_status","IN_PROGRESS");assertThrows(RuntimeException.class,()->f.service.validateSource(f.stock,f.target,9L));}
+ @Test void crossCustomerAndFactoryFail(){var f=new Fixture();f.cross();f.item.put("customer","其他客户");assertThrows(RuntimeException.class,()->f.service.validateSource(f.stock,f.target,9L));f.item.put("customer","客户");f.stock.put("factory_id",2L);assertThrows(RuntimeException.class,()->f.service.validateSource(f.stock,f.target,9L));}
+ @Test void releaseCannotReferToAnotherInventory(){var f=new Fixture();f.cross();f.release.put("inventory_id",999L);assertThrows(RuntimeException.class,()->f.service.validateSource(f.stock,f.target,9L));}
+ @Test void sameOrderDifferentItemCannotBeSubstituted(){var f=new Fixture();f.target.put("item_id",20L);assertThrows(RuntimeException.class,()->f.service.validateSource(f.stock,f.target,null));}
+ @Test void effectiveUseIsNetOfReturns(){var f=new Fixture();f.uses.add(Map.of("used_quantity",2L,"used_weight",new BigDecimal("20")));var available=f.service.availableRelease(9);assertEquals(2L,available.get("available_quantity"));assertEquals(new BigDecimal("20"),available.get("available_weight"));}
+ @Test void remainingReleaseBlocksUnrelatedStockMutation(){var f=new Fixture();doReturn(List.of(Map.of("release_id",9L))).when(f.jdbc).queryForList("SELECT release_id FROM metal_semi_release WHERE inventory_id=? AND status='ACTIVE'",1L);assertThrows(RuntimeException.class,()->f.service.guardStock(1));}
+ @Test void candidatePreservesActualReleaseBalanceSeparately()throws Exception{var f=new Fixture();f.stock.remove("origin_batch_id");f.stock.put("quantity",10L);f.stock.put("net_weight",new BigDecimal("100"));var available=f.service.availableRelease(9);var m=SemiFlowService.class.getDeclaredMethod("stockCandidate",Map.class,Map.class);m.setAccessible(true);var candidate=(Map<?,?>)m.invoke(f.service,f.stock,available);assertEquals(4L,candidate.get("release_remaining_quantity"));assertEquals(new BigDecimal("40"),candidate.get("release_remaining_weight"));}
+}

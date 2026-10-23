@@ -1,3 +1,6 @@
+import{workOrderFixture}from'../../tools/work-order-test-fixture.mjs'
+import{registerPageResources}from'./helpers/fixture-registration'
+import {api,ok,detail,login} from '../../tools/local-test-client.mjs'
 import { test, expect } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
@@ -19,8 +22,8 @@ test('真实登录和工厂页面CRUD', async ({page}) => {
   }
   await page.getByRole('button',{name:'登 录',exact:true}).click()
   await expect(page).toHaveURL(/\/metal\/factory$/)
-  const name = `页面验收_${Date.now()}`, updated = `${name}_修改`
-  let created = false
+  const fixture=await workOrderFixture();registerPageResources(page,fixture);const name = fixture.prefix+'页面厂', updated = `${name}_修改`
+  let created = false; const apiToken=await login()
   try {
     await page.getByRole('button',{name:'添加',exact:true}).click()
     const dialog = page.getByRole('dialog')
@@ -30,6 +33,9 @@ test('真实登录和工厂页面CRUD', async ({page}) => {
     await dialog.getByRole('button',{name:'确定',exact:true}).click()
     await expect(dialog).not.toBeVisible(); created = true
     await page.reload()
+    // Other isolated fixtures may be created concurrently; locate this factory through its filter.
+    await page.getByPlaceholder('工厂名称',{exact:true}).fill(name)
+    await page.getByRole('button',{name:'查询',exact:true}).click()
     let row = page.getByRole('row').filter({hasText:name})
     await expect(row).toBeVisible()
     await row.getByRole('button',{name:'编辑',exact:true}).click()
@@ -39,6 +45,7 @@ test('真实登录和工厂页面CRUD', async ({page}) => {
     row = page.getByRole('row').filter({hasText:updated})
     await expect(row).toBeVisible()
     await page.screenshot({path:'../docs/screenshots/factory-live.png',fullPage:true,animations:'disabled'})
+    const current=ok(await api('/metal/factory/list?pageSize=100&factoryName='+encodeURIComponent(updated),apiToken)).rows.find((x:any)=>x.factoryName===updated);ok(await api('/metal/factory',apiToken,'PUT',{...(await detail('/metal/factory',current.factoryId??current.id,apiToken)),productionLineIds:[]}));
     await row.getByRole('button',{name:'删除',exact:true}).click()
     await page.getByRole('button',{name:'确定',exact:true}).click()
     await expect(row).toHaveCount(0); created = false
@@ -47,5 +54,6 @@ test('真实登录和工厂页面CRUD', async ({page}) => {
       const row = page.getByRole('row').filter({hasText:name})
       if (await row.count()) { await row.getByRole('button',{name:'删除',exact:true}).click(); await page.getByRole('button',{name:'确定',exact:true}).click() }
     }
+    await api('/logout',apiToken,'POST');await fixture.cleanup()
   }
 })

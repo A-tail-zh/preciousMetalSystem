@@ -58,37 +58,37 @@
 
       <el-row :gutter="10" class="mb8">
          <el-col :span="1.5">
-            <el-button
+            <el-button v-if="actionPermission.hasAny(['monitor:job:remove'])"
                type="danger"
                plain
                icon="Delete"
                :disabled="multiple"
                @click="handleDelete"
-               v-hasPermi="['monitor:job:remove']"
+
             >删除</el-button>
          </el-col>
          <el-col :span="1.5">
-            <el-button
+            <el-button v-if="actionPermission.hasAny(['monitor:job:remove'])"
                type="danger"
                plain
                icon="Delete"
                @click="handleClean"
-               v-hasPermi="['monitor:job:remove']"
+
             >清空</el-button>
+         </el-col>
+         <el-col :span="1.5">
+            <el-button v-if="actionPermission.hasAny(['monitor:job:export'])"
+               type="warning"
+               plain
+               icon="Download"
+               @click="handleExport"
+
+            >导出</el-button>
          </el-col>
          <el-col :span="1.5">
             <el-button
                type="warning"
                plain
-               icon="Download"
-               @click="handleExport"
-               v-hasPermi="['monitor:job:export']"
-            >导出</el-button>
-         </el-col>
-         <el-col :span="1.5">
-            <el-button 
-               type="warning" 
-               plain 
                icon="Close"
                @click="handleClose"
             >关闭</el-button>
@@ -119,7 +119,7 @@
          </el-table-column>
          <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
             <template #default="scope">
-               <el-button link type="primary" icon="View" @click="handleView(scope.row)" v-hasPermi="['monitor:job:query']">详细</el-button>
+               <el-button v-if="actionPermission.hasAny(['monitor:job:query'])" link type="primary" icon="View" @click="handleView(scope.row)" >详细</el-button>
             </template>
          </el-table-column>
       </el-table>
@@ -138,6 +138,8 @@
 </template>
 
 <script setup lang="ts" name="JobLog">
+import { useActionPermission } from '@/composables/useActionPermission'
+const actionPermission = useActionPermission()
 import JobDetail from './detail.vue'
 import { getJob } from "@/api/monitor/job"
 import { listJobLog, delJobLog, cleanJobLog } from "@/api/monitor/jobLog"

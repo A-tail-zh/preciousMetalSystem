@@ -1,5 +1,5 @@
 <template>
-  <el-form ref="pwdRef" :model="user" :rules="rules" label-width="80px">
+  <el-form ref="pwdRef" :model="user" :rules="rules" scroll-to-error label-width="80px">
     <el-form-item label="旧密码" prop="oldPassword">
       <el-input v-model="user.oldPassword" placeholder="请输入旧密码" type="password" show-password />
     </el-form-item>
@@ -17,11 +17,12 @@
 </template>
 
 <script setup lang="ts">
+import {applyFieldErrors,passwordError} from '@/utils/input-validation'
 import useUserStore from "@/store/modules/user"
 import { updateUserPwd } from "@/api/system/user"
 
 const proxy = getCurrentInstance()!.proxy!
-const infoPwdValidator=[{required:true,message:'新密码不能为空',trigger:'blur'},{validator:(_r:any,v:string,cb:(e?:Error)=>void)=>cb(v&&v.length>=8&&new TextEncoder().encode(v).length<=72?undefined:new Error('密码至少8位，最多72个UTF-8字节')),trigger:'blur'}]
+const infoPwdValidator=[{required:true,message:'新密码不能为空',trigger:'blur'},{validator:(_r:any,v:string,cb:(e?:Error)=>void)=>cb(passwordError(v)?new Error(passwordError(v)):undefined),trigger:'blur'}]
 const session=useUserStore(),router=useRouter()
 
 interface UserProfilePwd {
@@ -48,7 +49,7 @@ const equalToPassword = (rule: any, value: string, callback: (error?: Error) => 
 }
 
 const rules = {
-  oldPassword: [{ required: true, message: "旧密码不能为空", trigger: "blur" }],
+  oldPassword: [{ required: true, whitespace:true, message: "旧密码不能为空", trigger: "blur" }],
   confirmPassword: [{ required: true, message: "确认密码不能为空", trigger: "blur" }, { required: true, validator: equalToPassword, trigger: "blur" }]
 }
 
@@ -58,7 +59,7 @@ function submit() {
     if (valid) {
       updateUserPwd(user.oldPassword!, user.newPassword!).then(() => {
         proxy.$modal.msgSuccess("密码已修改，请重新登录"); session.clearSession(); router.replace('/login')
-      })
+      }).catch(error=>applyFieldErrors(proxy.$refs.pwdRef as import('element-plus').FormInstance,error))
     }
   })
 }

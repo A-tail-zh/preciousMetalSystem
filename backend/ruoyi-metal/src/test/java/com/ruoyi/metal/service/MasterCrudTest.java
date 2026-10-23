@@ -156,10 +156,9 @@ class MasterCrudTest {
             verify(mapper,never()).delete(anyLong(),anyString());
         }
     }
-    @Test void lineCannotBeDeletedWhileAssignedToFactoryOrProducts() {
+    @Test void lineCannotBeDeletedWhileAssignedToProducts() {
         setup(Kind.LINE); form.setId(9L); when(mapper.lock(9L)).thenReturn(form);
-        assertThrows(ServiceException.class, () -> service.delete(new Long[]{9L}));
-        ((LineRecord)form).setFactoryId(null);
+        // Factory ownership alone must not prevent deletion; product references still do.
         when(jdbc.queryForObject(anyString(),eq(Integer.class),any(Object[].class))).thenReturn(1);
         assertThrows(ServiceException.class, () -> service.delete(new Long[]{9L})); verify(mapper,never()).delete(anyLong(),anyString());
     }

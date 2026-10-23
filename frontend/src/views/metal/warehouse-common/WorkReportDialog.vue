@@ -3,23 +3,25 @@
   <div class="report-content" v-loading="loading"><p class="process-name">工序名称：{{processName}}</p>
    <el-select v-if="reports.length>1" v-model="reportId" :disabled="loading||reversing" class="batch-select" fit-input-width @change="loadDetail"><el-option v-for="r in reports" :key="r.id" :value="r.id" :label="(r.batchNo||('历史批次'+r.batchId))+' / '+(r.voided?'已作废':stateNames[r.status])"/></el-select>
    <template v-if="report"><el-table :data="report.materials" border class="material-report"><el-table-column label="物料编码" prop="code" width="98"/><el-table-column label="物料名称" prop="name" width="98"/><el-table-column label="分摊损耗(g)" prop="lossWeight" width="116"/><el-table-column label="平均损耗" prop="averageLoss"/></el-table>
-    <el-button v-show="false" link type="primary" @click="emit('consumption',String(report.processId));visible=false">查看工序消耗明细</el-button><el-collapse v-show="false" class="report-evidence"><el-collapse-item title="查看批次与领还料依据" name="evidence"><p>领料净重：{{report.issuedWeight}}g；原料还库净重：{{report.rawReturnedWeight??'—'}}g</p><p>半成品／成品产出净重：{{report.outputWeight??'—'}}g；完成：{{report.completedQuantity}}件</p><p>损耗：{{report.lossWeight}}g；平均：{{report.averageLoss}}g；阈值：{{report.thresholdValue}}g</p><p>损耗＝领料净重－原料还库净重－半成品／成品产出净重；按领用净重比例分摊</p><p v-if="report.voided">报工已作废，拆分重量不展示</p><el-table :data="report.orders" border><el-table-column label="来源单据" prop="orderNo"/><el-table-column label="类型"><template #default="{row}">{{orderTypeNames[row.type]}}</template></el-table-column><el-table-column label="状态"><template #default="{row}">{{stateNames[row.status]}}</template></el-table-column></el-table><el-button v-if="canReverse&&!report.voided" type="danger" :disabled="loading" :loading="reversing" @click="reverse">批次纠错（冲销）</el-button></el-collapse-item></el-collapse>
+    <el-button v-show="false" link type="primary" @click="emit('consumption',String(report.processId));visible=false">查看工序消耗明细</el-button><el-collapse v-show="false" class="report-evidence"><el-collapse-item title="查看批次与领还料依据" name="evidence"><p>领料净重：{{report.issuedWeight}}g；原料还库净重：{{report.rawReturnedWeight??'—'}}g</p><p>半成品／成品产出净重：{{report.outputWeight??'—'}}g；完成：{{report.completedQuantity}}件</p><p>损耗：{{report.lossWeight}}g；平均：{{report.averageLoss}}g；阈值：{{report.thresholdValue}}g</p><p>损耗＝领料净重－原料还库净重－半成品还库净重－半成品／成品产出净重；按领用净重比例分摊</p><p v-if="report.voided">报工已作废，拆分重量不展示</p><el-table :data="report.orders" border><el-table-column label="来源单据" prop="orderNo"/><el-table-column label="类型"><template #default="{row}">{{orderTypeNames[row.type]}}</template></el-table-column><el-table-column label="状态"><template #default="{row}">{{stateNames[row.status]}}</template></el-table-column></el-table><el-button v-if="canReverse&&!report.voided" type="danger" :disabled="loading" :loading="reversing" @click="reverse">批次纠错（冲销）</el-button></el-collapse-item></el-collapse>
    </template>
   </div><template #footer><el-button class="cancel-button" :disabled="reversing" @click="visible=false">取消</el-button><el-button type="primary" :disabled="reversing" @click="visible=false">确认</el-button></template>
  </el-dialog>
  <el-dialog v-model="correctionVisible" title="批次纠错" width="min(480px,94vw)" append-to-body :close-on-click-modal="false" :close-on-press-escape="!reversing" :show-close="!reversing">
   <p>批次编号：{{correctionBatchNo}}</p>
   <el-form label-position="top"><el-form-item label="冲销原因" :error="correctionError" required><el-input v-model="correctionReason" type="textarea" :rows="3" maxlength="500" show-word-limit :disabled="reversing" placeholder="填写整体冲销原因"/></el-form-item></el-form>
-  <template #footer><el-button :disabled="reversing" @click="cancelCorrection">取消</el-button><el-button type="primary" :loading="reversing" :disabled="needsReload" @click="confirmCorrection">确定</el-button></template>
+  <template #footer><el-button :disabled="reversing" @click="cancelCorrection">取消</el-button><el-button v-if="canReverse" type="primary" :loading="reversing" :disabled="needsReload" @click="confirmCorrection">确定</el-button></template>
  </el-dialog>
 </template>
 <script setup lang="ts">
+import { useActionPermission } from '@/composables/useActionPermission'
+const actionPermission = useActionPermission()
 import{ref,computed,watch,onBeforeUnmount}from'vue'
 import{ElMessage}from'element-plus'
 import useUserStore from '@/store/modules/user'
 import{stepReports,warehouseDetail,warehouseAction,stateNames,orderTypeNames,type Row}from'@/api/metal/warehouse'
 const props=defineProps<{workOrderId:string}>()
-const emit=defineEmits(['changed','consumption']),visible=ref(false),reportId=ref(''),processName=ref(''),reports=ref<Row[]>([]),report=ref<Row>(),user=useUserStore(),canReverse=computed(()=>user.permissions.includes('*:*:*')||user.permissions.includes('metal:process-batch:reverse'))
+const emit=defineEmits(['changed','consumption']),visible=ref(false),reportId=ref(''),processName=ref(''),reports=ref<Row[]>([]),report=ref<Row>(),user=useUserStore(),canReverse=computed(()=>actionPermission.has('metal:process-batch:reverse'))
 const loading=ref(false),reversing=ref(false)
 const correctionVisible=ref(false),correctionReason=ref(''),correctionError=ref(''),correctionBatchNo=ref(''),needsReload=ref(false)
 let detailEpoch=0,openEpoch=0,operationEpoch=0,disposed=false

@@ -140,7 +140,7 @@
 
       <!-- 添加或修改参数配置对话框 -->
       <el-dialog :title="title" v-model="open" width="500px" append-to-body>
-         <el-form ref="dictRef" :model="form" :rules="rules" label-width="100px">
+         <el-form ref="dictRef" :model="form" :rules="rules" label-width="100px" scroll-to-error>
             <el-form-item label="字典名称" prop="dictName">
                <el-input v-model="form.dictName" placeholder="请输入字典名称" />
             </el-form-item>
@@ -181,6 +181,7 @@
 </template>
 
 <script setup lang="ts" name="Dict">
+import {applyFieldErrors} from '@/utils/input-validation'
 import DictDataDrawer from './detail.vue'
 import useDictStore from '@/store/modules/dict'
 import { listType, getType, delType, addType, updateType, refreshCache } from "@/api/system/dict/type"
@@ -212,8 +213,10 @@ const data = reactive({
     status: undefined
   } as DictTypeQueryParams,
   rules: {
-    dictName: [{ required: true, message: "字典名称不能为空", trigger: "blur" }],
-    dictType: [{ required: true, message: "字典类型不能为空", trigger: "blur" }]
+    remark: [{max:500,message:"备注最多500个字符",trigger:"blur"}],
+    status: [{max:1,message:"该字段最多1个字符",trigger:"blur"}],
+    dictName: [{max:100,message:"该字段最多100个字符",trigger:"blur"},{ required: true, whitespace:true, message: "字典名称不能为空", trigger: "blur" }],
+    dictType: [{max:100,message:"该字段最多100个字符",trigger:"blur"},{ required: true, whitespace:true, message: "字典类型不能为空", trigger: "blur" }]
   },
 })
 
@@ -298,20 +301,21 @@ function handleUpdate(row?: SysDictType) {
 
 /** 提交按钮 */
 function submitForm() {
+  const submittedForm=form.value
   ;(proxy.$refs["dictRef"] as import('element-plus').FormInstance).validate((valid: boolean) => {
-    if (valid) {
+    if (valid && form.value===submittedForm) {
       if (form.value.dictId != undefined) {
         updateType(form.value).then(() => {
           proxy.$modal.msgSuccess("修改成功")
           open.value = false
           getList()
-        })
+        }).catch(error=>{if(form.value===submittedForm&&open.value)applyFieldErrors(proxy.$refs["dictRef"] as import('element-plus').FormInstance,error)})
       } else {
         addType(form.value).then(() => {
           proxy.$modal.msgSuccess("新增成功")
           open.value = false
           getList()
-        })
+        }).catch(error=>{if(form.value===submittedForm&&open.value)applyFieldErrors(proxy.$refs["dictRef"] as import('element-plus').FormInstance,error)})
       }
     }
   })

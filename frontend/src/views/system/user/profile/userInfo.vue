@@ -1,7 +1,7 @@
 <template>
-   <el-form ref="userRef" :model="form" :rules="rules" label-width="80px">
+   <el-form ref="userRef" :model="form" :rules="rules" scroll-to-error label-width="80px">
       <el-form-item label="用户昵称" prop="nickName">
-         <el-input v-model="form.nickName" maxlength="30" />
+         <el-input v-model="form.nickName" maxlength="100" />
       </el-form-item>
       <el-form-item label="手机号码" prop="phonenumber">
          <el-input v-model="form.phonenumber" maxlength="11" />
@@ -23,6 +23,7 @@
 </template>
 
 <script setup lang="ts">
+import {textRules,fieldRule,applyFieldErrors} from '@/utils/input-validation'
 import useUserStore from "@/store/modules/user"
 import { updateUserProfile } from "@/api/system/user"
 import type { SysUser } from '@/types/api/system/user'
@@ -38,9 +39,9 @@ const session=useUserStore(),router=useRouter()
 
 const form = ref<SysUser>({})
 const rules = {
-  nickName: [{ required: true, message: "用户昵称不能为空", trigger: "blur" }],
-  email: [{ required: true, message: "邮箱地址不能为空", trigger: "blur" }, { type: "email" as const, message: "请输入正确的邮箱地址", trigger: ["blur", "change"] }],
-  phonenumber: [{ required: true, message: "手机号码不能为空", trigger: "blur" }, { pattern: /^1[3-9]\d{9}$/, message: "请输入正确的手机号码", trigger: "blur" }],
+  nickName: textRules("用户昵称",100,true),
+  email: [{ max:50,message:"邮箱最多50个字符",trigger:"blur" }, { type: "email" as const, message: "请输入正确的邮箱地址", trigger: ["blur", "change"] }],
+  phonenumber: [fieldRule(v=>!v&&String(session.id)==='1'?'':/^1[3-9]\d{9}$/.test(String(v??''))?'':'请输入大陆11位手机号')],
 }
 
 /** 提交按钮 */
@@ -55,7 +56,7 @@ function submit() {
           props.user.phonenumber = form.value.phonenumber
           props.user.email = form.value.email
         }
-      })
+      }).catch(error=>applyFieldErrors(proxy.$refs.userRef as import('element-plus').FormInstance,error))
     }
   })
 }

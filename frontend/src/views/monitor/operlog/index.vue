@@ -77,31 +77,31 @@
 
       <el-row :gutter="10" class="mb8">
          <el-col :span="1.5">
-            <el-button
+            <el-button v-if="actionPermission.hasAny(['monitor:operlog:remove'])"
                type="danger"
                plain
                icon="Delete"
                :disabled="multiple"
                @click="handleDelete()"
-               v-hasPermi="['monitor:operlog:remove']"
+
             >删除</el-button>
          </el-col>
          <el-col :span="1.5">
-            <el-button
+            <el-button v-if="actionPermission.hasAny(['monitor:operlog:remove'])"
                type="danger"
                plain
                icon="Delete"
                @click="handleClean"
-               v-hasPermi="['monitor:operlog:remove']"
+
             >清空</el-button>
          </el-col>
          <el-col :span="1.5">
-            <el-button
+            <el-button v-if="actionPermission.hasAny(['monitor:operlog:export'])"
                type="warning"
                plain
                icon="Download"
                @click="handleExport"
-               v-hasPermi="['monitor:operlog:export']"
+
             >导出</el-button>
          </el-col>
          <right-toolbar v-model:showSearch="showSearch" @queryTable="getList"></right-toolbar>
@@ -135,7 +135,7 @@
          </el-table-column>
          <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
             <template #default="scope">
-               <el-button link type="primary" icon="View" @click="handleDetail(scope.row)" v-hasPermi="['monitor:operlog:query']">详细</el-button>
+               <el-button v-if="actionPermission.hasAny(['monitor:operlog:query'])" link type="primary" icon="View" @click="handleDetail(scope.row)" >详细</el-button>
             </template>
          </el-table-column>
       </el-table>
@@ -153,6 +153,8 @@
 </template>
 
 <script setup lang="ts" name="Operlog">
+import { useActionPermission } from '@/composables/useActionPermission'
+const actionPermission = useActionPermission()
 import OperlogDetail from './detail.vue'
 import { list, delOperlog, cleanOperlog } from "@/api/monitor/operlog"
 import type { SysOperLog, OperlogQueryParams } from '@/types/api/monitor/operlog'

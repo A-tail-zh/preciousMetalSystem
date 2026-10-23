@@ -9,9 +9,10 @@ test('连续计算、重复商品、修改和移除后重新计算',async({page,
   await fill(0);await page.getByRole('button',{name:'添加商品',exact:true}).click();await fill(1)
   const expected=ok(await api('/metal/quotation/calculate',token,'POST',{category:'铱杆实心',dimensions:{diameter:'10',length:'20'},quantity:1})).data
   const price=(BigInt(expected.totalPrice.replace('.',''))*2n).toString().padStart(7,'0');const combined=price.slice(0,-6)+'.'+price.slice(-6)
+  const factory=page.locator('.quote-factory .el-select__wrapper');if(await factory.count()){await factory.click();const list=await page.locator('.quote-factory').getByRole('combobox').getAttribute('aria-controls');await page.locator('[id="'+list+'"]').getByRole('option').first().click()}
   const button=page.getByRole('button',{name:'开始计算',exact:true}),result=page.locator('.quote-results')
-  for(let i=0;i<3;i++){await button.click();await expect(result).toContainText('商品2：');await expect(result.locator('strong')).toHaveText(`总报价：${combined} 元`)}
-  await page.locator('.goods-item').nth(1).getByLabel('商品数量',{exact:true}).fill('2');await expect(result).toHaveCount(0);await button.click();await expect(result).toContainText('商品2：')
+  for(let i=0;i<3;i++){await button.click();await expect(result.locator('.el-table__body tbody tr')).toHaveCount(2);await expect(result.locator('strong')).toHaveText(`总报价：${combined} 元`)}
+  await page.locator('.goods-item').nth(1).getByLabel('商品数量',{exact:true}).fill('2');await expect(result).toHaveCount(0);await button.click();await expect(result.locator('.el-table__body tbody tr')).toHaveCount(2)
   await page.locator('.goods-item').nth(1).getByRole('button',{name:'移除商品',exact:true}).click();await expect(result).toHaveCount(0);await button.click();await expect(result.locator('strong')).toHaveText(`总报价：${expected.totalPrice} 元`)
  }finally{await api('/logout',token,'POST')}
 })

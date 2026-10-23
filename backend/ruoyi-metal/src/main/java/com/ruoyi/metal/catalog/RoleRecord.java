@@ -11,7 +11,7 @@ public class RoleRecord extends MasterRecord {
  @NotNull @Min(0)  private Integer roleSort;
  @NotBlank @Pattern(regexp="[01]")  private String status;
  @JsonIgnore private String roleKey;
-  @tools.jackson.databind.annotation.JsonSerialize(contentUsing=tools.jackson.databind.ser.std.ToStringSerializer.class) private List<Long> menuIds=new ArrayList<>();
+  @tools.jackson.databind.annotation.JsonSerialize(contentUsing=tools.jackson.databind.ser.std.ToStringSerializer.class) @NotNull private List<@NotNull @Positive Long> menuIds=new ArrayList<>();
   private String factoryName;
  public String getRoleName(){return roleName;} public void setRoleName(String v){roleName=v==null?null:v.strip();}
  public Long getFactoryId(){return factoryId;} public void setFactoryId(Long v){factoryId=v;}

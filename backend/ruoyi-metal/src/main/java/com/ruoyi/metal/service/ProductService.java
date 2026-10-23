@@ -40,17 +40,20 @@ public class ProductService extends MasterService<ProductRecord> {
             throw new ServiceException("请填写类别对应的尺寸，不得保留其他类别尺寸");
         for (String key : fields) {
             try {
-                BigDecimal value = new BigDecimal(row.getDimensions().get(key));
+                String text=row.getDimensions().get(key);
+                boolean unchanged=old!=null&&Objects.equals(old.getCategory(),row.getCategory())&&old.getDimensions()!=null&&Objects.equals(old.getDimensions().get(key),text);
+                if(!unchanged&&(text==null||!text.matches("[0-9]+(\\.[0-9]{1,6})?")))throw new IllegalArgumentException();
+                BigDecimal value = new BigDecimal(text);
                 if (value.signum() <= 0 || value.scale() > 6 || value.precision() - value.scale() > 14)
                     throw new IllegalArgumentException();
             } catch (Exception e) {
-                throw new ServiceException("尺寸必须为正数，最多14位整数、6位小数：" + key);
+                throw new ServiceException("尺寸必须为正数，最多14位整数、6位小数，不支持科学计数法：" + VolumeCalculator.dimensionLabel(key));
             }
         }
         if (fields.contains("outerDiameter") && new BigDecimal(row.getDimensions().get("outerDiameter")).compareTo(new BigDecimal(row.getDimensions().get("innerDiameter"))) <= 0)
             throw new ServiceException("外径必须大于内径");
         row.setSpecification(specification(row));
-        row.setVolume(VolumeCalculator.supported(row.getCategory()) ? VolumeCalculator.stored(VolumeCalculator.calculate(row.getCategory(), row.getDimensions(), quoteRules.get().getPiValue())) : null);
+        row.setVolume(VolumeCalculator.supported(row.getCategory()) ? VolumeCalculator.stored(VolumeCalculator.calculate(row.getCategory(), row.getDimensions(), quoteRules.get().getPiValue(),false)) : null);
         if (row.getProcesses() == null || row.getProcesses().size() > 100)
             throw new ServiceException("工序配置无效，最多100道工序");
         List<Long> ids = row.getProcesses().stream().map(ProductStep::getProcessId).toList();
@@ -92,7 +95,7 @@ public class ProductService extends MasterService<ProductRecord> {
         if (rows.isEmpty()) return;
         var pi = rows.stream().anyMatch(r -> VolumeCalculator.supported(r.getCategory())) ? quoteRules.get().getPiValue() : null;
         rows.forEach(r -> r.setSpecification(specification(r)));
-        rows.forEach(r -> r.setVolume(VolumeCalculator.supported(r.getCategory()) ? VolumeCalculator.stored(VolumeCalculator.calculate(r.getCategory(), r.getDimensions(), pi)) : null));
+        rows.forEach(r -> r.setVolume(VolumeCalculator.supported(r.getCategory()) ? VolumeCalculator.stored(VolumeCalculator.calculate(r.getCategory(), r.getDimensions(), pi,false)) : null));
         Map<Long, ProductRecord> indexed = new HashMap<>();
         rows.forEach(r -> {
             r.setProcesses(new ArrayList<>());

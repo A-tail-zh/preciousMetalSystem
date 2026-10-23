@@ -30,6 +30,22 @@ public class WarehouseController extends BaseController {
     /**
      * 分页查询库房列表。
      */
+    @GetMapping("/warehouse/{id}/edit-context")
+    @PreAuthorize("@ss.hasPermi('metal:warehouse:edit')")
+    public AjaxResult warehouseEditContext(@PathVariable @Positive Long id) { return success(service.detail("warehouse",id)); }
+
+    @GetMapping("/warning-rule/{id}/edit-context")
+    @PreAuthorize("@ss.hasPermi('metal:warning-rule:edit')")
+    public AjaxResult warningEditContext(@PathVariable @Positive Long id) { return success(service.detail("warning-rule",id)); }
+
+    @GetMapping("/inventory/{id}/edit-context")
+    @PreAuthorize("@ss.hasAnyPermi('metal:inventory:edit,metal:inventory:adjust')")
+    public AjaxResult inventoryEditContext(@PathVariable @Positive Long id) {
+        var context=new java.util.LinkedHashMap<>(service.detail("inventory",id));
+        context.remove("ledger");
+        return success(context);
+    }
+
     @GetMapping("/warehouse/list")
     @PreAuthorize("@ss.hasPermi('metal:warehouse:list')")
     public Map<String, Object> warehouseList(@RequestParam(defaultValue = "1") @Min(1) int pageNum, @RequestParam(defaultValue = "16") @Min(1) @Max(100) int pageSize, @RequestParam(required = false) String filter, @RequestParam(required = false) Long factoryId) {
@@ -382,9 +398,13 @@ public class WarehouseController extends BaseController {
         return success(service.workOrderContext(factoryId, workOrderId));
     }
 
+    @GetMapping("/warehouse/options/process-raw-return-context")
+    @PreAuthorize("@ss.hasAnyPermi('metal:warehouse-order:add,metal:warehouse-order:import')")
+    public AjaxResult processRawReturnContext(@RequestParam Long factoryId,@RequestParam Long workOrderId,@RequestParam Long itemId,@RequestParam Long processId,@RequestParam(required=false) Long batchId){return success(service.processRawReturnContext(factoryId,workOrderId,itemId,processId,batchId));}
     @GetMapping("/warehouse/options/{kind}")
     @PreAuthorize("isAuthenticated()")
-    public AjaxResult options(@PathVariable String kind, @RequestParam(required = false) Long factoryId, @RequestParam(required = false) Long referenceId) {
+    public AjaxResult options(@PathVariable String kind, @RequestParam(required = false) Long factoryId, @RequestParam(required = false) Long referenceId, @RequestParam(required=false) Long warehouseId, @RequestParam(required=false) Long workOrderId, @RequestParam(required=false) Long itemId, @RequestParam(required=false) Long processId) {
+        if("stocks".equals(kind) && workOrderId!=null){if(factoryId==null||warehouseId==null||itemId==null||processId==null)throw new com.ruoyi.common.exception.ServiceException("请先选择工厂、仓库、工单、产品明细和工序");var snapshot=service.productionStockSnapshot(factoryId,warehouseId,workOrderId,itemId,processId);return success(snapshot.stocks()).put("entryContext",snapshot.entryContext());}
         return success(service.options(kind, factoryId, referenceId));
     }
 }
