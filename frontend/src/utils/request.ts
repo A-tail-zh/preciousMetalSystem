@@ -1,3 +1,4 @@
+import {userMessage} from '@/utils/user-message'
 import axios from 'axios'
 import { h } from 'vue'
 import { ElNotification , ElMessageBox, ElMessage, ElLoading } from 'element-plus'
@@ -96,7 +97,7 @@ service.interceptors.response.use((res: any) => {
     if(code!==401&&staleContext(res.config))return Promise.reject(new axios.CanceledError('请求上下文已失效'))
     const trace=res.data.traceId||res.headers?.['x-trace-id'];if(code!==200&&code!==401&&trace&&useUserStore().sessionReady&&!!getToken()&&res.config?.sessionToken===getToken()&&!/\/(login|logout|captchaImage|getInfo)(?:\?|$)/.test(res.config?.url??'')&&!location.pathname.startsWith('/login'))ElNotification({title:'故障追踪',message:h('button',{onClick:()=>copyText(trace).then(()=>ElMessage.success('追踪ID已复制')).catch(()=>ElMessage.warning('复制失败，请手动选择追踪ID'))},'复制追踪ID：'+trace),duration:10000})
     // 获取错误信息
-    const msg = errorCode[code] || res.data.msg || errorCode['default']
+    const msg = userMessage(errorCode[code] || res.data.msg || errorCode['default'])
     // 二进制数据则直接返回
     if (res.request.responseType ===  'blob' || res.request.responseType ===  'arraybuffer') {
       return res.data
@@ -106,13 +107,13 @@ service.interceptors.response.use((res: any) => {
       return Promise.reject('无效的会话，或者会话已过期，请重新登录。')
     } else if (code === 500) {
       ElMessage({ message: msg, type: 'error' })
-      return Promise.reject(new Error(msg))
+      return Promise.reject(Object.assign(new Error(msg), {fieldErrors:res.data.fieldErrors??[],code}))
     } else if (code === 601) {
       ElMessage({ message: msg, type: 'warning' })
-      return Promise.reject(new Error(msg))
+      return Promise.reject(Object.assign(new Error(msg), {fieldErrors:res.data.fieldErrors??[],code}))
     } else if (code !== 200) {
       ElNotification.error({ title: msg })
-      return Promise.reject('error')
+      return Promise.reject(Object.assign(new Error(msg), {fieldErrors:res.data.fieldErrors??[],code}))
     } else {
       return  Promise.resolve(res.data)
     }
@@ -121,7 +122,7 @@ service.interceptors.response.use((res: any) => {
     if(error.response?.status===401){expired(error.config);return Promise.reject(error)}
     if(staleContext(error.config))return Promise.reject(error)
     console.log('err' + error)
-    let { message } = error
+    let message = String(error?.message??'')
     if (message == "Network Error") {
       message = "后端接口连接异常"
     } else if (message.includes("timeout")) {
@@ -129,7 +130,7 @@ service.interceptors.response.use((res: any) => {
     } else if (message.includes("Request failed with status code")) {
       message = "系统接口" + message.slice(-3) + "异常"
     }
-    ElMessage({ message: message, type: 'error', duration: 5 * 1000 })
+    ElMessage({ message: userMessage(message,'请求失败，请重试'), type: 'error', duration: 5 * 1000 })
     return Promise.reject(error)
   }
 )

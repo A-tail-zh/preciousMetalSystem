@@ -22,3 +22,6 @@ test-results/
 
 # Local verification artifacts may contain account or business data
 outputs/
+
+# Local browser test run artifacts
+**/test-results-*/

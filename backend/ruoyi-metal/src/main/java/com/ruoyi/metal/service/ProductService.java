@@ -40,19 +40,26 @@ public class ProductService extends MasterService<ProductRecord> {
             throw new ServiceException("请填写类别对应的尺寸，不得保留其他类别尺寸");
         for (String key : fields) {
             try {
-                BigDecimal value = new BigDecimal(row.getDimensions().get(key));
+                String text=row.getDimensions().get(key);
+                boolean unchanged=old!=null&&Objects.equals(old.getCategory(),row.getCategory())&&old.getDimensions()!=null&&Objects.equals(old.getDimensions().get(key),text);
+                if(!unchanged&&(text==null||!text.matches("[0-9]+(\\.[0-9]{1,6})?")))throw new IllegalArgumentException();
+                BigDecimal value = new BigDecimal(text);
                 if (value.signum() <= 0 || value.scale() > 6 || value.precision() - value.scale() > 14)
                     throw new IllegalArgumentException();
             } catch (Exception e) {
-                throw new ServiceException("尺寸必须为正数，最多14位整数、6位小数：" + key);
+                throw new ServiceException("尺寸必须为正数，最多14位整数、6位小数，不支持科学计数法：" + VolumeCalculator.dimensionLabel(key));
             }
         }
         if (fields.contains("outerDiameter") && new BigDecimal(row.getDimensions().get("outerDiameter")).compareTo(new BigDecimal(row.getDimensions().get("innerDiameter"))) <= 0)
             throw new ServiceException("外径必须大于内径");
         row.setSpecification(specification(row));
-        row.setVolume(VolumeCalculator.supported(row.getCategory()) ? VolumeCalculator.stored(VolumeCalculator.calculate(row.getCategory(), row.getDimensions(), quoteRules.get().getPiValue())) : null);
+        row.setVolume(VolumeCalculator.supported(row.getCategory()) ? VolumeCalculator.stored(VolumeCalculator.calculate(row.getCategory(), row.getDimensions(), quoteRules.get().getPiValue(),false)) : null);
         if (row.getProcesses() == null || row.getProcesses().size() > 100)
             throw new ServiceException("工序配置无效，最多100道工序");
+        for(int i=0;i<row.getProcesses().size();i++){
+            String mode=SemiMeasurementRules.mode(row.getProcesses().get(i).getMeasurementMode());
+            if(i==row.getProcesses().size()-1&&mode.equals("WEIGHT"))throw new ServiceException("最后一道工序产出成品，须按件管理");
+        }
         List<Long> ids = row.getProcesses().stream().map(ProductStep::getProcessId).toList();
         if (new HashSet<>(ids).size() != ids.size()) throw new ServiceException("同一工序不能重复选择");
         for (Long id : ids.stream().sorted().toList())
@@ -81,7 +88,7 @@ public class ProductService extends MasterService<ProductRecord> {
         jdbc.update("DELETE FROM metal_product_process WHERE product_id=?", row.getId());
         int order = 0;
         for (ProductStep step : row.getProcesses())
-            jdbc.update("INSERT INTO metal_product_process(product_id,process_id,sequence_no,theoretical_loss) VALUES(?,?,?,?)", row.getId(), step.getProcessId(), ++order, step.getLoss());
+            jdbc.update("INSERT INTO metal_product_process(product_id,process_id,sequence_no,theoretical_loss,measurement_mode) VALUES(?,?,?,?,?)", row.getId(), step.getProcessId(), ++order, step.getLoss(),step.getMeasurementMode());
     }
 
     /**
@@ -92,17 +99,18 @@ public class ProductService extends MasterService<ProductRecord> {
         if (rows.isEmpty()) return;
         var pi = rows.stream().anyMatch(r -> VolumeCalculator.supported(r.getCategory())) ? quoteRules.get().getPiValue() : null;
         rows.forEach(r -> r.setSpecification(specification(r)));
-        rows.forEach(r -> r.setVolume(VolumeCalculator.supported(r.getCategory()) ? VolumeCalculator.stored(VolumeCalculator.calculate(r.getCategory(), r.getDimensions(), pi)) : null));
+        rows.forEach(r -> r.setVolume(VolumeCalculator.supported(r.getCategory()) ? VolumeCalculator.stored(VolumeCalculator.calculate(r.getCategory(), r.getDimensions(), pi,false)) : null));
         Map<Long, ProductRecord> indexed = new HashMap<>();
         rows.forEach(r -> {
             r.setProcesses(new ArrayList<>());
             indexed.put(r.getId(), r);
         });
         String placeholders = String.join(",", Collections.nCopies(rows.size(), "?"));
-        jdbc.query("SELECT pp.product_id,pp.process_id,pp.theoretical_loss,p.process_name FROM metal_product_process pp JOIN metal_process p ON p.process_id=pp.process_id WHERE pp.product_id IN (" + placeholders + ") ORDER BY pp.product_id,pp.sequence_no", (org.springframework.jdbc.core.RowCallbackHandler) r -> {
+        jdbc.query("SELECT pp.product_id,pp.process_id,pp.theoretical_loss,pp.measurement_mode,p.process_name FROM metal_product_process pp JOIN metal_process p ON p.process_id=pp.process_id WHERE pp.product_id IN (" + placeholders + ") ORDER BY pp.product_id,pp.sequence_no", (org.springframework.jdbc.core.RowCallbackHandler) r -> {
             ProductStep s = new ProductStep();
             s.setProcessId(r.getLong("process_id"));
             s.setLoss(r.getBigDecimal("theoretical_loss"));
+            s.setMeasurementMode(r.getString("measurement_mode"));
             s.setProcessName(r.getString("process_name"));
             indexed.get(r.getLong("product_id")).getProcesses().add(s);
         }, rows.stream().map(ProductRecord::getId).toArray());

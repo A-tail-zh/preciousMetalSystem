@@ -1,0 +1,24 @@
+package com.ruoyi.metal.service;
+import java.util.*;import java.math.BigDecimal;import org.junit.jupiter.api.Test;import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;import org.springframework.jdbc.core.JdbcTemplate;import org.springframework.jdbc.datasource.*;import org.springframework.transaction.support.TransactionTemplate;import static org.junit.jupiter.api.Assertions.*;
+@EnabledIfEnvironmentVariable(named="METAL_FLOW_ISOLATED_JDBC_URL",matches=".*3310/heavy_metal_plan_upgrade_20261022.*")
+class WeightReferenceReversalIntegrationTest {
+ @Test void completeReversalRestoresReferenceAcrossMultipleLedgers()throws Exception{verifyReversal(false,false);}
+ @Test void outOfOrderReversalCannotRestoreAnObsoleteCompleteReferenceSnapshot()throws Exception{verifyReversal(true,false);}
+ @Test void reversingAnEarlierReferenceOnlyAdjustmentCannotResurrectIt()throws Exception{verifyReversal(true,true);}
+ private void verifyReversal(boolean unordered,boolean referenceAdjustment)throws Exception{
+ var ds=new DriverManagerDataSource(System.getenv("METAL_FLOW_ISOLATED_JDBC_URL"),"root","");var j=new JdbcTemplate(ds);var tx=new TransactionTemplate(new DataSourceTransactionManager(ds));
+ var method=WarehouseService.class.getDeclaredMethod("balance",Map.class,BigDecimal.class,long.class,long.class,long.class,Long.class);method.setAccessible(true);
+ tx.executeWithoutResult(status->{try{
+ var template=j.queryForMap("SELECT * FROM metal_inventory WHERE origin_batch_id IS NOT NULL LIMIT 1");String key="WEIGHT-REF-"+UUID.randomUUID();
+ j.update("INSERT INTO metal_inventory(factory_id,warehouse_id,category,reference_id,batch_no,code,name,origin_batch_id,net_weight,quantity,measurement_mode,reference_quantity,reference_complete) VALUES(?,?,'SEMI',?,?,?, ?,?,100,0,'WEIGHT',10,TRUE)",template.get("factory_id"),template.get("warehouse_id"),template.get("reference_id"),key,template.get("code"),template.get("name"),template.get("origin_batch_id"));
+ long inv=j.queryForObject("SELECT inventory_id FROM metal_inventory WHERE batch_no=?",Long.class,key);long[] docs=new long[2],lines=new long[2];
+ for(int k=0;k<2;k++){String request=UUID.randomUUID().toString();j.update("INSERT INTO metal_warehouse_order(order_no,request_id,request_hash,request_actor,factory_id,warehouse_id,kind,type,order_date,keeper_id,operator_name,keeper_name,warehouse_name) VALUES(?,?,?,1,?,?,?, ?,CURRENT_DATE,1,'reference fixture','reference fixture','isolated')",key.substring(0,29)+k,request,"a".repeat(64),template.get("factory_id"),template.get("warehouse_id"),referenceAdjustment&&k==0?"IN":k==0||unordered?"OUT":"RET",referenceAdjustment&&k==0?"ADJUST":k==0||unordered?"PRODUCTION_OUT":"SEMI_RETURN");docs[k]=j.queryForObject("SELECT order_id FROM metal_warehouse_order WHERE request_id=?",Long.class,request);j.update("INSERT INTO metal_warehouse_order_line(order_id,inventory_id,sequence_no,category,reference_id,code,name,batch_no,net_weight,quantity,measurement_mode,reference_quantity) VALUES(?,?,1,'SEMI',?,?,?, 'REF',?,0,'WEIGHT',?)",docs[k],inv,template.get("reference_id"),template.get("code"),template.get("name"),k==0?(referenceAdjustment?0:40):10,referenceAdjustment?(k==0?20:1):k==0?4:1);lines[k]=j.queryForObject("SELECT line_id FROM metal_warehouse_order_line WHERE order_id=?",Long.class,docs[k]);}
+ if(referenceAdjustment)j.update("UPDATE metal_warehouse_order_line SET reference_quantity=NULL WHERE line_id=?",lines[1]);
+ var stock=j.queryForMap("SELECT * FROM metal_inventory WHERE inventory_id=?",inv);var service=new WarehouseService(j,null);
+ method.invoke(service,stock,new BigDecimal(referenceAdjustment?"0":"-40"),0L,docs[0],lines[0],null);long issue=j.queryForObject("SELECT MAX(ledger_id) FROM metal_stock_ledger WHERE inventory_id=?",Long.class,inv);
+ method.invoke(service,stock,new BigDecimal(unordered?"-10":"10"),0L,docs[1],lines[1],null);long returned=j.queryForObject("SELECT MAX(ledger_id) FROM metal_stock_ledger WHERE inventory_id=?",Long.class,inv);
+ if(unordered){method.invoke(service,stock,new BigDecimal(referenceAdjustment?"0":"40"),0L,docs[0],lines[0],issue);method.invoke(service,stock,new BigDecimal("10"),0L,docs[1],lines[1],returned);}else{method.invoke(service,stock,new BigDecimal("-10"),0L,docs[1],lines[1],returned);method.invoke(service,stock,new BigDecimal(referenceAdjustment?"0":"40"),0L,docs[0],lines[0],issue);}
+ var result=j.queryForMap("SELECT net_weight,reference_quantity,reference_complete FROM metal_inventory WHERE inventory_id=?",inv);assertEquals(0,new BigDecimal("100").compareTo((BigDecimal)result.get("net_weight")));if(unordered){assertNull(result.get("reference_quantity"));assertEquals(Boolean.FALSE,result.get("reference_complete"));}else{assertEquals(10L,((Number)result.get("reference_quantity")).longValue());assertEquals(Boolean.TRUE,result.get("reference_complete"));}
+ }catch(Exception e){throw new RuntimeException(e);}finally{status.setRollbackOnly();}});
+ }
+}

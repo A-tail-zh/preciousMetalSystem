@@ -1,9 +1,9 @@
 import {test,expect} from '@playwright/test'
-import fs from 'node:fs'
+import {uiIdentityFixture} from '../../tools/ui-identity-fixture.mjs'
 import {login,api,ok} from '../../tools/local-test-client.mjs'
 test('数据看板默认首页、演示角色登录和后台入口',async({page,context})=>{
  test.skip(process.env.LIVE_DEMO!=='1','需先创建本地演示人员');test.setTimeout(60000)
- const demo=JSON.parse(fs.readFileSync('../.runtime/demo-identities.json','utf8'))
+ const demo=await uiIdentityFixture();try{
  for(const account of [{phone:'admin',role:'超级管理员'},...demo.accounts]){
   const token=await login(account.phone,account.phone==='admin'?undefined:demo.password)
   await context.clearCookies();await context.addCookies([{name:'Admin-Token',value:token,url:'http://127.0.0.1:5173'}]);await page.goto('/index')
@@ -15,4 +15,5 @@ test('数据看板默认首页、演示角色登录和后台入口',async({page,
   if(account.role!=='超级管理员'){const info=ok(await api('/getInfo',token));expect(info.permissions).not.toContain('*:*:*')}
   await api('/logout',token,'POST')
  }
+}finally{await demo.cleanup()}
 })

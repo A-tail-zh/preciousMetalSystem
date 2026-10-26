@@ -57,20 +57,19 @@ class FactoryServiceTest {
         when(mapper.lockLines(List.of(10L),null)).thenReturn(List.of());
         assertThrows(ServiceException.class, () -> service.create(r,"admin"));
     }
-    @Test void createWithoutLinesIsRejectedBeforeInsert() {
-        assertThrows(ServiceException.class,()->service.create(form(List.of()),"admin"));
-        verify(mapper,never()).insert(any(),anyString());
+    @Test void createWithoutLinesOnlyWritesFactory() {
+        FactoryRequest r=form(List.of()); doAnswer(i->{r.setFactoryId(1L);return 1;}).when(mapper).insert(any(),anyString());
+        assertEquals("1",service.create(r,"admin")); verify(mapper).insert(r,"admin"); verifyNoMoreInteractions(mapper);
     }
     @Test void staleVersionNeverChangesAssociations() {
         Factory f = factory(1); f.setVersion(1); when(mapper.lockFactory(1L)).thenReturn(f);
         FactoryRequest r = form(List.of()); r.setFactoryId(1L); r.setVersion(0);
         assertThrows(ServiceException.class, () -> service.edit(r,"admin")); verify(mapper, never()).clearLines(anyLong());
     }
-    @Test void editCanRemoveAllAssociations() {
-        FactoryRequest r = form(List.of()); r.setFactoryId(1L); r.setVersion(0);
-        when(mapper.lockFactory(1L)).thenReturn(factory(1)); when(mapper.lockLines(List.of(),1L)).thenReturn(List.of(line(10,"1")));
-        when(mapper.update(r,"admin")).thenReturn(1); service.edit(r,"admin"); verify(mapper).clearLines(1L);
-        verify(mapper, never()).assignLines(any(),any());
+    @Test void editNeverRemovesAssociations() {
+        FactoryRequest r=form(List.of());r.setFactoryId(1L);r.setVersion(0);
+        when(mapper.lockFactory(1L)).thenReturn(factory(1));when(mapper.update(r,"admin")).thenReturn(1);
+        service.edit(r,"admin");verify(mapper,never()).clearLines(anyLong());verify(mapper,never()).assignLines(any(),any());
     }
     @Test void normalAccountCannotClaimUnassignedLineThroughFactoryEndpoint() {
         var normalScope=mock(com.ruoyi.metal.security.FactoryScope.class);
@@ -99,7 +98,7 @@ class FactoryServiceTest {
             r.setArea(new BigDecimal("1.00001")); assertFalse(validator.validate(r).isEmpty());
             r.setArea(new BigDecimal("10000000000")); assertFalse(validator.validate(r).isEmpty());
             r.setArea(new BigDecimal("1")); r.setFactoryName("   "); assertFalse(validator.validate(r).isEmpty());
-            r.setFactoryName("A"); r.setProductionLineIds(null); assertFalse(validator.validate(r).isEmpty());
+            r.setFactoryName("A"); r.setProductionLineIds(null); assertTrue(validator.validate(r).isEmpty());
         }
     }
 }

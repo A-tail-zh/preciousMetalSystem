@@ -1,0 +1,29 @@
+package com.ruoyi.metal.service;
+import java.util.*;import java.math.BigDecimal;import java.util.concurrent.*;
+import org.junit.jupiter.api.Test;import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import static org.junit.jupiter.api.Assertions.*;
+import org.springframework.jdbc.core.JdbcTemplate;import org.springframework.jdbc.datasource.*;import org.springframework.transaction.support.TransactionTemplate;
+/** Two real MySQL connections in the disposable migration copy; never runs on the business database. */
+@EnabledIfEnvironmentVariable(named="METAL_FLOW_ISOLATED_JDBC_URL",matches=".*3310/heavy_metal_plan_upgrade_20261022.*")
+class SemiAutoReleaseConcurrencyTest {
+ @Test void manualReleaseCommittedDuringWorkerLockWaitIsDeductedAndCanceledAutoDoesNotReappear()throws Exception{
+  var ds=new DriverManagerDataSource(System.getenv("METAL_FLOW_ISOLATED_JDBC_URL"),"root","");var latch=new CountDownLatch(1);
+  var jdbc=new JdbcTemplate(ds){@Override public Map<String,Object> queryForMap(String sql,Object...args){var r=super.queryForMap(sql,args);if(sql.startsWith("SELECT factory_id,work_order_id FROM metal_semi_auto_release_event"))latch.countDown();return r;}};
+  assertEquals("REPEATABLE-READ",jdbc.queryForObject("SELECT @@transaction_isolation",String.class));
+  // This is a service-level residual fixture, intentionally separate from the real zero-residual business flow.
+  var source=jdbc.queryForMap("SELECT i.inventory_id,b.work_order_id,b.factory_id FROM metal_inventory i JOIN metal_process_batch b ON b.batch_id=i.origin_batch_id WHERE b.status='SETTLED' AND i.del_flag='0' ORDER BY i.inventory_id LIMIT 1");long template=SemiFlowService.num(source.get("inventory_id")),work=SemiFlowService.num(source.get("work_order_id")),factory=SemiFlowService.num(source.get("factory_id"));String batchNo="AUTO-CONCURRENCY-"+UUID.randomUUID();
+  jdbc.update("INSERT INTO metal_inventory(factory_id,warehouse_id,category,reference_id,batch_no,code,name,specification,organization,origin_batch_id,quantity,net_weight) SELECT i.factory_id,i.warehouse_id,'SEMI',p.product_id,?,i.code,i.name,JSON_UNQUOTE(JSON_EXTRACT(p.product_snapshot,'$.specification')),w.customer,i.origin_batch_id,4,40 FROM metal_inventory i JOIN metal_process_batch b ON b.batch_id=i.origin_batch_id JOIN metal_work_order_item p ON p.item_id=b.item_id JOIN metal_work_order w ON w.work_order_id=b.work_order_id WHERE i.inventory_id=?",batchNo,template);long inventory=jdbc.queryForObject("SELECT inventory_id FROM metal_inventory WHERE batch_no=?",Long.class,batchNo);
+  var stockBefore=jdbc.queryForMap("SELECT * FROM metal_inventory WHERE inventory_id=?",inventory);var workBefore=jdbc.queryForMap("SELECT * FROM metal_work_order WHERE work_order_id=?",work);
+  String request=UUID.randomUUID().toString();long event=0;var executor=Executors.newSingleThreadExecutor();
+  try{
+   // Explicit service fixture: positive residual under COMPLETED is not claimed as a naturally reachable production flow.
+   jdbc.update("UPDATE metal_inventory SET quantity=4,net_weight=40 WHERE inventory_id=?",inventory);jdbc.update("UPDATE metal_work_order SET status='COMPLETED',completion_generation=999 WHERE work_order_id=?",work);
+   jdbc.update("INSERT INTO metal_semi_auto_release_event(work_order_id,factory_id,generation,actor_id) VALUES(?,?,999,1)",work,factory);event=jdbc.queryForObject("SELECT event_id FROM metal_semi_auto_release_event WHERE work_order_id=? AND generation=999",Long.class,work);
+   var service=new SemiAutoReleaseService(jdbc,new DataSourceTransactionManager(ds));var manual=new TransactionTemplate(new DataSourceTransactionManager(ds));var future=new Future<?>[1];
+   manual.executeWithoutResult(s->{jdbc.queryForMap("SELECT factory_id FROM metal_factory WHERE factory_id=? FOR UPDATE",factory);future[0]=executor.submit(service::recover);try{assertTrue(latch.await(10,TimeUnit.SECONDS));}catch(InterruptedException e){throw new RuntimeException(e);}jdbc.update("INSERT INTO metal_semi_release(inventory_id,factory_id,work_order_id,request_id,request_hash,actor_id,quantity,net_weight,reason) VALUES(?,?,?,? ,?,1,1,10,'concurrent manual fixture')",inventory,factory,work,request,"a".repeat(64));});
+   future[0].get(20,TimeUnit.SECONDS);var auto=jdbc.queryForMap("SELECT * FROM metal_semi_release WHERE auto_event_id=?",event);assertEquals(3L,SemiFlowService.num(auto.get("quantity")));assertEquals(0,new BigDecimal("30").compareTo(SemiFlowService.dec(auto.get("net_weight"))));assertEquals("40.000000",jdbc.queryForObject("SELECT CAST(net_weight AS CHAR) FROM metal_inventory WHERE inventory_id=?",String.class,inventory));
+   service.recover();assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM metal_semi_release WHERE auto_event_id=?",Integer.class,event));
+   jdbc.update("UPDATE metal_semi_release SET status='CANCELLED' WHERE auto_event_id=?",event);jdbc.update("UPDATE metal_semi_auto_release_event SET status='PENDING' WHERE event_id=?",event);service.recover();assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM metal_semi_release WHERE auto_event_id=? AND status='ACTIVE'",Integer.class,event));
+  }finally{executor.shutdownNow();if(event>0){jdbc.update("DELETE FROM metal_semi_flow_event WHERE release_id IN (SELECT release_id FROM metal_semi_release WHERE auto_event_id=?)",event);jdbc.update("DELETE FROM metal_semi_release WHERE auto_event_id=?",event);jdbc.update("DELETE FROM metal_semi_auto_release_result WHERE event_id=?",event);jdbc.update("DELETE FROM metal_semi_auto_release_event WHERE event_id=?",event);}jdbc.update("DELETE FROM metal_semi_release WHERE request_id=?",request);jdbc.update("DELETE FROM metal_inventory WHERE inventory_id=?",inventory);jdbc.update("UPDATE metal_work_order SET status=?,completion_generation=? WHERE work_order_id=?",workBefore.get("status"),workBefore.get("completion_generation"),work);}
+ }
+}

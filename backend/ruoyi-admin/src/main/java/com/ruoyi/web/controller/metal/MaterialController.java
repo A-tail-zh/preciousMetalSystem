@@ -18,6 +18,11 @@ import com.ruoyi.metal.service.MaterialService;
 @RestController @Validated @RequestMapping("/metal/material")
 public class MaterialController extends BaseController {
  private final MaterialService service; public MaterialController(MaterialService service){this.service=service;}
+    /** Minimal existing form DTO under edit permission; service enforces factory scope. */
+    @GetMapping("/{id}/edit-context")
+    @PreAuthorize("@ss.hasPermi('metal:material:edit')")
+    public AjaxResult editContext(@PathVariable @Positive Long id) { return success(service.detail(id)); }
+
  /**
   * 查询列表并补充关联资料。
   */

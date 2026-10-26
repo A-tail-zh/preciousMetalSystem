@@ -8,15 +8,23 @@
  </el-dialog>
 </template>
 <script setup lang="ts">
-import {ref,watch,onBeforeUnmount} from 'vue'
+import {ref,watch,onMounted,onBeforeUnmount} from 'vue'
+import {getToken} from '@/utils/auth'
+import useUserStore from '@/store/modules/user'
+import {useActionPermission} from '@/composables/useActionPermission'
 import ProcessConsumption from './ProcessConsumption.vue'
 interface Target{workOrderId:string;itemId:string;processId:string;processName:string;productLabel:string}
 const visible=ref(false),target=ref<Readonly<Target>>(),generation=ref(0)
+const user=useUserStore(),permission=useActionPermission()
+const canRead=()=>permission.has('metal:work-report:query')&&!!user.token&&user.token===getToken()
 let disposed=false
-function open(value:Target){if(disposed)return;generation.value++;target.value=Object.freeze({...value});visible.value=true}
+permission.onChange(()=>close())
+function foreground(){if(!canRead())close()}
+onMounted(()=>{window.addEventListener('focus',foreground);window.addEventListener('storage',foreground);document.addEventListener('visibilitychange',foreground)})
+function open(value:Target){if(disposed)return;if(!canRead()){close();return}generation.value++;target.value=Object.freeze({...value});visible.value=true}
 function close(){visible.value=false;target.value=undefined;generation.value++}
 watch(visible,value=>{if(!value){target.value=undefined;generation.value++}},{flush:'sync'})
-onBeforeUnmount(()=>{disposed=true;close()})
+onBeforeUnmount(()=>{disposed=true;close();window.removeEventListener('focus',foreground);window.removeEventListener('storage',foreground);document.removeEventListener('visibilitychange',foreground)})
 defineExpose({open,close})
 </script>
 <style>

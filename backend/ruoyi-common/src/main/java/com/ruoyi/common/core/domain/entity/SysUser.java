@@ -43,22 +43,28 @@ public class SysUser extends BaseEntity
 
     /** 用户账号 */
     @Excel(name = "登录名称")
+    @jakarta.validation.constraints.Size(max=30)
     private String userName;
 
     /** 用户昵称 */
     @Excel(name = "用户名称")
+    @jakarta.validation.constraints.Size(max=100)
     private String nickName;
 
     /** 用户邮箱 */
     @Excel(name = "用户邮箱")
+    @jakarta.validation.constraints.Size(max=50)
     private String email;
 
     /** 手机号码 */
     @Excel(name = "手机号码", cellType = ColumnType.TEXT)
+    @jakarta.validation.constraints.Size(max=11)
     private String phonenumber;
 
     /** 用户性别 */
     @Excel(name = "用户性别", readConverterExp = "0=男,1=女,2=未知")
+    @jakarta.validation.constraints.Size(max=1)
+    @jakarta.validation.constraints.Pattern(regexp="[012]?")
     private String sex;
 
     /** 用户头像 */
@@ -69,6 +75,8 @@ public class SysUser extends BaseEntity
 
     /** 账号状态（0正常 1停用） */
     @Excel(name = "账号状态", readConverterExp = "0=正常,1=停用")
+    @jakarta.validation.constraints.Size(max=1)
+    @jakarta.validation.constraints.Pattern(regexp="[01]")
     private String status;
 
     /** 删除标志（0代表存在 2代表删除） */
@@ -344,4 +352,7 @@ public class SysUser extends BaseEntity
             .append("dept", getDept())
             .toString();
     }
+    @Override
+    @jakarta.validation.constraints.Size(max=500,message="备注最多500个字符")
+    public String getRemark() { return super.getRemark(); }
 }

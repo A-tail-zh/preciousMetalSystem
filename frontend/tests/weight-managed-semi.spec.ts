@@ -1,0 +1,6 @@
+import{test,expect}from'@playwright/test';
+import{stockAvailabilityError,releasedTransferError,externalEntryError}from'../src/utils/stock-availability';
+import{stockOptionDetail}from'../src/utils/stock-option-label';
+test('weight semi uses mass balance and does not treat reference count as stock capacity',()=>{const s={category:'SEMI',measurementMode:'WEIGHT',quantity:0,netWeight:'600',referenceQuantity:1};expect(stockAvailabilityError(s,{inventoryId:'1',netWeight:'400'},[])).toBe('');expect(stockAvailabilityError(s,{inventoryId:'1',netWeight:'601'},[])).toContain('净重');expect(releasedTransferError({...s,netWeight:'200'},[{netWeight:'100'}])).toBe('');expect(releasedTransferError({...s,netWeight:'200'},[{netWeight:'201'}])).not.toBe('');});
+test('external piece capacity excludes weight references',()=>{expect(externalEntryError('0',[{releaseId:'1',measurementMode:'WEIGHT',referenceQuantity:33,netWeight:'100'}])).toBe('');});
+test('powder label separates actual mass and optional reference count',()=>{const label=stockOptionDetail({category:'SEMI',measurementMode:'WEIGHT',availableWeight:'600',availableQuantity:0,referenceQuantity:33});expect(label).toContain('600');expect(label).toContain('参考件数');expect(label).not.toContain('可领件数：0');});

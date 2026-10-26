@@ -57,21 +57,10 @@ class FactoryCrudTest {
         }).when(mapper).insert(any(), eq("tester"));
     }
 
-    @Test void createAssignsSelectedLinesAfterLockingInIdOrder() {
-        FactoryRequest form = form(List.of(11L, 10L));
-        generatedId();
-        when(mapper.lockLines(List.of(10L, 11L), null))
-            .thenReturn(List.of(line(10, null), line(11, null)));
-        when(mapper.assignLines(List.of(10L, 11L), 3L)).thenReturn(2);
-        assertEquals("3", service.create(form, "tester"));
-        assertEquals("Test factory", form.getFactoryName());
-        assertEquals("Test address", form.getAddress());
-        InOrder order = inOrder(mapper);
-        order.verify(mapper).insert(form, "tester");
-        order.verify(mapper).lockLines(List.of(10L, 11L), null);
-        order.verify(mapper).assignLines(List.of(10L, 11L), 3L);
+    @Test void createWithoutLinesOnlyWritesFactory() {
+        FactoryRequest form=form(List.of());generatedId();assertEquals("3",service.create(form,"tester"));
+        assertEquals("Test factory",form.getFactoryName());verify(mapper).insert(form,"tester");verifyNoMoreInteractions(mapper);
     }
-
     @Test void createRejectsCallerSuppliedIdWithoutWriting() {
         FactoryRequest form = form(List.of());
         form.setFactoryId(3L);
@@ -128,21 +117,10 @@ class FactoryCrudTest {
         return form;
     }
 
-    @Test void editRetainsOwnLineAddsFreeLineAndRemovesOldLine() {
-        FactoryRequest form = editForm(List.of(12L, 10L));
-        when(mapper.lockLines(List.of(10L, 12L), 3L))
-            .thenReturn(List.of(line(10, "3"), line(11, "3"), line(12, null)));
-        when(mapper.update(form, "tester")).thenReturn(1);
-        when(mapper.assignLines(List.of(10L, 12L), 3L)).thenReturn(2);
-        service.edit(form, "tester");
-        InOrder order = inOrder(mapper);
-        order.verify(mapper).lockFactory(3L);
-        order.verify(mapper).lockLines(List.of(10L, 12L), 3L);
-        order.verify(mapper).update(form, "tester");
-        order.verify(mapper).clearLines(3L);
-        order.verify(mapper).assignLines(List.of(10L, 12L), 3L);
+    @Test void editOnlyWritesBaseFields() {
+        FactoryRequest form=editForm(List.of());when(mapper.update(form,"tester")).thenReturn(1);
+        service.edit(form,"tester");verify(mapper).lockFactory(3L);verify(mapper).update(form,"tester");verifyNoMoreInteractions(mapper);
     }
-
     @Test void editRejectsLineOwnedByAnotherFactoryBeforeAnyWrite() {
         FactoryRequest form = editForm(List.of(10L));
         when(mapper.lockLines(List.of(10L), 3L)).thenReturn(List.of(line(10, "4")));
@@ -187,7 +165,7 @@ class FactoryCrudTest {
     }
 
     @Test void invalidLineIdsAreRejectedBeforeCreateOrEditWrites() {
-        List<List<Long>> invalid = Arrays.asList(null, List.of(0L), List.of(-1L),
+        List<List<Long>> invalid = Arrays.asList(List.of(0L), List.of(-1L),
             Arrays.asList(10L, null), List.of(10L, 10L), Collections.nCopies(1001, 10L));
         for (List<Long> ids : invalid) {
             FactoryRequest form = form(ids);

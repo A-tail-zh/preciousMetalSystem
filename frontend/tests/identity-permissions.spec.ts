@@ -6,7 +6,7 @@ async function fixture() {
  const admin=await login(),suffix=Date.now().toString(),records:Array<[string,string]>=[],sessions=new Set<string>([admin])
  const create=async(path:string,body:object)=>{const r=ok(await api(path,admin,'POST',body));const id=String(r.id??r.factoryId);records.push([path,id]);return id}
  const factoryName=`权限页面厂_${suffix}`
- const factory=await create('/metal/factory',{factoryName,area:'1',address:'临时权限测试地址',productionLineIds:[]})
+ const factory=await create('/metal/factory',{factoryName,area:'1',address:'临时权限测试地址'})
  const menus=ok(await api('/metal/options/menus',admin)).data
  const permissions=['system:user:list','system:user:query','system:role:list','system:role:query']
  const selected=new Set<string>(menus.filter((m:any)=>permissions.includes(m.perms)).map((m:any)=>m.id))
@@ -14,7 +14,8 @@ async function fixture() {
  const track=(path:string,id:string)=>records.push([path,id])
  const cleanup=async()=>{
   const failures:string[]=[]
-  for(const path of ['/system/user','/system/role','/metal/factory'])for(const [p,id]of records.filter(([p])=>p===path))try{
+  const existing=await api('/metal/factory/'+factory,admin);if(existing.code===200)ok(await api('/metal/factory',admin,'PUT',{...existing.data,productionLineIds:[]}))
+  for(const path of ['/system/user','/system/role','/metal/production-line','/metal/factory'])for(const [p,id]of records.filter(([p])=>p===path))try{
    const r=await api(`${p}/${id}`,admin);if(r.code===200)ok(await api(`${p}/${id}`,admin,'DELETE'))
   }catch(e){failures.push(`${p}/${id}: ${e}`)}
   for(const token of sessions)await api('/logout',token,'POST')
@@ -78,7 +79,7 @@ test('工作人员页面：新增、角色回显、编辑、重置密码、启�
  }finally{await f.cleanup()}
 })
 
-test('只读工作人员：角色和人员页面隐藏写入按钮，账号状态开关禁用',async({page})=>{
+test('只读工作人员：角色和人员页面隐藏写入按钮，账号状态只读显示',async({page})=>{
  test.setTimeout(60000);const f=await fixture()
  try{
   const role=await f.create('/system/role',{roleName:`只读页面角色_${f.suffix}`,factoryId:f.factory,roleSort:0,status:'0',menuIds:[...f.selected]})
@@ -88,7 +89,7 @@ test('只读工作人员：角色和人员页面隐藏写入按钮，账号状�
   for(const path of ['/system/user','/system/role']){
    await authenticated(page,token,path);await expect(page.locator('.master-table .el-table__body-wrapper tbody tr')).toHaveCount(1)
    for(const name of ['添加','编辑','删除','导出'])await expect(page.locator('.master-toolbar').getByRole('button',{name,exact:true})).toHaveCount(0);await expect(page.locator('.master-toolbar').getByRole('button',{name:'查询',exact:true})).toBeVisible();await expect(page.locator('.master-table button')).toHaveCount(0)
-   await expect(page.locator('.master-table .el-switch')).toHaveClass(/is-disabled/)
+   await expect(page.locator('.master-table .el-switch')).toHaveCount(0)
   }
   expect((await api(`/system/user/${user}`,token,'DELETE')).code).toBe(403)
  }finally{await f.cleanup()}

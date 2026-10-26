@@ -126,7 +126,7 @@
 
       <!-- 添加或修改参数配置对话框 -->
       <el-dialog :title="title" v-model="open" width="500px" append-to-body>
-         <el-form ref="dataRef" :model="form" :rules="rules" label-width="80px">
+         <el-form ref="dataRef" :model="form" :rules="rules" label-width="80px" scroll-to-error>
             <el-form-item label="字典类型">
                <el-input v-model="form.dictType" :disabled="true" />
             </el-form-item>
@@ -176,6 +176,7 @@
 </template>
 
 <script setup lang="ts" name="Data">
+import {applyFieldErrors} from '@/utils/input-validation'
 import useDictStore from '@/store/modules/dict'
 import { optionselect as getDictOptionselect, getType } from "@/api/system/dict/type"
 import { listData, getData, delData, addData, updateData } from "@/api/system/dict/data"
@@ -221,8 +222,13 @@ const data = reactive({
     status: undefined
   } as DictDataQueryParams,
   rules: {
-    dictLabel: [{ required: true, message: "数据标签不能为空", trigger: "blur" }],
-    dictValue: [{ required: true, message: "数据键值不能为空", trigger: "blur" }],
+    remark: [{max:500,message:"备注最多500个字符",trigger:"blur"}],
+    status: [{max:1,message:"该字段最多1个字符",trigger:"blur"}],
+    listClass: [{max:100,message:"该字段最多100个字符",trigger:"blur"}],
+    cssClass: [{max:100,message:"该字段最多100个字符",trigger:"blur"}],
+    dictType: [{max:100,message:"该字段最多100个字符",trigger:"blur"}],
+    dictLabel: [{max:100,message:"该字段最多100个字符",trigger:"blur"},{ required: true, whitespace:true, message: "数据标签不能为空", trigger: "blur" }],
+    dictValue: [{max:100,message:"该字段最多100个字符",trigger:"blur"},{ required: true, whitespace:true, message: "数据键值不能为空", trigger: "blur" }],
     dictSort: [{ required: true, message: "数据顺序不能为空", trigger: "blur" }]
   }
 })
@@ -323,22 +329,23 @@ function handleUpdate(row?: SysDictData) {
 
 /** 提交按钮 */
 function submitForm() {
+  const submittedForm=form.value
   ;(proxy.$refs["dataRef"] as import('element-plus').FormInstance).validate((valid: boolean) => {
-    if (valid) {
+    if (valid && form.value===submittedForm) {
       if (form.value.dictCode != undefined) {
         updateData(form.value).then(() => {
           useDictStore().removeDict(queryParams.value.dictType!)
           proxy.$modal.msgSuccess("修改成功")
           open.value = false
           getList()
-        })
+        }).catch(error=>{if(form.value===submittedForm&&open.value)applyFieldErrors(proxy.$refs["dataRef"] as import('element-plus').FormInstance,error)})
       } else {
         addData(form.value).then(() => {
           useDictStore().removeDict(queryParams.value.dictType!)
           proxy.$modal.msgSuccess("新增成功")
           open.value = false
           getList()
-        })
+        }).catch(error=>{if(form.value===submittedForm&&open.value)applyFieldErrors(proxy.$refs["dataRef"] as import('element-plus').FormInstance,error)})
       }
     }
   })

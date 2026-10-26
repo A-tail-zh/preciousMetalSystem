@@ -18,6 +18,11 @@ import com.ruoyi.metal.service.RoleManagementService;
 @RestController @Validated @RequestMapping("/system/role")
 public class RoleManagementController extends BaseController {
  private final RoleManagementService service; public RoleManagementController(RoleManagementService service){this.service=service;}
+    /** Minimal existing form DTO under edit permission; service enforces factory scope. */
+    @GetMapping("/{id}/edit-context")
+    @PreAuthorize("@ss.hasPermi('system:role:edit')")
+    public AjaxResult editContext(@PathVariable @Positive Long id) { return success(service.detail(id)); }
+
  /**
   * 查询列表并补充关联资料。
   */

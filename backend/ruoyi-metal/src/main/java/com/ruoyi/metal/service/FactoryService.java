@@ -61,11 +61,8 @@ public class FactoryService {
     public String create(FactoryRequest form, String actor) {
         scope.adminOnly();
         if (form.getFactoryId() != null) throw new ServiceException("新增时不能指定工厂ID");
-        List<Long> ids = checkedIds(form.getProductionLineIds());
-        if (ids.isEmpty()) throw new ServiceException("请选择至少一条关联产线");
+        rejectLineBinding(form);
         mapper.insert(form, actor);
-        validateLines(ids, mapper.lockLines(ids, null), form.getFactoryId());
-        assign(ids, form.getFactoryId());
         return form.getFactoryId().toString();
     }
 
@@ -77,17 +74,10 @@ public class FactoryService {
         scope.check(form.getFactoryId());
         if (form.getFactoryId() == null || form.getFactoryId() <= 0 || form.getVersion() == null)
             throw new ServiceException("编辑时必须提供工厂ID及版本号");
-        List<Long> ids = checkedIds(form.getProductionLineIds());
+        rejectLineBinding(form);
         Factory factory = required(mapper.lockFactory(form.getFactoryId()));
         if (!factory.getVersion().equals(form.getVersion())) throw new ServiceException("数据已被修改，请刷新后重试");
-        List<ProductionLine> lockedLines = mapper.lockLines(ids, form.getFactoryId());
-        if (!scope.isAdmin() && lockedLines.stream().anyMatch(line -> ids.contains(Long.valueOf(line.getProductionLineId())) && !Objects.equals(line.getFactoryId(), form.getFactoryId().toString())))
-            throw new ServiceException("产线归属调整仅限超级管理员");
-        for (ProductionLine line : lockedLines) if (Objects.equals(line.getFactoryId(),form.getFactoryId().toString()) && !ids.contains(Long.valueOf(line.getProductionLineId()))) WorkOrderReferences.lineMove(jdbc,Long.valueOf(line.getProductionLineId()));
-        validateLines(ids, lockedLines, form.getFactoryId());
         if (mapper.update(form, actor) != 1) throw new ServiceException("数据已被修改，请刷新后重试");
-        mapper.clearLines(form.getFactoryId());
-        assign(ids, form.getFactoryId());
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -115,23 +105,8 @@ public class FactoryService {
         if (f == null) throw new ServiceException("工厂不存在或已删除");
         return f;
     }
-    private List<Long> checkedIds(List<Long> ids) {
-        if (ids == null || ids.size() > 1000 || ids.stream().anyMatch(id -> id == null || id <= 0))
-            throw new ServiceException("关联产线参数无效");
-        if (new HashSet<>(ids).size() != ids.size()) throw new ServiceException("关联产线不能重复");
-        return ids.stream().sorted().toList();
-    }
-    private void validateLines(List<Long> ids, List<ProductionLine> lines, Long factoryId) {
-        Map<Long, ProductionLine> found = lines.stream().collect(Collectors.toMap(l -> Long.valueOf(l.getProductionLineId()), l -> l));
-        for (Long id : ids) {
-            ProductionLine line = found.get(id);
-            if (line == null) throw new ServiceException("关联产线不存在：" + id);
-            if (line.getFactoryId() != null && !line.getFactoryId().equals(factoryId.toString()))
-                throw new ServiceException("产线已属于其他工厂：" + line.getProductionLineName());
-        }
-    }
-    private void assign(List<Long> ids, Long factoryId) {
-        if (!ids.isEmpty() && mapper.assignLines(ids, factoryId) != ids.size())
-            throw new ServiceException("产线归属发生变化，请刷新后重试");
+    private void rejectLineBinding(FactoryRequest form) {
+        if (form.getProductionLineIds() != null && !form.getProductionLineIds().isEmpty())
+            throw new ServiceException("请在产线管理中维护所属工厂");
     }
 }

@@ -91,7 +91,7 @@
     </div>
     <!-- 添加或修改用户配置对话框 -->
     <el-dialog :title="title" v-model="open" width="600px" append-to-body>
-      <el-form :model="form" :rules="rules" ref="userRef" label-width="80px">
+      <el-form :model="form" :rules="rules" ref="userRef" label-width="80px" scroll-to-error>
         <el-row>
           <el-col :span="12">
             <el-form-item label="用户昵称" prop="nickName">
@@ -184,6 +184,7 @@
 </template>
 
 <script setup lang="ts" name="User">
+import {applyFieldErrors} from '@/utils/input-validation'
 import {ElMessageBox} from 'element-plus'
 import TreePanel from "@/components/TreePanel/index.vue"
 import ExcelImportDialog from "@/components/ExcelImportDialog/index.vue"
@@ -237,10 +238,11 @@ const data = reactive({
     deptId: undefined
   } as UserQueryParams,
   rules: {
-    userName: [{ required: true, message: "用户名称不能为空", trigger: "blur" }, { min: 2, max: 20, message: "用户名称长度必须介于 2 和 20 之间", trigger: "blur" }],
-    nickName: [{ required: true, message: "用户昵称不能为空", trigger: "blur" }],
-    email: [{ type: "email" as const, message: "请输入正确的邮箱地址", trigger: ["blur", "change"] }],
-    phonenumber: [{ pattern: /^1[3|4|5|6|7|8|9][0-9]\d{8}$/, message: "请输入正确的手机号码", trigger: "blur" }]
+    status: [{max:1,message:"该字段最多1个字符",trigger:"blur"}],
+    userName: [{max:30,message:"该字段最多30个字符",trigger:"blur"},{ required: true, whitespace:true, message: "用户名称不能为空", trigger: "blur" }, { min: 2, max: 20, message: "用户名称长度必须介于 2 和 20 之间", trigger: "blur" }],
+    nickName: [{max:100,message:"该字段最多100个字符",trigger:"blur"},{ required: true, whitespace:true, message: "用户昵称不能为空", trigger: "blur" }],
+    email: [{max:50,message:"该字段最多50个字符",trigger:"blur"},{ type: "email" as const, message: "请输入正确的邮箱地址", trigger: ["blur", "change"] }],
+    phonenumber: [{max:11,message:"该字段最多11个字符",trigger:"blur"},{ pattern: /^1[3|4|5|6|7|8|9][0-9]\d{8}$/, message: "请输入正确的手机号码", trigger: "blur" }]
   }
 })
 
@@ -434,20 +436,21 @@ function handleUpdate(row?: SysUser) {
 
 /** 提交按钮 */
 function submitForm() {
+  const submittedForm=form.value
   ;(proxy.$refs["userRef"] as import('element-plus').FormInstance).validate((valid: boolean) => {
-    if (valid) {
+    if (valid && form.value===submittedForm) {
       if (form.value.userId != undefined) {
         updateUser(form.value).then(() => {
           proxy.$modal.msgSuccess("修改成功")
           open.value = false
           getList()
-        })
+        }).catch(error=>{if(form.value===submittedForm&&open.value)applyFieldErrors(proxy.$refs["userRef"] as import('element-plus').FormInstance,error)})
       } else {
         addUser(form.value).then(() => {
           proxy.$modal.msgSuccess("新增成功")
           open.value = false
           getList()
-        })
+        }).catch(error=>{if(form.value===submittedForm&&open.value)applyFieldErrors(proxy.$refs["userRef"] as import('element-plus').FormInstance,error)})
       }
     }
   })

@@ -28,6 +28,8 @@ public class WorkOrderService {
     private final WorkOrderMapper mapper;
     private final FactoryScope scope;
     private final ProductService products;
+    @org.springframework.beans.factory.annotation.Value("${metal.auto-semi-release-enabled:true}")
+    private boolean autoSemiReleaseEnabled=true;
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final String HEADER = "SELECT CAST(work_order_id AS CHAR) id,order_no orderNo,customer,CAST(factory_id AS CHAR) factoryId,CAST(production_line_id AS CHAR) productionLineId,CAST(owner_id AS CHAR) ownerId,factory_name factoryName,line_name lineName,owner_name ownerName,DATE_FORMAT(order_date,'%Y-%m-%d') orderDate,status,reject_reason rejectReason,create_by createBy,creator_name creatorName,DATE_FORMAT(create_time,'%Y-%m-%d %H:%i:%s') createTime,version,(EXISTS(SELECT 1 FROM metal_process_batch b WHERE b.work_order_id=metal_work_order.work_order_id) OR EXISTS(SELECT 1 FROM metal_warehouse_order o WHERE o.work_order_id=metal_work_order.work_order_id) OR EXISTS(SELECT 1 FROM metal_work_report r JOIN metal_work_order_item i ON i.item_id=r.item_id WHERE i.work_order_id=metal_work_order.work_order_id)) hasBusinessReferences FROM metal_work_order WHERE work_order_id=? AND del_flag='0'";
 
@@ -92,7 +94,7 @@ public class WorkOrderService {
         var result = jdbc.queryForList("SELECT CAST(item_id AS CHAR) id,CAST(product_id AS CHAR) productId,sequence_no sequenceNo,quantity,CAST(product_snapshot AS CHAR) snapshot FROM metal_work_order_item WHERE work_order_id=? ORDER BY sequence_no", orderId);
         for (var item : result) {
             item.put("snapshot", JSON.parseObject(text(item, "snapshot")));
-            item.put("plans", jdbc.queryForList("SELECT CAST(process_id AS CHAR) processId,sequence_no sequenceNo,process_name processName,CAST(theoretical_loss AS CHAR) loss,DATE_FORMAT(start_time,'%Y-%m-%d %H:%i:%s') startTime,DATE_FORMAT(end_time,'%Y-%m-%d %H:%i:%s') endTime,DATE_FORMAT(actual_start_time,'%Y-%m-%d %H:%i:%s') actualStartTime,DATE_FORMAT(actual_end_time,'%Y-%m-%d %H:%i:%s') actualEndTime FROM metal_work_order_step WHERE item_id=? ORDER BY sequence_no", id(item.get("id"))));
+            item.put("plans", jdbc.queryForList("SELECT CAST(process_id AS CHAR) processId,sequence_no sequenceNo,measurement_mode measurementMode,weight_stage_closed weightStageClosed,process_name processName,CAST(theoretical_loss AS CHAR) loss,DATE_FORMAT(start_time,'%Y-%m-%d %H:%i:%s') startTime,DATE_FORMAT(end_time,'%Y-%m-%d %H:%i:%s') endTime,DATE_FORMAT(actual_start_time,'%Y-%m-%d %H:%i:%s') actualStartTime,DATE_FORMAT(actual_end_time,'%Y-%m-%d %H:%i:%s') actualEndTime FROM metal_work_order_step WHERE item_id=? ORDER BY sequence_no", id(item.get("id"))));
         }
         return result;
     }
@@ -253,6 +255,7 @@ public class WorkOrderService {
                     s.put("processId", step.getProcessId().toString());
                     s.put("processName", step.getProcessName());
                     s.put("loss", step.getLoss().toPlainString());
+                    s.put("measurementMode",step.getMeasurementMode());
                     steps.add(s);
                 }
             }
@@ -304,7 +307,7 @@ public class WorkOrderService {
             for (int i = 0; i < item.steps().size(); i++) {
                 var step = item.steps().get(i);
                 var plan = item.input().plans().get(i);
-                jdbc.update("INSERT INTO metal_work_order_step(item_id,process_id,sequence_no,process_name,theoretical_loss,start_time,end_time) VALUES(?,?,?,?,?,?,?)", itemId, plan.processId(), i + 1, text(step, "processName"), new BigDecimal(text(step, "loss")), Timestamp.valueOf(plan.startTime()), Timestamp.valueOf(plan.endTime()));
+                jdbc.update("INSERT INTO metal_work_order_step(item_id,process_id,sequence_no,process_name,theoretical_loss,start_time,end_time,measurement_mode) VALUES(?,?,?,?,?,?,?,?)", itemId, plan.processId(), i + 1, text(step, "processName"), new BigDecimal(text(step, "loss")), Timestamp.valueOf(plan.startTime()), Timestamp.valueOf(plan.endTime()),SemiMeasurementRules.mode(step.get("measurementMode")));
             }
         }
     }
@@ -338,6 +341,7 @@ public class WorkOrderService {
         String lineName = text(line(request.productionLineId(), request.factoryId(), true), "name");
         String ownerName = text(owner(request.factoryId(), request.ownerId(), true), "name");
         long orderId = insert("INSERT INTO metal_work_order(order_no,request_id,request_hash,request_actor,customer,factory_id,production_line_id,owner_id,factory_name,line_name,owner_name,order_date,create_by,creator_name,update_by,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'WAITING_MATERIAL')", reservedNumber, request.requestId(), fingerprint, SecurityUtils.getUserId(), request.customer().strip(), request.factoryId(), request.productionLineId(), request.ownerId(), factory, lineName, ownerName, java.sql.Date.valueOf(request.orderDate()), SecurityUtils.getUsername(), actorName(), SecurityUtils.getUsername());
+        jdbc.update("UPDATE metal_work_order SET auto_semi_release_eligible=? WHERE work_order_id=?",autoSemiReleaseEnabled,orderId);
         writeItems(orderId, prepared);
         review(orderId, "CREATE", null, "WAITING_MATERIAL", null);
         return Long.toString(orderId);
@@ -450,6 +454,7 @@ public class WorkOrderService {
             value.put("processId", step.getProcessId().toString());
             value.put("processName", step.getProcessName());
             value.put("loss", step.getLoss().toPlainString());
+            value.put("measurementMode",step.getMeasurementMode());
             value.put("startTime", null);
             value.put("endTime", null);
             steps.add(value);

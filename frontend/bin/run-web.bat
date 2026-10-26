@@ -1,6 +1,6 @@
 @echo off
 echo.
-echo [锟斤拷息] 使锟斤拷 Vite 锟斤拷锟斤拷锟斤拷锟斤拷 Web 锟斤拷锟教★拷
+echo [信息] 使用 Vite 命令运行 Web 工程。
 echo.
 
 %~d0

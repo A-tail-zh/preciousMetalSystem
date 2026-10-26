@@ -29,21 +29,27 @@ public class SysDept extends BaseEntity
     private String ancestors;
 
     /** 部门名称 */
+    @jakarta.validation.constraints.Size(max=30)
     private String deptName;
 
     /** 显示顺序 */
     private Integer orderNum;
 
     /** 负责人 */
+    @jakarta.validation.constraints.Size(max=20)
     private String leader;
 
     /** 联系电话 */
+    @jakarta.validation.constraints.Size(max=11)
     private String phone;
 
     /** 邮箱 */
+    @jakarta.validation.constraints.Size(max=50)
     private String email;
 
     /** 部门状态:0正常,1停用 */
+    @jakarta.validation.constraints.Size(max=1)
+    @jakarta.validation.constraints.Pattern(regexp="[01]")
     private String status;
 
     /** 删除标志（0代表存在 2代表删除） */

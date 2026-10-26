@@ -102,7 +102,7 @@
 
       <!-- 添加或修改菜单对话框 -->
       <el-dialog :title="title" v-model="open" width="680px" append-to-body>
-         <el-form ref="menuRef" :model="form" :rules="rules" label-width="100px">
+         <el-form ref="menuRef" :model="form" :rules="rules" label-width="100px" scroll-to-error>
             <el-row>
                <el-col :span="24">
                   <el-form-item label="上级菜单">
@@ -306,6 +306,7 @@
 </template>
 
 <script setup lang="ts" name="Menu">
+import {applyFieldErrors} from '@/utils/input-validation'
 import { addMenu, delMenu, getMenu, listMenu, updateMenu, updateMenuSort, } from "@/api/system/menu"
 import SvgIcon from "@/components/SvgIcon/index.vue"
 import IconSelect from "@/components/IconSelect/index.vue"
@@ -332,9 +333,15 @@ const data = reactive({
     visible: undefined
   } as MenuQueryParams,
   rules: {
-    menuName: [{ required: true, message: "菜单名称不能为空", trigger: "blur" }],
+    icon: [{max:100,message:"该字段最多100个字符",trigger:"blur"}],
+    perms: [{max:100,message:"该字段最多100个字符",trigger:"blur"}],
+    status: [{max:1,message:"该字段最多1个字符",trigger:"blur"}],
+    menuType: [{max:1,message:"该字段最多1个字符",trigger:"blur"}],
+    routeName: [{max:50,message:"该字段最多50个字符",trigger:"blur"}],
+    component: [{max:255,message:"该字段最多255个字符",trigger:"blur"}],
+    menuName: [{max:50,message:"该字段最多50个字符",trigger:"blur"},{ required: true, whitespace:true, message: "菜单名称不能为空", trigger: "blur" }],
     orderNum: [{ required: true, message: "菜单顺序不能为空", trigger: "blur" }],
-    path: [{ required: true, message: "路由地址不能为空", trigger: "blur" }]
+    path: [{max:200,message:"该字段最多200个字符",trigger:"blur"},{ required: true, message: "路由地址不能为空", trigger: "blur" }]
   },
 })
 
@@ -439,20 +446,21 @@ async function handleUpdate(row: SysMenu) {
 
 /** 提交按钮 */
 function submitForm() {
+  const submittedForm=form.value
   ;(proxy.$refs["menuRef"] as import('element-plus').FormInstance).validate((valid: boolean) => {
-    if (valid) {
+    if (valid && form.value===submittedForm) {
       if (form.value.menuId != undefined) {
         updateMenu(form.value).then(() => {
           proxy.$modal.msgSuccess("修改成功")
           open.value = false
           getList()
-        })
+        }).catch(error=>{if(form.value===submittedForm&&open.value)applyFieldErrors(proxy.$refs["menuRef"] as import('element-plus').FormInstance,error)})
       } else {
         addMenu(form.value).then(() => {
           proxy.$modal.msgSuccess("新增成功")
           open.value = false
           getList()
-        })
+        }).catch(error=>{if(form.value===submittedForm&&open.value)applyFieldErrors(proxy.$refs["menuRef"] as import('element-plus').FormInstance,error)})
       }
     }
   })

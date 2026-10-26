@@ -1,6 +1,15 @@
 package com.ruoyi.metal.service;
 import org.junit.jupiter.api.*;import static org.junit.jupiter.api.Assertions.*;import static org.mockito.Mockito.*;import java.util.*;import java.math.BigDecimal;import org.springframework.jdbc.core.JdbcTemplate;import com.ruoyi.metal.security.FactoryScope;import com.ruoyi.metal.catalog.WarehouseRequests.Line;import com.ruoyi.common.exception.ServiceException;
 class WarehouseImportServiceTest{
+ @Test void singleAndFinalStepSemiImportsAreRejectedWithSpecificMessage(){
+  for(long sequence:List.of(1L,3L)){
+   JdbcTemplate j=mock(JdbcTemplate.class);var s=new WarehouseImportService(j,mock(FactoryScope.class));
+   when(j.queryForList(anyString(),any(Object[].class))).thenAnswer(a->{String q=a.getArgument(0);if(q.contains("metal_warehouse WHERE"))return List.of(Map.of("factory_id",1L,"status","0"));if(q.contains("metal_work_order WHERE"))return List.of(Map.of("factory_id",1L,"status","IN_PROGRESS"));if(q.contains("SELECT s.sequence_no"))return List.of(Map.of("sequence_no",sequence,"product_id",4L,"work_order_id",8L));if(q.contains("FROM metal_product"))return List.of(Map.of("code","P","name","产品","specification","快照"));return List.of();});
+   when(j.queryForObject(contains("MAX(sequence_no)"),eq(Long.class),any(Object[].class))).thenReturn(sequence);
+   var input=new WarehouseImportService.Input(1L,2L,"SEMI_IN",8L,9L,10L,List.of(line("SEMI",4L,null)),Map.of());
+   assertTrue(assertThrows(ServiceException.class,()->s.preview(input)).getMessage().contains("当前工序为最后一道工序，请选择成品入库"));verify(j,never()).update(anyString(),any(Object[].class));
+  }
+ }
  JdbcTemplate jdbc;WarehouseImportService service;
  @BeforeEach void setUp(){jdbc=mock(JdbcTemplate.class);service=new WarehouseImportService(jdbc,mock(FactoryScope.class));when(jdbc.queryForList(anyString(),any(Object[].class))).thenAnswer(a->{String query=a.getArgument(0);if(query.contains("metal_warehouse WHERE"))return List.of(Map.of("factory_id",1L,"status","0"));if(query.contains("metal_material"))return List.of(Map.of("code","M001","name","铱粉","specification","粉料"));if(query.contains("metal_product"))return List.of(Map.of("code","P001","name","成品","specification","型号"));return List.of();});}
  private Line line(String category,Long reference,Long inventory){return new Line(inventory,null,category,reference,null,new BigDecimal("10.123456"),category.equals("RAW")?0L:1L,null,null,null,"件",null,null);}

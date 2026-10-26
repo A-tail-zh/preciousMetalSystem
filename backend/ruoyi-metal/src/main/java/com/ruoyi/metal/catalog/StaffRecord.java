@@ -12,7 +12,7 @@ public class StaffRecord extends MasterRecord {
  @NotBlank @Pattern(regexp="[01]")  private String status;
  @Size(min=8,max=72) @JsonProperty(access=JsonProperty.Access.WRITE_ONLY)  private String password;
   private String userName;
-  @tools.jackson.databind.annotation.JsonSerialize(contentUsing=tools.jackson.databind.ser.std.ToStringSerializer.class) private List<Long> roleIds=new ArrayList<>();
+  @tools.jackson.databind.annotation.JsonSerialize(contentUsing=tools.jackson.databind.ser.std.ToStringSerializer.class) @NotNull private List<@NotNull @Positive Long> roleIds=new ArrayList<>();
   private List<String> roleNames=new ArrayList<>();
   private String factoryName;
  public String getPhonenumber(){return phonenumber;} public void setPhonenumber(String v){phonenumber=v==null?null:v.strip();}

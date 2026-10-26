@@ -1,7 +1,7 @@
 .filter-toolbar-card {
- box-sizing:border-box;min-width:0;max-width:100%;padding:16px;border:1px solid #e5eaf3;border-radius:12px;background:#fff;
- .filter-action-group {display:flex;flex-wrap:wrap;flex:0 0 auto;align-items:center;gap:12px;max-width:100%;}
- .el-button {flex:0 0 auto;width:89px;max-width:100%;height:35px;margin:0;padding:0 12px;font-size:14px;border-radius:6px;}
+ box-sizing:border-box;min-width:0;max-width:100%;padding:12px;border:1px solid #e5eaf3;border-radius:8px;background:#fff;
+ .filter-action-group {display:flex;flex-wrap:wrap;flex:0 0 auto;align-items:center;gap:8px;max-width:100%;}
+ .el-button {flex:0 0 auto;min-width:76px;width:auto;max-width:100%;height:35px;margin:0;padding:0 14px;font-size:14px;border-radius:6px;}
  .el-input__wrapper,.el-select__wrapper {height:35px;min-height:35px;box-sizing:border-box;border-radius:6px;}
  .filter-query-button {--el-button-bg-color:#246fb4;--el-button-border-color:#246fb4;--el-button-hover-bg-color:#3d83c5;--el-button-hover-border-color:#3d83c5;}
  .filter-export-button {--el-button-bg-color:#fff;--el-button-border-color:#b3cdef;--el-button-text-color:#246fb4;--el-button-hover-bg-color:#eef5ff;--el-button-hover-border-color:#246fb4;--el-button-hover-text-color:#246fb4;}

@@ -1,7 +1,7 @@
 <template>
   <el-col :span="element.span" :class="className" @click.stop="activeItem(element)">
     <el-form-item :label="element.label" :label-width="element.labelWidth ? element.labelWidth + 'px' : undefined"
-      :required="element.required" v-if="element.layout === 'colFormItem'">
+      :rules="[requiredRule(element.label,element.required,false),...([])]" v-if="element.layout === 'colFormItem'">
       <render :key="element.tag" :conf="element" v-model="element.defaultValue" />
     </el-form-item>
     <el-row :gutter="element.gutter" :class="element.class" @click.stop="activeItem(element)" v-else>
@@ -25,6 +25,7 @@
   </el-col>
 </template>
 <script setup lang="ts" name="DraggableItem">
+import {requiredRule} from '@/utils/input-validation'
 import draggable from "vuedraggable/dist/vuedraggable.common"
 import render from '@/utils/generator/render'
 

@@ -37,7 +37,7 @@ const fields=computed<Field[]>(()=>{
  case 'line':return [text('code','产线编号'),text('name','产线名称'),remote('factoryId','所属工厂','factories'),remote('productId','关联产品','products')]
  case 'staff':return [remote('roleId','角色','roles'),remote('factoryId','所属工厂','factories')]
  case 'role':return [text('name','角色名称'),remote('factoryId','所属工厂','factories')]
- default:{const types=props.orderKind==='IN'?['RAW_IN','SEMI_IN','FINISHED_IN','OPENING']:props.orderKind==='RET'?['RAW_RETURN','PRODUCT_RETURN']:['PRODUCTION_OUT','PRODUCT_OUT','EXCHANGE_OUT','SEMI_OUT'];return [text('orderNo','单据编号'),text('workOrderNo','生产工单号'),remote('warehouseId','仓库','warehouses'),{key:'type',label:'类型',options:types.map(id=>({id,name:orderTypeNames[id]}))},remote('operatorId','经办人','people'),remote('recipientId','领用人','people'),remote('keeperId','仓管人','people')]}
+ default:{const types=props.orderKind==='IN'?['RAW_IN','SEMI_IN','FINISHED_IN','OPENING']:props.orderKind==='RET'?['RAW_RETURN','SEMI_RETURN','PROCESS_RAW_RETURN','PRODUCT_RETURN']:['PRODUCTION_OUT','PRODUCT_OUT','EXCHANGE_OUT','SEMI_OUT'];return [text('orderNo','单据编号'),text('workOrderNo','生产工单号'),remote('warehouseId','仓库','warehouses'),{key:'type',label:'类型',options:types.map(id=>({id,name:orderTypeNames[id]}))},remote('operatorId','经办人','people'),remote('recipientId','领用人','people'),remote('keeperId','仓管人','people')]}
  }
 })
 const suggestionEpochs:Record<string,number>={},pendingSuggestions:Record<string,SuggestionCallback>={}
@@ -53,7 +53,7 @@ watch(()=>draft.factoryId,()=>cancelSuggestions())
 onBeforeUnmount(cancelSuggestions)
 function values(){const result=Object.fromEntries(Object.entries(draft).filter(([,v])=>v!=null&&String(v).trim()!=='').map(([k,v])=>[k,String(v).trim()]));if(range.value?.length===2){result.startDate=range.value[0];result.endDate=range.value[1]}return result}
 const canonical=(v:Record<string,string>)=>JSON.stringify(Object.entries(v).sort(([a],[b])=>a.localeCompare(b)))
-function apply(){const next=values();if(next.startDate&&next.endDate&&next.startDate>next.endDate){ElMessage.warning('开始日期不能晚于结束日期');return}applied.value={...next};emit('apply',{...next})}
+function apply(){const next=values();for(const field of fields.value){const value=next[field.key],max=['orderNo','workOrderNo'].includes(field.key)?64:500;if(value&&value.length>max){ElMessage.warning(field.label+'最多'+max+'个字符');return}}if(next.startDate&&next.endDate&&next.startDate>next.endDate){ElMessage.warning('开始日期不能晚于结束日期');return}applied.value={...next};emit('apply',{...next})}
 function reset(){Object.keys(draft).forEach(k=>delete draft[k]);range.value=[];applied.value={};factoryChanged();emit('apply',{})}
 function exportCurrent(){if(canonical(values())!==canonical(applied.value)){ElMessage.warning('筛选条件已修改，请先点击查询');return}emit('export',{...applied.value})}
 function factoryChanged(){for(const field of fields.value.filter(f=>['roles','warehouses','people'].includes(f.remote??''))){delete draft[field.key];choices[field.key]=[];more[field.key]=false;epochs[field.key]=(epochs[field.key]??0)+1}}
@@ -63,9 +63,9 @@ defineExpose({reset})
 </script>
 <style scoped>
 .business-filter-controls{width:100%;min-width:0}
-.business-filter-form{display:flex;flex-wrap:wrap;align-items:center;column-gap:12px;row-gap:10px;min-width:0}
-.business-filter-form .el-form-item{margin:0;height:35px;flex:0 0 min(180px,100%);width:180px;min-width:0;max-width:100%}
-.business-filter-form .filter-date{flex-basis:min(280px,100%);width:280px}
+.business-filter-form{display:flex;flex-wrap:wrap;align-items:center;column-gap:8px;row-gap:8px;min-width:0}
+.business-filter-form .el-form-item{margin:0;height:35px;flex:0 0 min(168px,100%);width:168px;min-width:0;max-width:100%}
+.business-filter-form .filter-date{flex-basis:min(260px,100%);width:260px}
 .business-filter-form .el-autocomplete,.business-filter-form .el-select{width:100%;height:35px;min-width:0}
 .business-filter-form :deep(.el-form-item__content){width:100%;min-width:0;line-height:35px}
 .business-filter-form :deep(.el-date-editor){width:100%;min-width:0;max-width:100%;height:35px;box-sizing:border-box}
