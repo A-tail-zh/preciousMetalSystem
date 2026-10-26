@@ -111,7 +111,7 @@
 
       <!-- 添加或修改岗位对话框 -->
       <el-dialog :title="title" v-model="open" width="500px" append-to-body>
-         <el-form ref="postRef" :model="form" :rules="rules" label-width="80px">
+         <el-form ref="postRef" :model="form" :rules="rules" label-width="80px" scroll-to-error>
             <el-form-item label="岗位名称" prop="postName">
                <el-input v-model="form.postName" placeholder="请输入岗位名称" />
             </el-form-item>
@@ -145,6 +145,7 @@
 </template>
 
 <script setup lang="ts" name="Post">
+import {applyFieldErrors} from '@/utils/input-validation'
 import { listPost, addPost, delPost, getPost, updatePost } from "@/api/system/post"
 import type { SysPost, PostQueryParams } from '@/types/api/system/post'
 
@@ -171,8 +172,10 @@ const data = reactive({
     status: undefined
   } as PostQueryParams,
   rules: {
-    postName: [{ required: true, message: "岗位名称不能为空", trigger: "blur" }],
-    postCode: [{ required: true, message: "岗位编码不能为空", trigger: "blur" }],
+    remark: [{max:500,message:"备注最多500个字符",trigger:"blur"}],
+    status: [{max:1,message:"该字段最多1个字符",trigger:"blur"}],
+    postName: [{max:50,message:"该字段最多50个字符",trigger:"blur"},{ required: true, whitespace:true, message: "岗位名称不能为空", trigger: "blur" }],
+    postCode: [{max:64,message:"该字段最多64个字符",trigger:"blur"},{ required: true, whitespace:true, message: "岗位编码不能为空", trigger: "blur" }],
     postSort: [{ required: true, message: "岗位顺序不能为空", trigger: "blur" }],
   }
 })
@@ -247,20 +250,21 @@ function handleUpdate(row?: SysPost) {
 
 /** 提交按钮 */
 function submitForm() {
+  const submittedForm=form.value
   ;(proxy.$refs["postRef"] as import('element-plus').FormInstance).validate((valid: boolean) => {
-    if (valid) {
+    if (valid && form.value===submittedForm) {
       if (form.value.postId != undefined) {
         updatePost(form.value).then(() => {
           proxy.$modal.msgSuccess("修改成功")
           open.value = false
           getList()
-        })
+        }).catch(error=>{if(form.value===submittedForm&&open.value)applyFieldErrors(proxy.$refs["postRef"] as import('element-plus').FormInstance,error)})
       } else {
         addPost(form.value).then(() => {
           proxy.$modal.msgSuccess("新增成功")
           open.value = false
           getList()
-        })
+        }).catch(error=>{if(form.value===submittedForm&&open.value)applyFieldErrors(proxy.$refs["postRef"] as import('element-plus').FormInstance,error)})
       }
     }
   })

@@ -21,15 +21,20 @@ public class SysNotice extends BaseEntity
     private Long noticeId;
 
     /** 公告标题 */
+    @jakarta.validation.constraints.Size(max=50)
     private String noticeTitle;
 
     /** 公告类型（1通知 2公告） */
+    @jakarta.validation.constraints.Size(max=1)
+    @jakarta.validation.constraints.Pattern(regexp="[12]")
     private String noticeType;
 
     /** 公告内容 */
     private String noticeContent;
 
     /** 公告状态（0正常 1关闭） */
+    @jakarta.validation.constraints.Size(max=1)
+    @jakarta.validation.constraints.Pattern(regexp="[01]")
     private String status;
 
     /** 是否已读 */
@@ -114,4 +119,7 @@ public class SysNotice extends BaseEntity
             .append("remark", getRemark())
             .toString();
     }
+    @Override
+    @jakarta.validation.constraints.Size(max=255,message="备注最多255个字符")
+    public String getRemark() { return super.getRemark(); }
 }

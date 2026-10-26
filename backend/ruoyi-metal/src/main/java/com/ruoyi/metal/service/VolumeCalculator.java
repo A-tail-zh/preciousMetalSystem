@@ -23,6 +23,10 @@ public final class VolumeCalculator {
      * 校验产品类别、尺寸及内外径关系，按对应公式计算体积。
      */
     public static BigDecimal calculate(String category, Map<String, String> dimensions, BigDecimal pi) {
+        return calculate(category,dimensions,pi,true);
+    }
+
+    static BigDecimal calculate(String category, Map<String,String> dimensions,BigDecimal pi,boolean strictInput) {
         if (!supported(category)) throw new ServiceException("该类别尚未提供计算公式");
         var fields = ProductService.DIMENSIONS.get(category);
         if (dimensions == null || !dimensions.keySet().equals(new HashSet<>(fields)))
@@ -30,12 +34,13 @@ public final class VolumeCalculator {
         Map<String, BigDecimal> d = new HashMap<>();
         for (String field : fields) {
             try {
+                if(strictInput&&!dimensions.get(field).matches("[0-9]+(\\.[0-9]{1,6})?"))throw new IllegalArgumentException();
                 BigDecimal v = new BigDecimal(dimensions.get(field));
                 if (v.signum() <= 0 || v.scale() > 6 || v.precision() - v.scale() > 14)
                     throw new IllegalArgumentException();
                 d.put(field, v);
             } catch (Exception e) {
-                throw new ServiceException("尺寸必须为正数，最多6位小数：" + field);
+                throw new ServiceException("尺寸必须为正数，最多14位整数、6位小数，不支持科学计数法：" + dimensionLabel(field));
             }
         }
         if (d.containsKey("outerDiameter") && d.get("outerDiameter").compareTo(d.get("innerDiameter")) <= 0)
@@ -57,6 +62,8 @@ public final class VolumeCalculator {
         }
         return value;
     }
+
+    static String dimensionLabel(String key){return Map.of("innerDiameter","内径","innerHeight","内高","wallThickness","壁厚","bottomThickness","底厚","rHeight","R高度","outerDiameter","外径","height","高度","diameter","直径","length","长度").getOrDefault(key,"尺寸");}
 
     /**
      * 将计算结果四舍五入保留六位小数，并校验整数位上限。

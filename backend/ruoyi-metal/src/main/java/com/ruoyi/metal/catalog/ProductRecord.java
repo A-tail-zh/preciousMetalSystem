@@ -39,7 +39,7 @@ public class ProductRecord extends MasterRecord {
     private BigDecimal weight;
     @NotNull
     @Valid
-    private List<ProductStep> processes = new ArrayList<>();
+    private List<@NotNull @Valid ProductStep> processes = new ArrayList<>();
 
     public String getCode() {
         return code;

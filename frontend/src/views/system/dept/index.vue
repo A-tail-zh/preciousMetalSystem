@@ -91,7 +91,7 @@
 
       <!-- 添加或修改部门对话框 -->
       <el-dialog :title="title" v-model="open" width="600px" append-to-body>
-         <el-form ref="deptRef" :model="form" :rules="rules" label-width="80px">
+         <el-form ref="deptRef" :model="form" :rules="rules" label-width="80px" scroll-to-error>
             <el-row>
                <el-col :span="24" v-if="form.parentId !== 0">
                   <el-form-item label="上级部门" prop="parentId">
@@ -154,6 +154,7 @@
 </template>
 
 <script setup lang="ts" name="Dept">
+import {applyFieldErrors} from '@/utils/input-validation'
 import { listDept, getDept, delDept, addDept, updateDept, updateDeptSort, listDeptExcludeChild } from "@/api/system/dept"
 import type { SysDept, DeptQueryParams } from '@/types/api/system/dept'
 import type { TreeSelect } from '@/types/api/common'
@@ -178,11 +179,13 @@ const data = reactive({
     status: undefined
   } as DeptQueryParams,
   rules: {
+    status: [{max:1,message:"该字段最多1个字符",trigger:"blur"}],
+    leader: [{max:20,message:"该字段最多20个字符",trigger:"blur"}],
     parentId: [{ required: true, message: "上级部门不能为空", trigger: "blur" }],
-    deptName: [{ required: true, message: "部门名称不能为空", trigger: "blur" }],
+    deptName: [{max:30,message:"该字段最多30个字符",trigger:"blur"},{ required: true, whitespace:true, message: "部门名称不能为空", trigger: "blur" }],
     orderNum: [{ required: true, message: "显示排序不能为空", trigger: "blur" }],
-    email: [{ type: "email" as const, message: "请输入正确的邮箱地址", trigger: ["blur", "change"] }],
-    phone: [{ pattern: /^1[3|4|5|6|7|8|9][0-9]\d{8}$/, message: "请输入正确的手机号码", trigger: "blur" }]
+    email: [{max:50,message:"该字段最多50个字符",trigger:"blur"},{ type: "email" as const, message: "请输入正确的邮箱地址", trigger: ["blur", "change"] }],
+    phone: [{max:11,message:"该字段最多11个字符",trigger:"blur"},{ pattern: /^1[3|4|5|6|7|8|9][0-9]\d{8}$/, message: "请输入正确的手机号码", trigger: "blur" }]
   },
 })
 
@@ -267,20 +270,21 @@ function handleUpdate(row: SysDept) {
 
 /** 提交按钮 */
 function submitForm() {
+  const submittedForm=form.value
   ;(proxy.$refs["deptRef"] as import('element-plus').FormInstance).validate((valid: boolean) => {
-    if (valid) {
+    if (valid && form.value===submittedForm) {
       if (form.value.deptId != undefined) {
         updateDept(form.value).then(() => {
           proxy.$modal.msgSuccess("修改成功")
           open.value = false
           getList()
-        })
+        }).catch(error=>{if(form.value===submittedForm&&open.value)applyFieldErrors(proxy.$refs["deptRef"] as import('element-plus').FormInstance,error)})
       } else {
         addDept(form.value).then(() => {
           proxy.$modal.msgSuccess("新增成功")
           open.value = false
           getList()
-        })
+        }).catch(error=>{if(form.value===submittedForm&&open.value)applyFieldErrors(proxy.$refs["deptRef"] as import('element-plus').FormInstance,error)})
       }
     }
   })

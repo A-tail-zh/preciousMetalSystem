@@ -41,18 +41,20 @@ public class ProcessConsumptionService {
     // Aggregate lines before joining batches and the UNIQUE(batch_id) report, so neither join multiplies weights.
     private static final String BATCH_SQL="""
         SELECT b.batch_id batchId,b.batch_no batchNo,b.item_id itemId,b.process_id processId,b.sequence_no sequenceNo,
-        b.status,b.version batchVersion,b.planned_quantity plannedQuantity,b.completed_quantity batchCompletedQuantity,
+        b.measurement_mode measurementMode,b.status,b.version batchVersion,b.planned_quantity plannedQuantity,b.completed_quantity batchCompletedQuantity,
         COALESCE(x.rawIssuedWeight,0) rawIssuedWeight,COALESCE(x.semiIssuedWeight,0) semiIssuedWeight,
-        COALESCE(x.rawReturnedWeight,0) rawReturnedWeight,COALESCE(x.outputWeight,0) outputWeight,
+        COALESCE(x.rawReturnedWeight,0) rawReturnedWeight,COALESCE(x.semiReturnedWeight,0) semiReturnedWeight,COALESCE(x.processRawReturnedWeight,0) processRawReturnedWeight,COALESCE(x.outputWeight,0) outputWeight,
         COALESCE(x.outputQuantity,0) outputQuantity,COALESCE(x.documentCount,0) documentCount,
         r.report_id reportId,r.issued_weight reportIssuedWeight,r.returned_weight reportReturnedWeight,
         r.loss_weight reportLossWeight,r.average_loss reportAverageLoss,r.completed_quantity reportCompletedQuantity,
-        r.status reportStatus,r.voided reportVoided,r.create_time settledTime
+        r.status reportStatus,r.voided reportVoided,r.create_time settledTime,r.threshold_value reportThresholdValue
         FROM metal_process_batch b LEFT JOIN (
           SELECT o.batch_id,
           SUM(CASE WHEN o.type='PRODUCTION_OUT' AND l.category='RAW' THEN l.net_weight ELSE 0 END) rawIssuedWeight,
           SUM(CASE WHEN o.type='PRODUCTION_OUT' AND l.category='SEMI' THEN l.net_weight ELSE 0 END) semiIssuedWeight,
           SUM(CASE WHEN o.type='RAW_RETURN' THEN l.net_weight ELSE 0 END) rawReturnedWeight,
+          SUM(CASE WHEN o.type='SEMI_RETURN' THEN l.net_weight ELSE 0 END) semiReturnedWeight,
+          SUM(CASE WHEN o.type='PROCESS_RAW_RETURN' THEN l.net_weight ELSE 0 END) processRawReturnedWeight,
           SUM(CASE WHEN o.type IN ('SEMI_IN','FINISHED_IN') THEN l.net_weight ELSE 0 END) outputWeight,
           SUM(CASE WHEN o.type IN ('SEMI_IN','FINISHED_IN') THEN l.quantity ELSE 0 END) outputQuantity,
           COUNT(DISTINCT o.order_id) documentCount
@@ -67,7 +69,7 @@ public class ProcessConsumptionService {
     public Map<String,Object> steps(Long work,Long item,Long process,String requestedScope){
         String selectedScope=batchScope(requestedScope);
         context(work,item,process,null,null);
-        var steps=cleanRows(jdbc.queryForList("SELECT process_id processId,sequence_no sequenceNo,process_name processName FROM metal_work_order_step WHERE item_id=?"+(process==null?"":" AND process_id=?")+" ORDER BY sequence_no,step_id",process==null?new Object[]{item}:new Object[]{item,process}));
+        var steps=cleanRows(jdbc.queryForList("SELECT process_id processId,sequence_no sequenceNo,process_name processName,measurement_mode measurementMode FROM metal_work_order_step WHERE item_id=?"+(process==null?"":" AND process_id=?")+" ORDER BY sequence_no,step_id",process==null?new Object[]{item}:new Object[]{item,process}));
         return stepsResult(work,item,steps,process,selectedScope);
     }
     private Map<String,Object> stepsResult(Long work,Long item,List<Map<String,Object>> steps,Long process,String selectedScope){
@@ -98,13 +100,21 @@ public class ProcessConsumptionService {
     public Map<String,Object> lines(Long work,Long item,Long process,Long batch,Long order,int n,int size){
         page(n,size);context(work,item,process,batch,order);
         Long total=jdbc.queryForObject("SELECT COUNT(*) FROM metal_warehouse_order_line WHERE order_id=?",Long.class,order);
-        var rows=cleanRows(jdbc.queryForList("SELECT l.line_id lineId,l.inventory_id inventoryId,l.sequence_no sequenceNo,l.code,l.name,l.category,l.specification,l.batch_no batchNo,l.gross_weight grossWeight,l.impurity,l.net_weight netWeight,l.quantity,l.organization,l.purpose,l.remark,source.order_no sourceOrderNo FROM metal_warehouse_order_line l LEFT JOIN metal_warehouse_order_line original ON original.line_id=l.source_line_id LEFT JOIN metal_warehouse_order source ON source.order_id=original.order_id WHERE l.order_id=? ORDER BY l.sequence_no LIMIT ? OFFSET ?",order,size,((long)n-1)*size));
+        var rows=cleanRows(jdbc.queryForList("SELECT l.line_id lineId,l.inventory_id inventoryId,l.sequence_no sequenceNo,l.code,l.name,l.category,l.specification,l.batch_no batchNo,l.gross_weight grossWeight,l.impurity,l.net_weight netWeight,l.quantity,l.measurement_mode measurementMode,l.reference_quantity referenceQuantity,l.organization,l.purpose,l.remark,source.order_no sourceOrderNo,u.release_id releaseId,sw.order_no sourceWorkOrderNo,ss.process_name sourceProcessName FROM metal_warehouse_order_line l LEFT JOIN metal_warehouse_order_line original ON original.line_id=l.source_line_id LEFT JOIN metal_warehouse_order source ON source.order_id=original.order_id LEFT JOIN metal_semi_release_use u ON u.line_id=COALESCE(l.source_line_id,l.line_id) LEFT JOIN metal_inventory si ON si.inventory_id=l.inventory_id LEFT JOIN metal_process_batch sb ON sb.batch_id=si.origin_batch_id LEFT JOIN metal_work_order sw ON sw.work_order_id=sb.work_order_id LEFT JOIN metal_work_order_step ss ON ss.item_id=sb.item_id AND ss.process_id=sb.process_id WHERE l.order_id=? ORDER BY l.sequence_no LIMIT ? OFFSET ?",order,size,((long)n-1)*size));
         var out=paged(work,item,rows,total==null?0:total,n,size);out.put("orderId",String.valueOf(order));out.put("batchId",String.valueOf(batch));out.put("processId",String.valueOf(process));return out;
     }
+    /** Caller already checks work-order factory access; fetch all saved item routes in one query. */
+    Map<String,Map<String,Object>> settledReportMetrics(Long work) {
+        String query=BATCH_SQL.replace(" AND sourceBatch.item_id=?", "").replace(" AND b.item_id=?", "")+" AND b.status='SETTLED' AND r.voided=FALSE";
+        var grouped=new LinkedHashMap<String,List<Map<String,Object>>>();
+        for(var raw:jdbc.queryForList(query,work,work)) {var b=calculateBatch(clean(raw));grouped.computeIfAbsent(b.get("itemId")+":"+b.get("processId"),k->new ArrayList<>()).add(b);}
+        var result=new LinkedHashMap<String,Map<String,Object>>();
+        grouped.forEach((key,batches)->result.put(key,summarize(batches)));return result;
+    }
     static Map<String,Object> calculateBatch(Map<String,Object> b){
-        BigDecimal raw=dec(b.get("rawIssuedWeight")),semi=dec(b.get("semiIssuedWeight")),returned=dec(b.get("rawReturnedWeight")),output=dec(b.get("outputWeight"));
+        BigDecimal raw=dec(b.get("rawIssuedWeight")),semi=dec(b.get("semiIssuedWeight")),returned=dec(b.get("rawReturnedWeight")).add(dec(b.get("semiReturnedWeight")).add(dec(b.get("processRawReturnedWeight")))),output=dec(b.get("outputWeight"));
         BigDecimal issued=raw.add(semi),net=issued.subtract(returned),difference=net.subtract(output);
-        for(String key:List.of("rawIssuedWeight","semiIssuedWeight","rawReturnedWeight","outputWeight"))b.put(key,weight(b.get(key)));
+        for(String key:List.of("rawIssuedWeight","semiIssuedWeight","rawReturnedWeight","semiReturnedWeight","processRawReturnedWeight","outputWeight"))b.put(key,weight(b.get(key)));
         b.put("issuedWeight",weight(issued));b.put("netInputWeight",weight(net));b.put("balanceDifferenceWeight",weight(difference));
         b.put("settledLossWeight",null);b.put("provisionalDifferenceWeight",null);b.put("settledCompletedQuantity",null);b.put("averageLoss",null);
         String state=String.valueOf(b.get("status"));
@@ -114,19 +124,21 @@ public class ProcessConsumptionService {
             if(b.get("reportId")==null||yes(b.get("reportVoided"))){state="REVIEW";warnings.add("已结算批次缺少有效报工");}
             else{
                 b.put("settledLossWeight",b.get("reportLossWeight")==null?null:weight(b.get("reportLossWeight")));b.put("settledCompletedQuantity",b.get("reportCompletedQuantity")==null?null:count(b.get("reportCompletedQuantity")));b.put("averageLoss",b.get("reportAverageLoss")==null?null:weight(b.get("reportAverageLoss")));
-                if(b.get("reportLossWeight")==null||b.get("reportIssuedWeight")==null||b.get("reportReturnedWeight")==null||b.get("reportCompletedQuantity")==null||b.get("reportAverageLoss")==null||(count(b.get("reportCompletedQuantity"))>0&&dec(b.get("reportAverageLoss")).compareTo(dec(b.get("reportLossWeight")).divide(BigDecimal.valueOf(count(b.get("reportCompletedQuantity"))),6,RoundingMode.HALF_UP))!=0)||dec(b.get("reportLossWeight")).compareTo(difference)!=0||dec(b.get("reportIssuedWeight")).compareTo(issued)!=0||dec(b.get("reportReturnedWeight")).compareTo(returned.add(output))!=0||count(b.get("reportCompletedQuantity"))!=count(b.get("outputQuantity"))||count(b.get("reportCompletedQuantity"))<=0){state="REVIEW";warnings.add("报工快照与当前有效单据不一致，请人工核对");}
+                if(b.get("reportLossWeight")==null||b.get("reportIssuedWeight")==null||b.get("reportReturnedWeight")==null||b.get("reportCompletedQuantity")==null||b.get("reportAverageLoss")==null||(count(b.get("reportCompletedQuantity"))>0&&dec(b.get("reportAverageLoss")).compareTo(dec(b.get("reportLossWeight")).divide(BigDecimal.valueOf(count(b.get("reportCompletedQuantity"))),6,RoundingMode.HALF_UP))!=0)||dec(b.get("reportLossWeight")).compareTo(difference)!=0||dec(b.get("reportIssuedWeight")).compareTo(issued)!=0||dec(b.get("reportReturnedWeight")).compareTo(returned.add(output))!=0||count(b.get("reportCompletedQuantity"))!=count(b.get("outputQuantity"))||(!"WEIGHT".equals(b.get("measurementMode"))&&count(b.get("reportCompletedQuantity"))<=0)){state="REVIEW";warnings.add("报工快照与当前有效单据不一致，请人工核对");}
             }
         }
         if(!"VOID".equals(state)&&(difference.signum()<0||net.signum()<0)){state="REVIEW";warnings.add("历史重量异常，请人工核对");}
         if("SETTLED".equals(b.get("status"))&&count(b.get("documentCount"))==0){state="REVIEW";warnings.add("缺少有效单据依据");}
-        b.put("state",state);b.put("warnings",warnings);return b;
+        String rate="SETTLED".equals(b.get("status"))?ReportMetrics.percentage(b.get("reportLossWeight")==null?null:dec(b.get("reportLossWeight")),net,"SETTLED".equals(state)):null;
+        b.put("lossRatePercent",rate);b.put("lossRateWarning","SETTLED".equals(b.get("status"))&&rate==null?"实际损耗率依据不足或重量异常，请核对":null);
+        b.put("state",state);b.put("warnings",warnings);if("WEIGHT".equals(b.get("measurementMode"))){b.put("averageLoss",null);b.put("settledCompletedQuantity",null);b.put("outputQuantity",null);b.put("thresholdWarning","按重量管理，件均预警不适用");}return b;
     }
     static Map<String,Object> summarize(List<Map<String,Object>> batches){
         var out=new LinkedHashMap<String,Object>();
         var active=batches.stream().filter(b->!"VOID".equals(b.get("status"))).toList();
-        for(String key:List.of("rawIssuedWeight","semiIssuedWeight","issuedWeight","rawReturnedWeight","outputWeight","netInputWeight"))out.put(key,weight(active.stream().map(b->dec(b.get(key))).reduce(BigDecimal.ZERO,BigDecimal::add)));
+        for(String key:List.of("rawIssuedWeight","semiIssuedWeight","issuedWeight","rawReturnedWeight","semiReturnedWeight","processRawReturnedWeight","outputWeight","netInputWeight"))out.put(key,weight(active.stream().map(b->dec(b.get(key))).reduce(BigDecimal.ZERO,BigDecimal::add)));
         long open=active.stream().filter(b->"OPEN".equals(b.get("status"))).count(),settled=active.stream().filter(b->"SETTLED".equals(b.get("status"))).count();
-        boolean missing=active.stream().anyMatch(b->"SETTLED".equals(b.get("status"))&&(b.get("settledLossWeight")==null||b.get("settledCompletedQuantity")==null));
+        boolean missing=active.stream().anyMatch(b->"SETTLED".equals(b.get("status"))&&(b.get("settledLossWeight")==null||(!"WEIGHT".equals(b.get("measurementMode"))&&b.get("settledCompletedQuantity")==null)));
         BigDecimal loss=active.stream().map(b->dec(b.get("settledLossWeight"))).reduce(BigDecimal.ZERO,BigDecimal::add);
         long completed=active.stream().mapToLong(b->count(b.get("settledCompletedQuantity"))).sum();
         out.put("reportStatus",settled==0||missing?null:active.stream().anyMatch(b->"SETTLED".equals(b.get("status"))&&"ABNORMAL".equals(b.get("reportStatus")))?"ABNORMAL":"NORMAL");
@@ -135,6 +147,13 @@ public class ProcessConsumptionService {
         out.put("settledLossWeight",missing?null:weight(loss));out.put("provisionalDifferenceWeight",weight(active.stream().map(b->dec(b.get("provisionalDifferenceWeight"))).reduce(BigDecimal.ZERO,BigDecimal::add)));
         out.put("averageLoss",!missing&&completed>0?loss.divide(BigDecimal.valueOf(completed),6,RoundingMode.HALF_UP).toPlainString():null);
         out.put("state",active.stream().anyMatch(b->"REVIEW".equals(b.get("state")))?"REVIEW":active.isEmpty()?(batches.isEmpty()?"NOT_STARTED":"NO_ACTIVE"):open>0?(settled>0?"PARTIAL":"OPEN"):"SETTLED");
+        var settledRows=active.stream().filter(b->"SETTLED".equals(b.get("status"))).toList();
+        BigDecimal settledNet=settledRows.stream().map(b->dec(b.get("netInputWeight"))).reduce(BigDecimal.ZERO,BigDecimal::add);
+        boolean reliable=!settledRows.isEmpty()&&settledRows.stream().allMatch(b->"SETTLED".equals(b.get("state"))&&b.get("settledLossWeight")!=null&&b.get("netInputWeight")!=null&&dec(b.get("netInputWeight")).signum()>0);
+        out.put("settledNetInputWeight",weight(settledNet));out.put("lossRatePercent",ReportMetrics.percentage(loss,settledNet,reliable));
+        out.put("lossRateWarning",!settledRows.isEmpty()&&out.get("lossRatePercent")==null?"实际损耗率依据不足或重量异常，请核对":null);
+        out.putAll(ReportMetrics.thresholds(settledRows.stream().map(b->b.get("reportThresholdValue")).toList()));
+        if(active.stream().anyMatch(b->"WEIGHT".equals(b.get("measurementMode")))){out.put("measurementMode","WEIGHT");out.put("averageLoss",null);out.put("settledCompletedQuantity",null);out.put("outputQuantity",null);out.put("thresholdValue",null);out.put("thresholdMin",null);out.put("thresholdMax",null);out.put("thresholdWarning","按重量管理，件均预警不适用");}
         out.put("warnings",active.stream().flatMap(b->((List<?>)b.getOrDefault("warnings",List.of())).stream()).distinct().toList());return out;
     }
 }

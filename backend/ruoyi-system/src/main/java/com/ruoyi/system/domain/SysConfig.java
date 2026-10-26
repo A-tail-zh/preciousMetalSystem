@@ -23,18 +23,23 @@ public class SysConfig extends BaseEntity
 
     /** 参数名称 */
     @Excel(name = "参数名称")
+    @jakarta.validation.constraints.Size(max=100)
     private String configName;
 
     /** 参数键名 */
     @Excel(name = "参数键名")
+    @jakarta.validation.constraints.Size(max=100)
     private String configKey;
 
     /** 参数键值 */
     @Excel(name = "参数键值")
+    @jakarta.validation.constraints.Size(max=500)
     private String configValue;
 
     /** 系统内置（Y是 N否） */
     @Excel(name = "系统内置", readConverterExp = "Y=是,N=否")
+    @jakarta.validation.constraints.Size(max=1)
+    @jakarta.validation.constraints.Pattern(regexp="[YN]")
     private String configType;
 
     public Long getConfigId()
@@ -108,4 +113,7 @@ public class SysConfig extends BaseEntity
             .append("remark", getRemark())
             .toString();
     }
+    @Override
+    @jakarta.validation.constraints.Size(max=500,message="备注最多500个字符")
+    public String getRemark() { return super.getRemark(); }
 }
