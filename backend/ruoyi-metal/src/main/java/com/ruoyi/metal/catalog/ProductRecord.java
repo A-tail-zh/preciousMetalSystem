@@ -17,8 +17,22 @@ public class ProductRecord extends MasterRecord {
     @NotBlank
     @Size(max = 100)
     private String name;
-    @NotBlank
     private String category;
+    @Positive
+    @JsonFormat(shape=JsonFormat.Shape.STRING)
+    private Long metalTypeId;
+    private String metalTypeName;
+    private String productType;
+    @Min(1) @Max(2)
+    private Integer calculationVersion;
+    public Integer getCalculationVersion(){return calculationVersion;}
+    public void setCalculationVersion(Integer v){calculationVersion=v;}
+    public Long getMetalTypeId(){return metalTypeId;}
+    public void setMetalTypeId(Long v){metalTypeId=v;}
+    public String getMetalTypeName(){return metalTypeName;}
+    public void setMetalTypeName(String v){metalTypeName=v;}
+    public String getProductType(){return productType;}
+    public void setProductType(String v){productType=v==null?null:v.strip();}
     @Size(max = 200)
     @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
     private String specification;

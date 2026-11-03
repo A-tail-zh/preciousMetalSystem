@@ -35,6 +35,7 @@ const service = axios.create({
 
 // request拦截器
 service.interceptors.request.use((config: any) => {
+  if(staleContext(config))throw new axios.CanceledError('请求上下文已失效',config)
   config.sessionToken=config.headers?.isToken===false?undefined:(config.headers?.Authorization?.toString().replace(/^Bearer /,'')||getToken())
   // 是否需要设置 token
   const isToken = (config.headers || {}).isToken === false
@@ -95,7 +96,7 @@ service.interceptors.response.use((res: any) => {
     // 未设置状态码则默认成功状态
     const code = res.data.code || 200
     if(code!==401&&staleContext(res.config))return Promise.reject(new axios.CanceledError('请求上下文已失效'))
-    const trace=res.data.traceId||res.headers?.['x-trace-id'];if(code!==200&&code!==401&&trace&&useUserStore().sessionReady&&!!getToken()&&res.config?.sessionToken===getToken()&&!/\/(login|logout|captchaImage|getInfo)(?:\?|$)/.test(res.config?.url??'')&&!location.pathname.startsWith('/login'))ElNotification({title:'故障追踪',message:h('button',{onClick:()=>copyText(trace).then(()=>ElMessage.success('追踪ID已复制')).catch(()=>ElMessage.warning('复制失败，请手动选择追踪ID'))},'复制追踪ID：'+trace),duration:10000})
+    const trace=res.data.traceId||res.headers?.['x-trace-id'];if(!res.config?.quiet&&code!==200&&code!==401&&trace&&useUserStore().sessionReady&&!!getToken()&&res.config?.sessionToken===getToken()&&!/\/(login|logout|captchaImage|getInfo)(?:\?|$)/.test(res.config?.url??'')&&!location.pathname.startsWith('/login'))ElNotification({title:'故障追踪',message:h('button',{onClick:()=>copyText(trace).then(()=>ElMessage.success('追踪ID已复制')).catch(()=>ElMessage.warning('复制失败，请手动选择追踪ID'))},'复制追踪ID：'+trace),duration:10000})
     // 获取错误信息
     const msg = userMessage(errorCode[code] || res.data.msg || errorCode['default'])
     // 二进制数据则直接返回
@@ -106,13 +107,13 @@ service.interceptors.response.use((res: any) => {
       expired(res.config)
       return Promise.reject('无效的会话，或者会话已过期，请重新登录。')
     } else if (code === 500) {
-      ElMessage({ message: msg, type: 'error' })
+      if(!res.config?.quiet)ElMessage({ message: msg, type: 'error' })
       return Promise.reject(Object.assign(new Error(msg), {fieldErrors:res.data.fieldErrors??[],code}))
     } else if (code === 601) {
-      ElMessage({ message: msg, type: 'warning' })
+      if(!res.config?.quiet)ElMessage({ message: msg, type: 'warning' })
       return Promise.reject(Object.assign(new Error(msg), {fieldErrors:res.data.fieldErrors??[],code}))
     } else if (code !== 200) {
-      ElNotification.error({ title: msg })
+      if(!res.config?.quiet)ElNotification.error({ title: msg })
       return Promise.reject(Object.assign(new Error(msg), {fieldErrors:res.data.fieldErrors??[],code}))
     } else {
       return  Promise.resolve(res.data)
@@ -121,6 +122,7 @@ service.interceptors.response.use((res: any) => {
   (error: any) => {
     if(error.response?.status===401){expired(error.config);return Promise.reject(error)}
     if(staleContext(error.config))return Promise.reject(error)
+    if(error.config?.quiet)return Promise.reject(error)
     console.log('err' + error)
     let message = String(error?.message??'')
     if (message == "Network Error") {

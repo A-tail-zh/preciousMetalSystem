@@ -1,10 +1,11 @@
 import { test, expect, type Page } from '@playwright/test'
 
 // Browser interaction tests use controlled API responses, not a substitute for MySQL integration.
-async function setup(page: Page, permissions = ['*:*:*']) {
-  let rows = [{factoryId:'1',factoryName:'西安航空制造厂',area:'12.5000',address:'西安市高新区',introduction:'工厂简介',version:0,
+async function setup(page: Page, permissions = ['*:*:*'], area = '12.5000') {
+  let rows = [{factoryId:'1',factoryName:'西安航空制造厂',area,address:'西安市高新区',introduction:'工厂简介',version:0,
     updateTime:'2026-10-12 12:00:00',productionLines:[],productionLineIds:[]}]
   let nextId = 2, rejectSave = false
+  const saves: {method:string;area:string;factoryName:string}[] = []
   await page.context().addCookies([{name:'Admin-Token',value:'browser-test-token',url:'http://127.0.0.1:5173'}])
   await page.route('**/dev-api/**', async route => {
     const request = route.request(), url = new URL(request.url()), path = url.pathname.replace('/dev-api','')
@@ -22,6 +23,7 @@ async function setup(page: Page, permissions = ['*:*:*']) {
         const data = request.postDataJSON()
         expect(typeof data.area).toBe('string')
         expect(data.productionLineIds).toBeUndefined()
+        saves.push({method:request.method(),area:data.area,factoryName:data.factoryName})
         const factoryId = data.factoryId || String(nextId++)
         const row = {...data,factoryId,version:data.factoryId ? data.version+1 : 0,productionLines:[],updateTime:'2026-10-12 13:00:00'}
         rows = [row,...rows.filter(f => f.factoryId !== factoryId)]
@@ -36,7 +38,7 @@ async function setup(page: Page, permissions = ['*:*:*']) {
   })
   await page.goto('/metal/factory')
   await expect(page.getByRole('cell',{name:'西安航空制造厂',exact:true})).toBeVisible()
-  return {failSave:() => {rejectSave = true}}
+  return {saves,failSave:() => {rejectSave = true}}
 }
 
 test('原型列表字段、按钮和分页',async ({page}) => {
@@ -48,12 +50,12 @@ test('原型列表字段、按钮和分页',async ({page}) => {
   await expect(page.locator('.factory-toolbar').getByRole('button',{name:'删除',exact:true})).toBeDisabled()
   await expect(page.locator('.factory-page')).not.toContainText('搜索')
   await expect(page.locator('.factory-pagination')).toContainText('共 1 条')
-  await page.screenshot({path:'../docs/screenshots/factory-list.png',fullPage:true})
+  await page.screenshot({path:test.info().outputPath('factory-list.png'),fullPage:true})
   expect(errors).toEqual([])
 })
 
 test('新增、刷新、编辑回显和删除',async ({page}) => {
-  await setup(page)
+  const state = await setup(page)
   await page.getByRole('button',{name:'添加',exact:true}).click()
   const dialog = page.getByRole('dialog')
   await dialog.getByRole('button',{name:'确定',exact:true}).click()
@@ -63,20 +65,45 @@ test('新增、刷新、编辑回显和删除',async ({page}) => {
   await dialog.getByLabel('详细地址',{exact:true}).fill('第二工厂地址')
   await dialog.getByRole('button',{name:'确定',exact:true}).click()
   await expect(dialog).not.toBeVisible()
+  expect(state.saves).toEqual([{method:'POST',area:'20.12',factoryName:'第二工厂'}])
   let row = page.getByRole('row').filter({hasText:'第二工厂'})
   await expect(row).toBeVisible()
   await page.reload()
   row = page.getByRole('row').filter({hasText:'第二工厂'})
   await row.getByRole('button',{name:'编辑',exact:true}).click()
-  await expect(dialog.getByLabel('占地面积（万㎡）',{exact:true})).toHaveValue('20.1234')
+  await expect(dialog.getByLabel('占地面积（万㎡）',{exact:true})).toHaveValue('20.12')
   await dialog.getByLabel('工厂名称',{exact:true}).fill('更新后的工厂')
-  await page.screenshot({path:'../docs/screenshots/factory-edit.png',fullPage:true,animations:'disabled'})
+  await page.screenshot({path:test.info().outputPath('factory-edit.png'),fullPage:true,animations:'disabled'})
   await dialog.getByRole('button',{name:'确定',exact:true}).click()
   row = page.getByRole('row').filter({hasText:'更新后的工厂'})
   await expect(row).toBeVisible()
   await row.getByRole('button',{name:'删除',exact:true}).click()
   await page.getByRole('button',{name:'确定',exact:true}).click()
   await expect(row).toHaveCount(0)
+})
+
+for (const focusArea of [false,true]) test('历史面积20.1234在'+(focusArea?'仅聚焦失焦':'只改名称')+'后仍原精度提交',async ({page}) => {
+  const state = await setup(page,['*:*:*'],'20.1234')
+  await page.getByRole('row').filter({hasText:'西安航空制造厂'}).getByRole('button',{name:'编辑',exact:true}).click()
+  const dialog = page.getByRole('dialog'), area = dialog.getByLabel('占地面积（万㎡）',{exact:true})
+  await expect(area).toHaveValue('20.12')
+  if (focusArea) { await area.focus(); await area.press('Tab') }
+  else await dialog.getByLabel('工厂名称',{exact:true}).fill('仅改名称的工厂')
+  await dialog.getByRole('button',{name:'确定',exact:true}).click()
+  await expect(dialog).not.toBeVisible()
+  expect(state.saves).toEqual([{method:'PUT',area:'20.1234',factoryName:focusArea?'西安航空制造厂':'仅改名称的工厂'}])
+})
+
+test('历史面积实际修改后按两位提交',async ({page}) => {
+  const state = await setup(page,['*:*:*'],'20.1234')
+  await page.getByRole('row').filter({hasText:'西安航空制造厂'}).getByRole('button',{name:'编辑',exact:true}).click()
+  const dialog = page.getByRole('dialog'), area = dialog.getByLabel('占地面积（万㎡）',{exact:true})
+  await expect(area).toHaveValue('20.12')
+  await area.fill('21.2356'); await area.press('Tab')
+  await expect(area).toHaveValue('21.24')
+  await dialog.getByRole('button',{name:'确定',exact:true}).click()
+  await expect(dialog).not.toBeVisible()
+  expect(state.saves).toEqual([{method:'PUT',area:'21.24',factoryName:'西安航空制造厂'}])
 })
 
 test('非法面积及保存失败保留输入',async ({page}) => {

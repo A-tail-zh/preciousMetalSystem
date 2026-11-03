@@ -18,7 +18,6 @@ public class ProcessRecord extends MasterRecord {
     private String description;
     @NotNull
     @Min(1)
-    @Max(9)
     private Integer processType;
 
     public String getName() {

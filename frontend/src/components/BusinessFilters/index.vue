@@ -3,41 +3,51 @@
   <el-form class="business-filter-form" @submit.prevent="apply">
    <el-form-item v-for="field in fields" :key="field.key" class="filter-field">
     <el-autocomplete v-if="!field.options&&!field.remote" v-model="draft[field.key]" clearable :aria-label="field.label" :placeholder="field.label" :fetch-suggestions="(keyword:string,callback:SuggestionCallback)=>{void suggest(field,keyword,callback)}" :trigger-on-focus="false" :debounce="300" @keydown.enter.capture="textEnter($event)"/>
-    <el-select v-else v-model="draft[field.key]" clearable filterable :aria-label="field.label" :remote="!!field.remote" :remote-method="(keyword:string)=>search(field,keyword)" :loading="busy[field.key]" :placeholder="field.label" @visible-change="v=>v&&field.remote&&search(field,'')" @change="field.key==='factoryId'&&factoryChanged()">
+    <el-select v-else v-model="draft[field.key]" clearable filterable :aria-label="field.label" :remote="!!field.remote" :remote-method="(keyword:string)=>search(field,keyword)" :loading="busy[field.key]" :placeholder="field.label" @visible-change="v=>v&&(field.key==='metalTypeId'?loadMetals():field.remote&&search(field,''))" @change="field.key==='factoryId'&&factoryChanged()">
      <el-option v-for="option in field.options??choices[field.key]??[]" :key="option.id" :label="option.name" :value="option.id"/>
      <template v-if="more[field.key]" #footer><el-button link type="primary" @click="search(field,keywords[field.key]??'',true)">加载更多</el-button></template>
     </el-select>
    </el-form-item>
    <el-form-item class="filter-date"><el-date-picker v-model="range" :aria-label="kind==='warehouse-order'?'单据日期':'创建日期'" type="daterange" value-format="YYYY-MM-DD" popper-class="filter-toolbar-date-panel" start-placeholder="开始日期" end-placeholder="结束日期"/></el-form-item>
-   <div class="filter-action-group filter-query-actions"><el-button class="filter-query-button" type="primary" @click="apply">查询</el-button><el-button @click="reset">重置</el-button></div>
+   <div class="filter-action-group filter-query-actions"><el-button class="filter-query-button list-action list-action--primary" type="primary" @click="apply">查询</el-button><el-button class="list-action list-action--neutral" @click="reset">重置</el-button></div>
    <div v-if="$slots.actions" class="filter-action-group business-filter-actions"><slot name="actions"/></div>
-   <el-button v-if="allowExport" class="filter-export-button" type="primary" plain :loading="exporting" @click="exportCurrent">导出</el-button>
+   <div v-if="$slots['trailing-actions']" class="filter-trailing-actions"><slot name="trailing-actions"/></div>
+   <el-button v-if="allowExport" class="filter-export-button list-action list-action--primary" type="primary" plain :loading="exporting" @click="exportCurrent">导出</el-button>
   </el-form>
  </div>
 </template>
 <script setup lang="ts">
-import {computed,reactive,ref,watch,onBeforeUnmount} from 'vue'
+import {computed,reactive,ref,watch,onMounted,onBeforeUnmount} from 'vue'
 import {ElMessage} from 'element-plus'
+import {useActionPermission} from '@/composables/useActionPermission'
 import request from '@/utils/request'
-import {productDimensions,processTypes,materialTypes} from '@/views/metal/master-config'
+import {productDimensions,productTypes,processTypes,materialTypes} from '@/views/metal/master-config'
 import {orderTypeNames} from '@/api/metal/warehouse'
 type SuggestionCallback=(rows:{value:string}[])=>void
 type Option={id:string;name:string};type Field={key:string;label:string;remote?:string;options?:Option[]}
-const props=defineProps<{kind:string;allowExport?:boolean;exporting?:boolean;orderKind?:string}>()
+const props=defineProps<{kind:string;allowExport?:boolean;exporting?:boolean;orderKind?:string;processTypeOptions?:Option[]}>()
 const emit=defineEmits<{apply:[Record<string,string>];export:[Record<string,string>]}>()
+const metalOptions=ref<Option[]>([])
+const permission=useActionPermission()
+let metalEpoch=0,disposed=false
+async function loadMetals(){if(!['product','material'].includes(props.kind))return;const current=++metalEpoch;try{const r:any=await request({url:'/metal/metal-types',isContextCurrent:()=>!disposed&&current===metalEpoch});if(!disposed&&current===metalEpoch)metalOptions.value=r.data}catch{}}
+onMounted(loadMetals)
+permission.onChange(()=>{metalEpoch++;metalOptions.value=[];void loadMetals()})
 const draft=reactive<Record<string,string>>({}),range=ref<string[]|null>([]),applied=ref<Record<string,string>>({})
 const choices=reactive<Record<string,Option[]>>({}),busy=reactive<Record<string,boolean>>({}),more=reactive<Record<string,boolean>>({}),keywords=reactive<Record<string,string>>({}),pages=reactive<Record<string,number>>({}),epochs:Record<string,number>={}
 const text=(key:string,label:string):Field=>({key,label}),remote=(key:string,label:string,source:string):Field=>({key,label,remote:source}),select=(key:string,label:string,values:string[]):Field=>({key,label,options:values.map(v=>({id:v,name:v}))})
 const fields=computed<Field[]>(()=>{
  switch(props.kind){
+ case 'inventory':return [...(props.orderKind==='RAW'?[text('code','物料编码'),select('materialType','物料类型',['粉料','金属料','未处理料']),text('specification','规格型号'),text('companyName','客户公司 / 工厂自有')]:[text('name','产品名称'),select('productType','产品类型',productTypes),text('metalTypeName','金属类型'),...(props.orderKind==='SEMI'?[text('sourceProcessName','来源工序')]:[text('specification','规格型号')]),text('companyName','客户公司名称')]),remote('warehouseId','仓库','warehouses'),...(permission.isAdmin.value?[remote('factoryId','工厂','factories')]:[])]
+ case 'customer':return [text('name','客户名称'),text('companyName','客户公司名称'),text('contactName','联络人名称'),text('contactPhone','联络人电话'),...(permission.isAdmin.value?[remote('factoryId','所属工厂','factories')]:[])]
  case 'factory':return [text('name','工厂名称'),text('address','详细地址')]
- case 'product':return [text('code','产品编号'),text('name','产品名称'),select('category','产品类别',Object.keys(productDimensions))]
- case 'material':return [text('code','物料编码'),select('materialType','物料类型',materialTypes),text('specification','规格型号')]
- case 'process':return [text('name','工序名称'),{key:'processType',label:'工序类型',options:processTypes.map((name,i)=>({id:String(i+1),name}))}]
+ case 'product':return [text('code','产品编号'),text('name','产品名称'),{key:'metalTypeId',label:'金属类型',options:metalOptions.value},{key:'productType',label:'产品类型',options:[...productTypes.map(id=>({id,name:id})),...['坩埚弧底','坩埚平底','坩埚梯形','杆实心','杆空心'].map(id=>({id,name:id+'（旧版）'}))]}]
+ case 'material':return [text('code','物料编码'),select('materialType','物料类型',materialTypes),text('specification','规格型号'),{key:'metalTypeId',label:'金属类型',options:metalOptions.value}]
+ case 'process':return [text('name','工序名称'),{key:'processType',label:'工序类型',options:props.processTypeOptions??processTypes.map((name,i)=>({id:String(i+1),name}))}]
  case 'line':return [text('code','产线编号'),text('name','产线名称'),remote('factoryId','所属工厂','factories'),remote('productId','关联产品','products')]
  case 'staff':return [remote('roleId','角色','roles'),remote('factoryId','所属工厂','factories')]
  case 'role':return [text('name','角色名称'),remote('factoryId','所属工厂','factories')]
- default:{const types=props.orderKind==='IN'?['RAW_IN','SEMI_IN','FINISHED_IN','OPENING']:props.orderKind==='RET'?['RAW_RETURN','SEMI_RETURN','PROCESS_RAW_RETURN','PRODUCT_RETURN']:['PRODUCTION_OUT','PRODUCT_OUT','EXCHANGE_OUT','SEMI_OUT'];return [text('orderNo','单据编号'),text('workOrderNo','生产工单号'),remote('warehouseId','仓库','warehouses'),{key:'type',label:'类型',options:types.map(id=>({id,name:orderTypeNames[id]}))},remote('operatorId','经办人','people'),remote('recipientId','领用人','people'),remote('keeperId','仓管人','people')]}
+ default:{const types=props.orderKind==='IN'?['RAW_IN','RAW_PROCESS_IN','SEMI_IN','FINISHED_IN','OPENING']:props.orderKind==='RET'?['EXCHANGE_OUT','RAW_RETURN','SEMI_RETURN','PROCESS_RAW_RETURN','PRODUCT_RETURN']:['PRODUCTION_OUT','PRODUCT_OUT','SEMI_OUT'];return [text('orderNo','单据编号'),text('workOrderNo','生产工单号'),remote('warehouseId','仓库','warehouses'),{key:'type',label:'类型',options:types.map(id=>({id,name:orderTypeNames[id]}))},remote('operatorId','经办人','people'),remote('recipientId','领用人','people'),remote('keeperId','仓管人','people')]}
  }
 })
 const suggestionEpochs:Record<string,number>={},pendingSuggestions:Record<string,SuggestionCallback>={}
@@ -50,7 +60,7 @@ async function suggest(field:Field,keyword:string,callback:SuggestionCallback){
 }
 function textEnter(event:KeyboardEvent){const input=event.target as HTMLInputElement;if(input.getAttribute('aria-activedescendant'))return;apply()}
 watch(()=>draft.factoryId,()=>cancelSuggestions())
-onBeforeUnmount(cancelSuggestions)
+onBeforeUnmount(()=>{disposed=true;metalEpoch++;cancelSuggestions()})
 function values(){const result=Object.fromEntries(Object.entries(draft).filter(([,v])=>v!=null&&String(v).trim()!=='').map(([k,v])=>[k,String(v).trim()]));if(range.value?.length===2){result.startDate=range.value[0];result.endDate=range.value[1]}return result}
 const canonical=(v:Record<string,string>)=>JSON.stringify(Object.entries(v).sort(([a],[b])=>a.localeCompare(b)))
 function apply(){const next=values();for(const field of fields.value){const value=next[field.key],max=['orderNo','workOrderNo'].includes(field.key)?64:500;if(value&&value.length>max){ElMessage.warning(field.label+'最多'+max+'个字符');return}}if(next.startDate&&next.endDate&&next.startDate>next.endDate){ElMessage.warning('开始日期不能晚于结束日期');return}applied.value={...next};emit('apply',{...next})}
@@ -62,6 +72,7 @@ watch(()=>props.orderKind,()=>{delete draft.type;delete applied.value.type;emit(
 defineExpose({reset})
 </script>
 <style scoped>
+.filter-trailing-actions{margin-left:auto;max-width:100%;display:flex;align-items:center}
 .business-filter-controls{width:100%;min-width:0}
 .business-filter-form{display:flex;flex-wrap:wrap;align-items:center;column-gap:8px;row-gap:8px;min-width:0}
 .business-filter-form .el-form-item{margin:0;height:35px;flex:0 0 min(168px,100%);width:168px;min-width:0;max-width:100%}

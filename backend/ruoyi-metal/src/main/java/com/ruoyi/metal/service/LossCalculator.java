@@ -13,10 +13,26 @@ public final class LossCalculator {
   */
  public static Result calculate(BigDecimal issued,BigDecimal returned,int quantity,BigDecimal theoretical,BigDecimal tolerance){
   if(issued.signum()<=0||returned.signum()<0||returned.compareTo(issued)>0||quantity<=0||theoretical.signum()<0||tolerance.signum()<0)throw new ServiceException("领料须大于0，回料不能超过领料，完成数量须大于0");
-  BigDecimal loss=issued.subtract(returned),threshold=theoretical.add(tolerance);return new Result(loss,loss.divide(BigDecimal.valueOf(quantity),6,RoundingMode.HALF_UP),threshold,loss.compareTo(threshold.multiply(BigDecimal.valueOf(quantity)))>0);
+  BigDecimal loss=issued.subtract(returned),threshold=theoretical.add(tolerance);return new Result(loss,loss.divide(BigDecimal.valueOf(quantity),2,RoundingMode.HALF_UP),threshold,loss.compareTo(threshold.multiply(BigDecimal.valueOf(quantity)))>0);
  }
  /**
-  * 按重量比例分摊损耗，最后一项吸收舍入差额以保持总额一致。
+  * 以0.01g采用最大余数法分摊；调用方按类别、资料ID排序以稳定处理相同余数。
   */
- public static List<BigDecimal> allocate(BigDecimal loss,List<BigDecimal> weights){BigDecimal total=weights.stream().reduce(BigDecimal.ZERO,BigDecimal::add);if(total.signum()<=0||weights.stream().anyMatch(v->v.signum()<=0))throw new ServiceException("分摊领料重量必须大于0");var result=new ArrayList<BigDecimal>();BigDecimal left=loss;for(int i=0;i<weights.size();i++){BigDecimal value=i==weights.size()-1?left:loss.multiply(weights.get(i)).divide(total,6,RoundingMode.DOWN);result.add(value);left=left.subtract(value);}return result;}
+ public record PercentageResult(BigDecimal loss,BigDecimal rate,BigDecimal threshold,boolean abnormal){}
+ public static PercentageResult percentage(BigDecimal issued,BigDecimal returns,BigDecimal output,BigDecimal theoretical){
+  BigDecimal net=issued.subtract(returns),loss=net.subtract(output);
+  if(issued.signum()<=0||returns.signum()<0||output.signum()<0||net.signum()<=0||loss.signum()<0||theoretical.signum()<0||theoretical.compareTo(BigDecimal.valueOf(100))>0)throw new ServiceException("百分比结算须有正数实际投入，产出及还料不能超过领料，理论损耗率须为0至100%");
+  return new PercentageResult(loss,loss.multiply(BigDecimal.valueOf(100)).divide(net,2,RoundingMode.HALF_UP),theoretical,loss.multiply(BigDecimal.valueOf(100)).compareTo(net.multiply(theoretical))>0);
+ }
+ public static List<BigDecimal> allocate(BigDecimal loss,List<BigDecimal> weights){
+  BigDecimal total=weights.stream().reduce(BigDecimal.ZERO,BigDecimal::add);
+  if(total.signum()<=0||loss.signum()<0||weights.stream().anyMatch(v->v.signum()<=0))throw new ServiceException("分摊领料重量必须大于0，损耗不能为负");
+  long cents=BusinessDecimal.round(loss).movePointRight(2).longValueExact(),assigned=0;
+  var units=new ArrayList<Long>();var remainders=new ArrayList<BigDecimal>();
+  for(var weight:weights){var numerator=BigDecimal.valueOf(cents).multiply(weight);long floor=numerator.divide(total,0,RoundingMode.DOWN).longValueExact();units.add(floor);assigned+=floor;remainders.add(numerator.subtract(total.multiply(BigDecimal.valueOf(floor))));}
+  var indices=new ArrayList<Integer>();for(int i=0;i<weights.size();i++)indices.add(i);
+  indices.sort((a,b)->{int c=remainders.get(b).compareTo(remainders.get(a));return c==0?Integer.compare(a,b):c;});
+  for(int i=0;i<cents-assigned;i++){int index=indices.get(i);units.set(index,units.get(index)+1);}
+  return units.stream().map(n->BigDecimal.valueOf(n,2)).toList();
+ }
 }

@@ -62,6 +62,8 @@ public class FactoryService {
         scope.adminOnly();
         if (form.getFactoryId() != null) throw new ServiceException("新增时不能指定工厂ID");
         rejectLineBinding(form);
+        form.setArea(BusinessDecimal.positive(form.getArea(),"占地面积"));
+        checkArea(form);
         mapper.insert(form, actor);
         return form.getFactoryId().toString();
     }
@@ -77,6 +79,9 @@ public class FactoryService {
         rejectLineBinding(form);
         Factory factory = required(mapper.lockFactory(form.getFactoryId()));
         if (!factory.getVersion().equals(form.getVersion())) throw new ServiceException("数据已被修改，请刷新后重试");
+        form.setArea(BusinessDecimal.changed(form.getArea(),factory.getArea()==null?null:new java.math.BigDecimal(factory.getArea())));
+        if(form.getArea()==null||form.getArea().signum()<=0)throw new ServiceException("占地面积保留两位小数后须大于0");
+        checkArea(form);
         if (mapper.update(form, actor) != 1) throw new ServiceException("数据已被修改，请刷新后重试");
     }
 
@@ -95,6 +100,8 @@ public class FactoryService {
         for (Factory f : factories) {
             Long id=Long.valueOf(f.getFactoryId());
             WorkOrderReferences.factory(jdbc,id);WarehouseReferences.factory(jdbc,id);
+            if (jdbc.queryForObject("SELECT COUNT(*) FROM metal_customer WHERE factory_id=? AND del_flag='0'",Integer.class,id)>0)
+                throw new ServiceException("工厂下存在客户，请先删除客户：" + f.getFactoryName());
             if (mapper.countLines(id) > 0 || jdbc.queryForObject("SELECT (SELECT COUNT(*) FROM sys_user WHERE factory_id=? AND del_flag='0') + (SELECT COUNT(*) FROM sys_role WHERE factory_id=? AND del_flag='0')",Integer.class,id,id)>0) blocked.add(f.getFactoryName());
         }
         if (!blocked.isEmpty()) throw new ServiceException("工厂下存在关联产线、人员或角色，请先解除关联：" + String.join("、", blocked));
@@ -105,6 +112,7 @@ public class FactoryService {
         if (f == null) throw new ServiceException("工厂不存在或已删除");
         return f;
     }
+    private void checkArea(FactoryRequest form){if(form.getArea().precision()-form.getArea().scale()>10)throw new ServiceException("占地面积保留两位小数后超过10位整数范围");}
     private void rejectLineBinding(FactoryRequest form) {
         if (form.getProductionLineIds() != null && !form.getProductionLineIds().isEmpty())
             throw new ServiceException("请在产线管理中维护所属工厂");

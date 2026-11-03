@@ -13,6 +13,7 @@ import com.ruoyi.common.core.controller.BaseController;
 import com.ruoyi.common.core.domain.AjaxResult;
 import com.ruoyi.metal.catalog.WarehouseRequests.*;
 import com.ruoyi.metal.service.WarehouseService;
+import com.ruoyi.metal.service.WarehouseWorkflowService;
 
 /**
  * 仓储 HTTP 接口，负责请求映射、参数校验和接口权限声明，业务处理交给对应服务。
@@ -22,9 +23,10 @@ import com.ruoyi.metal.service.WarehouseService;
 @RequestMapping("/metal")
 public class WarehouseController extends BaseController {
     private final WarehouseService service;
+    private final WarehouseWorkflowService workflow;
 
-    public WarehouseController(WarehouseService service) {
-        this.service = service;
+    public WarehouseController(WarehouseService service,WarehouseWorkflowService workflow) {
+        this.service = service;this.workflow=workflow;
     }
 
     /**
@@ -77,8 +79,8 @@ public class WarehouseController extends BaseController {
      */
     @GetMapping("/inventory/list")
     @PreAuthorize("@ss.hasPermi('metal:inventory:list')")
-    public Map<String, Object> inventoryList(@RequestParam(defaultValue = "1") @Min(1) int pageNum, @RequestParam(defaultValue = "16") @Min(1) @Max(100) int pageSize, @RequestParam(required = false) String filter, @RequestParam(required = false) Long factoryId) {
-        return service.list("inventory", pageNum, pageSize, filter, factoryId);
+    public Map<String, Object> inventoryList(@RequestParam(defaultValue = "1") @Min(1) int pageNum, @RequestParam(defaultValue = "16") @Min(1) @Max(100) int pageSize, @ModelAttribute com.ruoyi.metal.catalog.InventoryListQuery query) {
+        return service.inventoryList(pageNum,pageSize,query);
     }
 
     /**
@@ -314,7 +316,7 @@ public class WarehouseController extends BaseController {
     @PreAuthorize("@ss.hasPermi('metal:warehouse-order:add')")
     @Log(title = "仓储过账", businessType = BusinessType.INSERT)
     public AjaxResult post(@Valid @RequestBody Order input) {
-        return success().put("id", service.post(input));
+        var result=workflow.single(input);return success(result).put("id",result.get("id")).put("flowId",result.get("flowId"));
     }
 
     /**

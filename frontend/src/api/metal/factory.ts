@@ -25,18 +25,18 @@ export interface FactoryForm {
   productionLineIds?: string[]
   version?: number
 }
-export function listFactories(params: { pageNum: number; pageSize: number }): Promise<{rows: Factory[]; total: number}> {
-  return request({url: '/metal/factory/list', method: 'get', params})
+export function listFactories(params: { pageNum: number; pageSize: number },isContextCurrent?:()=>boolean,background=false): Promise<{rows: Factory[]; total: number}> {
+  return request({url: '/metal/factory/list', method: 'get', params,isContextCurrent,quiet:background})
 }
-export function getFactory(id: string, editing = false): Promise<{data: Factory}> {
-  return request({url: `/metal/factory/${id}${editing?'/edit-context':''}`, method: 'get'})
+export function getFactory(id: string, editing = false,isContextCurrent?:()=>boolean,background=false): Promise<{data: Factory}> {
+  return request({url: `/metal/factory/${id}${editing?'/edit-context':''}`, method: 'get',isContextCurrent,quiet:background})
 }
-export function lineOptions(factoryId?: string): Promise<{data: ProductionLine[]}> {
-  return request({url: '/metal/factory/line-options', method: 'get', params: {factoryId}})
+export function lineOptions(factoryId?: string,isContextCurrent?:()=>boolean,background=false): Promise<{data: ProductionLine[]}> {
+  return request({url: '/metal/factory/line-options', method: 'get', params: {factoryId},isContextCurrent,quiet:background})
 }
-export function saveFactory(form: FactoryForm) {
-  return request({url: '/metal/factory', method: form.factoryId ? 'put' : 'post', data: form})
+export function saveFactory(form: FactoryForm,isContextCurrent?:()=>boolean) {
+  return request({url: '/metal/factory', method: form.factoryId ? 'put' : 'post', data: form,isContextCurrent})
 }
-export function deleteFactories(ids: string[]) {
-  return request({url: `/metal/factory/${ids.join(',')}`, method: 'delete'})
+export function deleteFactories(ids: string[],isContextCurrent?:()=>boolean) {
+  return request({url: `/metal/factory/${ids.join(',')}`, method: 'delete',isContextCurrent})
 }

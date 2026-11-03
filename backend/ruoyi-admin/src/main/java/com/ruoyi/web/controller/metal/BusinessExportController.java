@@ -9,4 +9,6 @@ import org.springframework.web.bind.annotation.*;import org.springframework.secu
  public void staff(@ModelAttribute ListQuery q,HttpServletResponse r)throws Exception{q.validate();send(r,"staff",out->service.staff(q,out));}
  @PostMapping("/metal/warehouse-order/export") @PreAuthorize("@ss.hasPermi('metal:warehouse-order:export')") @Log(title="仓储工单条件导出",businessType=BusinessType.EXPORT,isSaveResponseData=false)
  public void orders(@ModelAttribute OrderListQuery q,HttpServletResponse r)throws Exception{q.validate();send(r,"warehouse-orders",out->service.orders(q,out));}
+ @PostMapping("/metal/inventory/export") @PreAuthorize("@ss.hasPermi('metal:inventory:export')") @Log(title="库存条件导出",businessType=BusinessType.EXPORT,isSaveResponseData=false)
+ public void inventory(@ModelAttribute InventoryListQuery q,HttpServletResponse r)throws Exception{q.validate();send(r,"inventory",out->service.inventory(q,out));}
 }

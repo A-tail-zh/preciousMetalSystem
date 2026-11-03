@@ -5,7 +5,7 @@ function reportFixture(){
  const source=file.split(/\r?\n/).find(s=>s.startsWith('async function loadDetail()'))!
  const reportId={value:'A'},report={value:undefined as any},loading={value:false},pending:Array<(v:any)=>void>=[]
  const warehouseDetail=()=>new Promise(resolve=>pending.push(resolve))
- const load=new Function('warehouseDetail','reportId','report','loading',"let detailEpoch=0,openEpoch=0,disposed=false;const props={workOrderId:'test'},reversing={value:false};const isViewCurrent=()=>true;function invalidateCorrection(){}"+source+';return loadDetail')(warehouseDetail,reportId,report,loading)
+ const load=new Function('warehouseDetail','reportId','report','loading',"let detailEpoch=0,openEpoch=0,disposed=false,detailOwner='';const sessionReady=()=>true,listIdentity=()=> 'fixture',writeSession=owner=>owner==='fixture';const props={workOrderId:'test'},reversing={value:false};const isViewCurrent=()=>true;function invalidateCorrection(){}"+source+';return loadDetail')(warehouseDetail,reportId,report,loading)
  return{load,reportId,report,loading,pending}
 }
 test('report selection retains the newest batch when replies arrive out of order',async()=>{
@@ -18,7 +18,7 @@ test('changing report clears previous evidence until newest response arrives',as
 test('warehouse details retain the newest document during out of order replies',async()=>{
  const text=readFileSync(new URL('../src/views/metal/warehouse-common/WarehousePage.vue',import.meta.url),'utf8');const source=text.split(/\r?\n/).find(s=>s.startsWith('async function view('))!.replace(':Row','')
  const pending:Array<(v:any)=>void>=[],warehouseDetail=()=>new Promise(resolve=>pending.push(resolve)),detail={value:undefined as any},reason={value:''},completedQuantity={value:1},detailVisible={value:false},saving={value:false}
- const view=new Function('warehouseDetail','kind','detail','reason','completedQuantity','detailVisible','saving','completedQuantityInput',"let detailEpoch=0,openEpoch=0,disposed=false;const props={workOrderId:'test'},reversing={value:false};const isViewCurrent=()=>true;function invalidateCorrection(){}"+source+';return view')(warehouseDetail,'warehouse-order',detail,reason,completedQuantity,detailVisible,saving,{value:undefined})
+ const view=new Function('warehouseDetail','kind','detail','reason','completedQuantity','detailVisible','saving','completedQuantityInput',"let detailEpoch=0,openEpoch=0,disposed=false,detailOwner='';const sessionReady=()=>true,listIdentity=()=> 'fixture',writeSession=owner=>owner==='fixture';const props={workOrderId:'test'},reversing={value:false};const isViewCurrent=()=>true;function invalidateCorrection(){}"+source+';return view')(warehouseDetail,'warehouse-order',detail,reason,completedQuantity,detailVisible,saving,{value:undefined})
  const first=view({id:'A'}),second=view({id:'B'});pending[1]({data:{id:'B'}});await second;pending[0]({data:{id:'A'}});await first;expect(detail.value.id).toBe('B')
 })
 

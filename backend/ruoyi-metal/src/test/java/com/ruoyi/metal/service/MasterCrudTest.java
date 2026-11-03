@@ -40,11 +40,11 @@ class MasterCrudTest {
         switch (kind) {
             case PRODUCT -> {
                 ProductMapper m = mock(ProductMapper.class); mapper = m;
-                QuoteRuleService quoteRules=mock(QuoteRuleService.class);QuoteRule rule=new QuoteRule();rule.setPiValue(new java.math.BigDecimal("3.141592653589793"));when(quoteRules.get()).thenReturn(rule);
+                QuoteRuleService quoteRules=mock(QuoteRuleService.class);QuoteRule rule=new QuoteRule();rule.setPiValue(new java.math.BigDecimal("3.141592653589793"));when(quoteRules.get()).thenReturn(rule);when(quoteRules.metalName(any())).thenReturn("铱");when(quoteRules.pi(any())).thenReturn(rule.getPiValue());when(quoteRules.volumeRule()).thenReturn(Map.of("piValue","3.14","curvedBottomFactor","1.03"));
                 service = new ProductService(m, scope, jdbc,quoteRules);
                 ProductRecord p = new ProductRecord(); p.setName("Product"); p.setCode("P");
-                p.setCategory("铱环");
-                p.setDimensions(Map.of("outerDiameter", "12", "innerDiameter", "10", "height", "2")); form = p;
+                p.setCategory("铱环");p.setMetalTypeId(1L);p.setProductType("环");p.setCalculationVersion(2);
+                p.setDimensions(Map.of("outerDiameter", "12", "innerDiameter", "10", "thickness", "2")); form = p;
             }
             case LINE -> {
                 LineMapper m = mock(LineMapper.class); mapper = m;
@@ -52,11 +52,13 @@ class MasterCrudTest {
                 LineRecord l = new LineRecord(); l.setName("Line"); l.setCode("L"); l.setFactoryId(7L); form = l;
             }
             case MATERIAL -> {
+                when(jdbc.queryForList(contains("FROM metal_type WHERE"), any(Object[].class))).thenReturn(List.of(Map.of("metal_type_id", 1L)));
                 MaterialMapper m = mock(MaterialMapper.class); mapper = m;
                 service = new MaterialService(m, scope, jdbc);
                 MaterialRecord r = new MaterialRecord(); r.setCode("M"); r.setMaterialType("铱粉"); form = r;
             }
             case PROCESS -> {
+                when(jdbc.queryForObject(contains("metal_process_type"), eq(Integer.class), eq(1))).thenReturn(1);
                 ProcessMapper m = mock(ProcessMapper.class); mapper = m;
                 service = new ProcessService(m, scope, jdbc);
                 ProcessRecord p = new ProcessRecord(); p.setName("Process"); p.setProcessType(1); form = p;
@@ -134,12 +136,12 @@ class MasterCrudTest {
     @Test void invalidProductDimensionsNeverInsert() {
         setup(Kind.PRODUCT); ProductRecord p = (ProductRecord)form;
         for (String value : List.of("0", "-1", "abc", "1.1234567", "100000000000000")) {
-            p.setDimensions(Map.of("outerDiameter",value,"innerDiameter","10","height","2"));
+            p.setDimensions(Map.of("outerDiameter",value,"innerDiameter","10","thickness","2"));
             assertThrows(ServiceException.class, () -> service.create(p));
         }
-        p.setDimensions(Map.of("outerDiameter","10","innerDiameter","10","height","2"));
+        p.setDimensions(Map.of("outerDiameter","10","innerDiameter","10","thickness","2"));
         assertThrows(ServiceException.class, () -> service.create(p));
-        p.setDimensions(Map.of("outerDiameter","12","innerDiameter","10","height","2","length","1"));
+        p.setDimensions(Map.of("outerDiameter","12","innerDiameter","10","thickness","2","length","1"));
         assertThrows(ServiceException.class, () -> service.create(p)); verify(mapper,never()).insert(any());
     }
     @Test void duplicateAndMissingProductProcessesNeverInsert() {

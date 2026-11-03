@@ -18,7 +18,7 @@ public final class ProcessRawReturnService {
  public static void require(BigDecimal available,BigDecimal requested){
   if(available.signum()<0)throw new ServiceException("批次重量异常，请人工核对");
   if(requested==null||requested.signum()<=0||requested.scale()>6||requested.precision()-requested.scale()>14)throw new ServiceException("加工余料净重须大于0，最多6位小数和14位整数");
-  if(requested.compareTo(available)>0)throw new ServiceException("加工余料剩余可还净重最多"+available.setScale(6).toPlainString()+"g");
+  if(requested.compareTo(available)>0)throw new ServiceException("加工余料剩余可还净重最多"+BusinessDecimal.display(available)+"g");
  }
  public static void validateLine(Line line,String customer){
   require(line.netWeight(),line.netWeight());
@@ -36,8 +36,8 @@ public final class ProcessRawReturnService {
   if(rows.size()!=1)throw new ServiceException(rows.isEmpty()?"当前工序没有未结算批次":"存在多个未结算批次，请先人工核对");
   var b=rows.get(0);if(!Set.of("IN_PROGRESS","WAITING_MATERIAL").contains(b.get("work_status")))throw new ServiceException("工单已关闭或不可登记余料");
   String customer=Objects.toString(b.get("customer"),"").trim();if(customer.isEmpty())throw new ServiceException("工单缺少客户归属，请先核对");
-  var totals=jdbc.queryForMap("SELECT COALESCE(SUM(CASE WHEN o.type='PRODUCTION_OUT' THEN l.net_weight ELSE 0 END),0) issued,COALESCE(SUM(CASE WHEN o.type='PRODUCTION_OUT' AND l.category='SEMI' THEN l.net_weight ELSE 0 END),0) semi_issued,COALESCE(SUM(CASE WHEN o.type IN ('SEMI_IN','FINISHED_IN') THEN l.net_weight ELSE 0 END),0) output,COALESCE(SUM(CASE WHEN o.type='RAW_RETURN' THEN l.net_weight ELSE 0 END),0) raw_returned,COALESCE(SUM(CASE WHEN o.type='SEMI_RETURN' THEN l.net_weight ELSE 0 END),0) semi_returned,COALESCE(SUM(CASE WHEN o.type='PROCESS_RAW_RETURN' THEN l.net_weight ELSE 0 END),0) process_returned FROM metal_warehouse_order o JOIN metal_warehouse_order_line l ON l.order_id=o.order_id WHERE o.batch_id=? AND o.status='POSTED'",b.get("batch_id"));
-  if(d(totals.get("semi_issued")).signum()<=0||d(totals.get("output")).signum()<=0)throw new ServiceException("须先登记有效半成品领料及加工产出；未加工半成品请办理半成品还库");
+  var totals=jdbc.queryForMap("SELECT COALESCE(SUM(CASE WHEN o.type='PRODUCTION_OUT' THEN COALESCE(l.processor_net_weight,l.net_weight) ELSE 0 END),0) issued,COALESCE(SUM(CASE WHEN o.type='PRODUCTION_OUT' AND l.category='SEMI' THEN COALESCE(l.processor_net_weight,l.net_weight) ELSE 0 END),0) semi_issued,COALESCE(SUM(CASE WHEN o.type IN ('SEMI_IN','FINISHED_IN','RAW_PROCESS_IN') THEN COALESCE(l.processor_net_weight,l.net_weight) ELSE 0 END),0) output,COALESCE(SUM(CASE WHEN o.type='RAW_RETURN' THEN COALESCE(l.processor_net_weight,l.net_weight) ELSE 0 END),0) raw_returned,COALESCE(SUM(CASE WHEN o.type='SEMI_RETURN' THEN COALESCE(l.processor_net_weight,l.net_weight) ELSE 0 END),0) semi_returned,COALESCE(SUM(CASE WHEN o.type='PROCESS_RAW_RETURN' THEN COALESCE(l.processor_net_weight,l.net_weight) ELSE 0 END),0) process_returned FROM metal_warehouse_order o JOIN metal_warehouse_order_line l ON l.order_id=o.order_id WHERE o.batch_id=? AND o.status='POSTED'",b.get("batch_id"));
+  if(!WarehouseFlowRules.POLICY.equals(b.get("completion_policy"))&&d(totals.get("semi_issued")).signum()<=0||d(totals.get("output")).signum()<=0)throw new ServiceException("须先登记有效半成品领料及加工产出；未加工半成品请办理半成品还库");
   BigDecimal available=d(totals.get("issued")).subtract(d(totals.get("output"))).subtract(d(totals.get("raw_returned"))).subtract(d(totals.get("semi_returned"))).subtract(d(totals.get("process_returned")));
   if(available.signum()<0)throw new ServiceException("批次重量异常，请人工核对");
   var result=new LinkedHashMap<String,Object>();result.put("batchId",b.get("batch_id").toString());result.put("batchNo",b.get("batch_no"));result.put("version",b.get("version"));result.put("customer",customer);result.put("remainingWeight",available.setScale(6).toPlainString());
@@ -46,16 +46,23 @@ public final class ProcessRawReturnService {
  public void register(long line,long inventory,long batch,Map<String,Object> context){jdbc.update("INSERT INTO metal_process_raw_return_line(line_id,batch_id,inventory_id,source_snapshot) VALUES(?,?,?,?)",line,batch,inventory,JSON.toJSONString(context));}
  /** All stock-writing entry points must use this guard, not only candidate filtering. */
  public void guardStock(long stock,String targetCustomer,boolean production,boolean adjustment){
-  var links=jdbc.queryForList("SELECT b.status,w.customer,o.status order_status,w.factory_id FROM metal_process_raw_return_line r JOIN metal_process_batch b ON b.batch_id=r.batch_id JOIN metal_work_order w ON w.work_order_id=b.work_order_id JOIN metal_warehouse_order_line l ON l.line_id=r.line_id JOIN metal_warehouse_order o ON o.order_id=l.order_id WHERE r.inventory_id=?",stock);
+  var links=jdbc.queryForList("SELECT b.status,w.customer,o.status order_status,w.factory_id FROM metal_process_raw_return_line r JOIN metal_process_batch b ON b.batch_id=r.batch_id JOIN metal_work_order w ON w.work_order_id=b.work_order_id JOIN metal_warehouse_order_line l ON l.line_id=r.line_id JOIN metal_warehouse_order o ON o.order_id=l.order_id WHERE r.inventory_id=? OR r.line_id=(SELECT origin_recovery_line_id FROM metal_inventory WHERE inventory_id=?)",stock,stock);
   if(links.isEmpty())return;
   var link=links.get(0);scope.check(n(link.get("factory_id")));
   if(adjustment)throw new ServiceException("加工回收原料不能普通调整或归档，请核对来源并通过受控纠错处理");
   if(!"SETTLED".equals(link.get("status"))||!"POSTED".equals(link.get("order_status")))throw new ServiceException("加工余料来源批次未结算或已冲销，暂不能领用");
   if(!production||targetCustomer==null||targetCustomer.isBlank()||!targetCustomer.trim().equals(Objects.toString(link.get("customer"),"").trim()))throw new ServiceException("加工回收原料仅可由同厂同客户工单生产领用");
  }
- public void guardAppend(long stock){if(!jdbc.queryForList("SELECT line_id FROM metal_process_raw_return_line WHERE inventory_id=?",stock).isEmpty())throw new ServiceException("加工回收库存不能合并其他入库或调整，请使用独立库存批号");}
+ public void guardProduction(long stock,Map<String,Object> work){
+  var rows=jdbc.queryForList("SELECT i.*,b.status batch_status,o.status order_status FROM metal_process_raw_return_line r JOIN metal_inventory i ON i.inventory_id=? AND (r.inventory_id=i.inventory_id OR r.line_id=i.origin_recovery_line_id) JOIN metal_process_batch b ON b.batch_id=r.batch_id JOIN metal_warehouse_order_line l ON l.line_id=r.line_id JOIN metal_warehouse_order o ON o.order_id=l.order_id",stock);if(rows.isEmpty())return;var source=rows.get(0);scope.check(n(source.get("factory_id")));if(!"SETTLED".equals(source.get("batch_status"))||!"POSTED".equals(source.get("order_status")))throw new ServiceException("加工余料来源尚未结算或已冲销");
+  if("UNVERIFIED".equals(MaterialOwnership.of(source)))guardStock(stock,Objects.toString(work.get("customer"),""),true,false);else MaterialOwnership.production(source,work);
+ }
+ public void guardCloseout(long stock,long customer){
+  var rows=jdbc.queryForList("SELECT i.customer_id,b.status batch_status,o.status order_status FROM metal_process_raw_return_line r JOIN metal_inventory i ON i.inventory_id=? AND (r.inventory_id=i.inventory_id OR r.line_id=i.origin_recovery_line_id) JOIN metal_process_batch b ON b.batch_id=r.batch_id JOIN metal_warehouse_order_line l ON l.line_id=r.line_id JOIN metal_warehouse_order o ON o.order_id=l.order_id",stock);if(rows.isEmpty())return;var source=rows.get(0);if(n(source.get("customer_id"))!=customer||!"SETTLED".equals(source.get("batch_status"))||!"POSTED".equals(source.get("order_status")))throw new ServiceException("回收原料来源未结算或客户归属不一致，不能收尾");
+ }
+ public void guardAppend(long stock){if(!jdbc.queryForList("SELECT line_id FROM metal_process_raw_return_line WHERE inventory_id=? OR line_id=(SELECT origin_recovery_line_id FROM metal_inventory WHERE inventory_id=?)",stock,stock).isEmpty())throw new ServiceException("加工回收库存不能合并其他入库或调整，请使用独立库存批号");}
  public Map<String,Object> provenance(long stock){
-  var rows=jdbc.queryForList("SELECT w.order_no recovery_work_order_no,s.process_name recovery_process_name,b.batch_no recovery_batch_no,b.status recovery_batch_status,o.order_no recovery_order_no FROM metal_process_raw_return_line r JOIN metal_process_batch b ON b.batch_id=r.batch_id JOIN metal_work_order w ON w.work_order_id=b.work_order_id JOIN metal_work_order_step s ON s.item_id=b.item_id AND s.process_id=b.process_id JOIN metal_warehouse_order_line l ON l.line_id=r.line_id JOIN metal_warehouse_order o ON o.order_id=l.order_id WHERE r.inventory_id=?",stock);
+  var rows=jdbc.queryForList("SELECT w.order_no recovery_work_order_no,s.process_name recovery_process_name,b.batch_no recovery_batch_no,b.status recovery_batch_status,o.order_no recovery_order_no FROM metal_process_raw_return_line r JOIN metal_process_batch b ON b.batch_id=r.batch_id JOIN metal_work_order w ON w.work_order_id=b.work_order_id JOIN metal_work_order_step s ON s.item_id=b.item_id AND s.process_id=b.process_id JOIN metal_warehouse_order_line l ON l.line_id=r.line_id JOIN metal_warehouse_order o ON o.order_id=l.order_id WHERE r.inventory_id=? OR r.line_id=(SELECT origin_recovery_line_id FROM metal_inventory WHERE inventory_id=?)",stock,stock);
   return rows.isEmpty()?Map.of():rows.get(0);
  }
 }

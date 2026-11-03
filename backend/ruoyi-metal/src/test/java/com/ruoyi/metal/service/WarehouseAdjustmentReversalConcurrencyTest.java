@@ -19,10 +19,10 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 
 /** Service/transaction fixtures in the disposable MySQL copy, never the business database. */
-@EnabledIfEnvironmentVariable(named="METAL_FLOW_ISOLATED_JDBC_URL",matches=".*3310/heavy_metal_plan_upgrade_20261022.*")
+@EnabledIfEnvironmentVariable(named="METAL_FLOW_ISOLATED_JDBC_URL",matches=".*(3310/heavy_metal_plan_upgrade_20261022|3321/heavy_metal_flow).*")
 class WarehouseAdjustmentReversalConcurrencyTest {
     static class Fixture implements AutoCloseable {
-        final DriverManagerDataSource ds = new DriverManagerDataSource(System.getenv("METAL_FLOW_ISOLATED_JDBC_URL"), "root", "");
+        final DriverManagerDataSource ds = WarehouseIntegrationEnvironment.dataSource();
         final JdbcTemplate jdbc = new JdbcTemplate(ds);
         final TransactionTemplate tx = new TransactionTemplate(new DataSourceTransactionManager(ds));
         final FactoryScope scope = mock(FactoryScope.class);
@@ -35,7 +35,7 @@ class WarehouseAdjustmentReversalConcurrencyTest {
         Fixture() {
             tx.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
             tx.setTimeout(15);
-            var template = jdbc.queryForMap("SELECT i.*,b.work_order_id,w.status work_status FROM metal_inventory i JOIN metal_process_batch b ON b.batch_id=i.origin_batch_id JOIN metal_work_order w ON w.work_order_id=b.work_order_id WHERE i.del_flag='0' AND b.status='SETTLED' LIMIT 1");
+            var template = jdbc.queryForMap("SELECT i.*,b.work_order_id,w.status work_status FROM metal_inventory i JOIN metal_process_batch b ON b.batch_id=i.origin_batch_id JOIN metal_work_order w ON w.work_order_id=b.work_order_id WHERE i.del_flag='0' AND b.status='SETTLED'"+WarehouseIntegrationEnvironment.factoryFilter("i")+" LIMIT 1");
             factory = SemiFlowService.num(template.get("factory_id"));
             work=SemiFlowService.num(template.get("work_order_id"));oldWorkStatus=template.get("work_status");
             // Explicit service fixture in the disposable copy, not an adjustment-free business scenario.

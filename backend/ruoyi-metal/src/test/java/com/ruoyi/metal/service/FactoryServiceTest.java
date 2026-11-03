@@ -90,6 +90,15 @@ class FactoryServiceTest {
         when(mapper.lockFactory(1L)).thenReturn(factory(1)); service.delete(new Long[]{1L,1L},"admin");
         verify(mapper,times(1)).delete(1L,"admin");
     }
+    @Test void activeCustomersPreventFactoryDeletion() {
+        var scope=mock(com.ruoyi.metal.security.FactoryScope.class);
+        var jdbc=mock(org.springframework.jdbc.core.JdbcTemplate.class);
+        when(jdbc.queryForObject(contains("metal_customer"),eq(Integer.class),eq(1L))).thenReturn(1);
+        when(mapper.lockFactory(1L)).thenReturn(factory(1));
+        var guarded=new FactoryService(mapper,scope,jdbc);
+        assertThrows(ServiceException.class,()->guarded.delete(new Long[]{1L},"admin"));
+        verify(mapper,never()).delete(anyLong(),anyString());
+    }
     @Test void validationRejectsInvalidPrecisionAndWhitespace() {
         try (var factory = Validation.buildDefaultValidatorFactory()) {
             var validator = factory.getValidator(); FactoryRequest r = form(List.of());

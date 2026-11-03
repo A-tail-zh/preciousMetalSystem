@@ -1,0 +1,37 @@
+package com.ruoyi.metal.catalog;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.*;
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.ruoyi.metal.catalog.WarehouseRequests.Order;
+import com.ruoyi.metal.catalog.WarehouseRequests.Line;
+
+public final class WarehouseFlowRequests {
+    private WarehouseFlowRequests() {}
+    public record Create(@NotBlank String requestId,@NotNull @Positive Long factoryId,
+                         @NotEmpty @Size(max=1000) List<@NotNull @Valid Order> documents) {}
+    public record Measured(@NotNull @Positive Long lineId,
+                           @NotNull @DecimalMin("0") @Digits(integer=14,fraction=6)
+                           @JsonFormat(shape=JsonFormat.Shape.STRING) BigDecimal netWeight,
+                           @Min(0) Long quantity,@Size(max=500) String differenceReason) {}
+    public record Confirm(@NotBlank String requestId,@NotNull @Min(0) Integer version,
+                          @NotEmpty @Size(max=1000) List<@NotNull @Valid Measured> lines) {}
+    public record Change(@NotBlank String requestId,@NotNull @Min(0) Integer version,
+                         @NotBlank @Size(max=500) String reason,
+                         @Size(max=1000) List<@NotNull @Valid Order> documents) {}
+    public record HandoverDocument(@NotBlank String type,@NotNull @Positive Long warehouseId,
+                                  @NotNull @Positive Long keeperId,@Positive Long reviewerId,
+                                  @NotEmpty @Size(max=1000) List<@NotNull @Valid Line> lines) {}
+    public record Handover(@NotBlank String requestId,@NotNull @Min(0) Integer version,
+                           @NotNull LocalDate orderDate,@NotNull Boolean physicalChecked,
+                           @NotBlank @Size(max=16) String residualMode,@Size(max=500) String reason,
+                           @NotEmpty @Size(max=1000) List<@NotNull @Valid HandoverDocument> documents) {}
+    public record Closeout(@NotBlank String requestId,@NotNull @Min(0) Integer version,
+                           @NotBlank String mode,@NotNull @Positive Long keeperId,
+                           @Positive Long offsetWorkOrderId,
+                           @NotNull @DecimalMin("0") @Digits(integer=14,fraction=6) BigDecimal weight,
+                           @NotBlank @Size(max=500) String reason) {}
+}

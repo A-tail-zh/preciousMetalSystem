@@ -23,6 +23,10 @@ public class ProductController extends BaseController {
     @PreAuthorize("@ss.hasPermi('metal:product:edit')")
     public AjaxResult editContext(@PathVariable @Positive Long id) { return success(service.detail(id)); }
 
+ @PostMapping("/calculation-preview")
+ @PreAuthorize("@ss.hasAnyPermi('metal:product:query,metal:product:add,metal:product:edit')")
+ public AjaxResult calculationPreview(@Valid @RequestBody com.ruoyi.metal.catalog.ProductCalculationRequest input){return success(service.preview(input));}
+
  /**
   * 查询列表并补充关联资料。
   */
@@ -35,7 +39,7 @@ public class ProductController extends BaseController {
   * 新增记录并保存关联资料。
   */
  @GetMapping(value="/{id}/specification-image",produces="image/png") @PreAuthorize("@ss.hasPermi('metal:product:query')")
- public byte[] image(@PathVariable @Positive Long id,jakarta.servlet.http.HttpServletResponse response){var product=service.detail(id);response.setHeader("Cache-Control","no-store");return images.render(product.getCategory(),product.getDimensions());}
+ public byte[] image(@PathVariable @Positive Long id,jakarta.servlet.http.HttpServletResponse response){var product=service.detail(id);if(ProductService.version(product)==2)throw new com.ruoyi.common.exception.ServiceException("新版产品暂无尺寸图片模板");response.setHeader("Cache-Control","no-store");return images.render(product.getCategory(),product.getDimensions());}
  @PostMapping @Log(title="产品管理",businessType=BusinessType.INSERT) @PreAuthorize("@ss.hasPermi('metal:product:add')") public AjaxResult create(@Valid @RequestBody ProductRecord form){return success().put("id",service.create(form));}
  /**
   * 修改记录并更新关联资料。

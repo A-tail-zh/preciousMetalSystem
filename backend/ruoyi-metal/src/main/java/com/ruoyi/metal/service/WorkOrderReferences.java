@@ -52,7 +52,7 @@ public final class WorkOrderReferences {
      */
     public static void lineProducts(JdbcTemplate jdbc, Long lineId, List<Long> selected) {
         for (var row : jdbc.queryForList("SELECT i.product_id FROM metal_work_order_item i JOIN metal_work_order w ON w.work_order_id=i.work_order_id WHERE w.production_line_id=? AND w.del_flag='0' FOR UPDATE", lineId)) {
-            if (!selected.contains(((Number) row.get("product_id")).longValue()))
+            if (row.get("product_id") != null && !selected.contains(((Number) row.get("product_id")).longValue()))
                 throw new ServiceException("不能移除有效工单使用的产线产品");
         }
     }

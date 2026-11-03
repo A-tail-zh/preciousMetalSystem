@@ -1,20 +1,42 @@
 package com.ruoyi.metal.service;
 import org.junit.jupiter.api.*;import static org.junit.jupiter.api.Assertions.*;import static org.mockito.Mockito.*;import java.util.*;import java.math.BigDecimal;import org.springframework.jdbc.core.JdbcTemplate;import com.ruoyi.metal.security.FactoryScope;import com.ruoyi.metal.catalog.WarehouseRequests.Line;import com.ruoyi.common.exception.ServiceException;
 class WarehouseImportServiceTest{
+ @Test void firstPostProcessImportUsesActualPieceInputEvenWhenPlanIsTen(){
+  var j=mock(JdbcTemplate.class);var service=new WarehouseImportService(j,mock(FactoryScope.class));
+  when(j.queryForList(anyString(),any(Object[].class))).thenAnswer(call->{String q=call.getArgument(0);
+   if(q.contains("metal_warehouse WHERE"))return List.of(Map.of("factory_id",1L,"status","0"));
+   if(q.contains("metal_work_order WHERE"))return List.of(Map.of("factory_id",1L,"status","IN_PROGRESS"));
+   if(q.startsWith("SELECT s.*")){var step=new HashMap<String,Object>();step.putAll(Map.of("item_id",9L,"work_order_id",8L,"product_id",4L,"sequence_no",1L,"measurement_mode","PIECE","process_role","POST_PROCESS","output_stage","FINISHED","processing_policy_version",2));step.put("product_snapshot","{\"measurementPolicyVersion\":2,\"code\":\"P\",\"name\":\"产品\",\"specification\":\"规格\"}");return List.of(step);}
+   if(q.startsWith("SELECT batch_id"))return List.of(Map.of("batch_id",20L));
+   if(q.startsWith("SELECT b.batch_id,b.status batch_status"))return List.of(Map.of("batch_status","OPEN","issued_weight",BigDecimal.TEN,"output_weight",BigDecimal.ZERO,"returned_weight",BigDecimal.ZERO));
+   if(q.startsWith("SELECT * FROM metal_process_batch"))return List.of(Map.of("batch_id",20L,"planned_quantity",10L,"sequence_no",1L,"status","OPEN","work_order_id",8L,"item_id",9L,"process_id",10L,"factory_id",1L));
+   if(q.contains("FROM metal_product"))return List.of(Map.of("code","P","name","产品","specification","规格"));
+   return List.of();
+  });
+  when(j.queryForObject(anyString(),eq(BigDecimal.class),any(Object[].class))).thenReturn(BigDecimal.TEN);
+  when(j.queryForObject(anyString(),eq(Long.class),any(Object[].class))).thenAnswer(call->{String q=call.getArgument(0);return q.contains("MAX(sequence_no)")?1L:q.contains("CASE WHEN o.type='PRODUCTION_OUT'")?5L:0L;});
+  for(long pieces:List.of(5L,6L)){
+   var line=new Line(null,null,"FINISHED",4L,null,BigDecimal.ONE,pieces,null,null,null,null,null,null);
+   var input=new WarehouseImportService.Input(1L,2L,"FINISHED_IN",8L,9L,10L,List.of(line),Map.of(),20L);
+   if(pieces==5)assertDoesNotThrow(()->service.preview(input));
+   else assertTrue(assertThrows(ServiceException.class,()->service.preview(input)).getMessage().contains("实际领用件数"));
+  }
+  verify(j,never()).update(anyString(),any(Object[].class));
+ }
  @Test void singleAndFinalStepSemiImportsAreRejectedWithSpecificMessage(){
   for(long sequence:List.of(1L,3L)){
    JdbcTemplate j=mock(JdbcTemplate.class);var s=new WarehouseImportService(j,mock(FactoryScope.class));
-   when(j.queryForList(anyString(),any(Object[].class))).thenAnswer(a->{String q=a.getArgument(0);if(q.contains("metal_warehouse WHERE"))return List.of(Map.of("factory_id",1L,"status","0"));if(q.contains("metal_work_order WHERE"))return List.of(Map.of("factory_id",1L,"status","IN_PROGRESS"));if(q.contains("SELECT s.sequence_no"))return List.of(Map.of("sequence_no",sequence,"product_id",4L,"work_order_id",8L));if(q.contains("FROM metal_product"))return List.of(Map.of("code","P","name","产品","specification","快照"));return List.of();});
+   when(j.queryForList(anyString(),any(Object[].class))).thenAnswer(a->{String q=a.getArgument(0);if(q.contains("metal_warehouse WHERE"))return List.of(Map.of("factory_id",1L,"status","0"));if(q.contains("metal_work_order WHERE"))return List.of(Map.of("factory_id",1L,"status","IN_PROGRESS"));if(q.contains("SELECT s.*"))return List.of(Map.of("sequence_no",sequence,"product_id",4L,"work_order_id",8L));if(q.contains("FROM metal_product"))return List.of(Map.of("code","P","name","产品","specification","快照"));return List.of();});
    when(j.queryForObject(contains("MAX(sequence_no)"),eq(Long.class),any(Object[].class))).thenReturn(sequence);
    var input=new WarehouseImportService.Input(1L,2L,"SEMI_IN",8L,9L,10L,List.of(line("SEMI",4L,null)),Map.of());
    assertTrue(assertThrows(ServiceException.class,()->s.preview(input)).getMessage().contains("当前工序为最后一道工序，请选择成品入库"));verify(j,never()).update(anyString(),any(Object[].class));
   }
  }
  JdbcTemplate jdbc;WarehouseImportService service;
- @BeforeEach void setUp(){jdbc=mock(JdbcTemplate.class);service=new WarehouseImportService(jdbc,mock(FactoryScope.class));when(jdbc.queryForList(anyString(),any(Object[].class))).thenAnswer(a->{String query=a.getArgument(0);if(query.contains("metal_warehouse WHERE"))return List.of(Map.of("factory_id",1L,"status","0"));if(query.contains("metal_material"))return List.of(Map.of("code","M001","name","铱粉","specification","粉料"));if(query.contains("metal_product"))return List.of(Map.of("code","P001","name","成品","specification","型号"));return List.of();});}
- private Line line(String category,Long reference,Long inventory){return new Line(inventory,null,category,reference,null,new BigDecimal("10.123456"),category.equals("RAW")?0L:1L,null,null,null,"件",null,null);}
+ @BeforeEach void setUp(){jdbc=mock(JdbcTemplate.class);service=new WarehouseImportService(jdbc,mock(FactoryScope.class));when(jdbc.queryForList(anyString(),any(Object[].class))).thenAnswer(a->{String query=a.getArgument(0);if(query.contains("metal_warehouse WHERE"))return List.of(Map.of("factory_id",1L,"status","0"));if(query.contains("metal_customer"))return List.of(Map.of("customer_id",8L,"factory_id",1L,"company_name","客户公司","version",0));if(query.contains("metal_material"))return List.of(Map.of("code","M001","name","铱粉","specification","粉料","material_type","旧料","metal_type_id",1L));if(query.contains("metal_product"))return List.of(Map.of("code","P001","name","成品","specification","型号"));return List.of();});}
+ private Line line(String category,Long reference,Long inventory){return new Line(inventory,null,category,reference,null,new BigDecimal("10.123456"),category.equals("RAW")?0L:1L,null,null,null,"件",null,null,null,null,null,null,null,category.equals("RAW")?8L:null,category.equals("RAW")?0:null);}
  private WarehouseImportService.Input input(String type,Line line){return new WarehouseImportService.Input(1L,2L,type,null,null,null,List.of(line),Map.of());}
- @Test void rawPreviewHasIdentifiersAndDisplayFieldsWithoutPosting(){var rows=service.preview(input("RAW_IN",line("RAW",3L,null)));assertEquals("3",rows.get(0).get("choiceId"));assertEquals("M001",rows.get(0).get("code"));assertEquals("铱粉",rows.get(0).get("name"));assertEquals("10.123456",rows.get(0).get("netWeight"));verify(jdbc,never()).update(anyString(),any(Object[].class));}
+ @Test void rawPreviewHasIdentifiersAndDisplayFieldsWithoutPosting(){var rows=service.preview(input("RAW_IN",line("RAW",3L,null)));assertEquals("3",rows.get(0).get("choiceId"));assertEquals("M001",rows.get(0).get("code"));assertEquals("铱粉",rows.get(0).get("name"));assertEquals("10.12",rows.get(0).get("netWeight"));verify(jdbc,never()).update(anyString(),any(Object[].class));}
  @Test void finishedAndSemiPreviewHaveDisplayFields(){for(String type:List.of("FINISHED_IN","SEMI_IN")){var rows=service.preview(input(type,line(type.equals("SEMI_IN")?"SEMI":"FINISHED",4L,null)));assertEquals("4",rows.get(0).get("choiceId"));assertEquals("P001",rows.get(0).get("code"));assertEquals("型号",rows.get(0).get("specification"));}}
  @Test void wrongCategoryIsRejected(){assertThrows(ServiceException.class,()->service.preview(input("SEMI_IN",line("RAW",3L,null))));}
  @Test void foreignStockAndWrongWarehouseAreRejected(){when(jdbc.queryForList(contains("metal_inventory"),any(Object[].class))).thenReturn(List.of(Map.of("factory_id",9L,"warehouse_id",2L)));var foreign=assertThrows(ServiceException.class,()->service.preview(input("EXCHANGE_OUT",line("RAW",3L,5L))));assertEquals(403,foreign.getCode());when(jdbc.queryForList(contains("metal_inventory"),any(Object[].class))).thenReturn(List.of(Map.of("factory_id",1L,"warehouse_id",9L)));assertThrows(ServiceException.class,()->service.preview(input("EXCHANGE_OUT",line("RAW",3L,5L))));}

@@ -13,6 +13,7 @@ import com.ruoyi.common.core.domain.AjaxResult;
 import com.ruoyi.common.core.page.TableDataInfo;
 import com.ruoyi.metal.catalog.WorkOrderRequest;
 import com.ruoyi.metal.service.WorkOrderService;
+import com.ruoyi.metal.service.RawPlanService;
 
 /**
  * 生产工单 HTTP 接口，负责请求映射、参数校验和接口权限声明，业务处理交给对应服务。
@@ -22,9 +23,11 @@ import com.ruoyi.metal.service.WorkOrderService;
 @RequestMapping("/metal/work-order")
 public class WorkOrderController extends BaseController {
     private final WorkOrderService service;
+    private final RawPlanService rawPlans;
 
-    public WorkOrderController(WorkOrderService service) {
+    public WorkOrderController(WorkOrderService service,RawPlanService rawPlans) {
         this.service = service;
+        this.rawPlans=rawPlans;
     }
 
     /**
@@ -53,6 +56,14 @@ public class WorkOrderController extends BaseController {
         context.remove("reports");
         context.remove("reportingAvailable");
         return success(context);
+    }
+
+    @ExceptionHandler(com.ruoyi.common.exception.ServiceException.class)
+    public AjaxResult businessError(com.ruoyi.common.exception.ServiceException error){
+        String message=error.getMessage();
+        var result=AjaxResult.error(error.getCode()==null?500:error.getCode(),message);
+        String field=message.contains("客户")?"customerId":message.contains("加工类型")?"processingType":null;
+        return field==null?result:result.put("fieldErrors",java.util.List.of(java.util.Map.of("field",field,"code","Invalid","message",message)));
     }
 
     public record NumberRequest(
@@ -88,6 +99,21 @@ public class WorkOrderController extends BaseController {
         service.edit(request);
         return success();
     }
+
+    @PutMapping("/{id}/raw-plan")
+    @PreAuthorize("@ss.hasPermi('metal:work-order:edit')")
+    @Log(title="原料投入计划变更",businessType=BusinessType.UPDATE)
+    public AjaxResult rawPlan(@PathVariable @Positive Long id,@Valid @RequestBody RawPlanService.Change input){
+        rawPlans.change(id,input);return success();
+    }
+
+    @GetMapping("/options/materials")
+    @PreAuthorize("@ss.hasAnyPermi('metal:work-order:add,metal:work-order:edit')")
+    public AjaxResult availableMaterials(@RequestParam @Positive Long factoryId){return success(service.availableMaterials(factoryId));}
+
+    @GetMapping("/options/raw-processes")
+    @PreAuthorize("@ss.hasAnyPermi('metal:work-order:add,metal:work-order:edit')")
+    public AjaxResult rawProcesses(@RequestParam @Positive Long factoryId){return success(service.rawProcesses(factoryId));}
 
     /**
      * 提交批量删除请求，由业务层检查访问权限和引用限制。
@@ -136,6 +162,18 @@ public class WorkOrderController extends BaseController {
     /**
      * 获取当前用户可访问的工厂选项。
      */
+    @GetMapping("/options/customers")
+    @PreAuthorize("@ss.hasAnyPermi('metal:work-order:add,metal:work-order:edit')")
+    public AjaxResult customers(@RequestParam @Positive Long factoryId){return success(service.customers(factoryId));}
+
+    @GetMapping("/{id}/materials")
+    @PreAuthorize("@ss.hasPermi('metal:work-order:query')")
+    public AjaxResult materials(@PathVariable @Positive Long id){return success(service.materials(id));}
+
+    @GetMapping("/{id}/reports")
+    @PreAuthorize("@ss.hasPermi('metal:work-order:query') and @ss.hasPermi('metal:work-report:query')")
+    public AjaxResult reports(@PathVariable @Positive Long id){return success(service.reports(id));}
+
     @GetMapping("/options/factories")
     @PreAuthorize("@ss.hasAnyPermi('metal:work-order:query,metal:work-order:add,metal:work-order:edit')")
     public AjaxResult factories() {

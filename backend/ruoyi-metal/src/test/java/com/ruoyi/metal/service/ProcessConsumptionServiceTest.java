@@ -14,4 +14,10 @@ class ProcessConsumptionServiceTest {
  @Test void invalidAverageIsPreservedButFlagged(){var r=settled();r.put("reportAverageLoss","999");assertEquals("REVIEW",ProcessConsumptionService.calculateBatch(r).get("state"));assertEquals("999.000000",r.get("averageLoss"));r.put("reportAverageLoss",null);assertEquals("REVIEW",ProcessConsumptionService.calculateBatch(r).get("state"));}
  @Test void missingCompletedNeverBecomesZero(){var r=settled();r.put("reportCompletedQuantity",null);var s=ProcessConsumptionService.summarize(List.of(ProcessConsumptionService.calculateBatch(r)));assertNull(s.get("settledCompletedQuantity"));assertNull(s.get("averageLoss"));}
  @Test void multipleSettledBatchesUseWeightedAverage(){var first=ProcessConsumptionService.calculateBatch(settled());var second=batch("SETTLED","100","0","40","54");second.put("outputQuantity",2L);second.put("reportId",5L);second.put("reportIssuedWeight","100");second.put("reportReturnedWeight","94");second.put("reportLossWeight","6");second.put("reportAverageLoss","3");second.put("reportCompletedQuantity",2L);second.put("reportVoided",false);var result=ProcessConsumptionService.summarize(List.of(first,ProcessConsumptionService.calculateBatch(second)));assertEquals("16.000000",result.get("settledLossWeight"));assertEquals(12L,result.get("settledCompletedQuantity"));assertEquals("1.333333",result.get("averageLoss"));}
+ @Test void reportPrecisionGenerationDoesNotWeakenHistoricalValidation(){
+  var b=batch("SETTLED","300","0","100","199");b.put("outputQuantity",3);b.put("reportId",1);b.put("reportIssuedWeight","300");b.put("reportReturnedWeight","299");b.put("reportLossWeight","1");b.put("reportCompletedQuantity",3);b.put("reportAverageLoss","0.33");b.put("reportPrecisionVersion",2);
+  assertEquals("SETTLED",ProcessConsumptionService.calculateBatch(b).get("state"));
+  b.put("reportPrecisionVersion",1);assertEquals("REVIEW",ProcessConsumptionService.calculateBatch(b).get("state"));
+  b.put("reportAverageLoss","0.333333");assertEquals("SETTLED",ProcessConsumptionService.calculateBatch(b).get("state"));
+ }
 }

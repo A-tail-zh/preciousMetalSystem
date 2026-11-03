@@ -51,24 +51,24 @@ public class ProductDimensionImage {
         if (selected==null) throw new ServiceException("该产品类别暂无尺寸图片模板");
         var template=selected.image();var fields=selected.fields();
         if (dimensions == null) throw new ServiceException("缺少产品尺寸");
-        var values = new ArrayList<String>();
+        var values = new ArrayList<BigDecimal>();
         for (var field : fields) {
             try {
                 Object raw = dimensions.get(field.key);
                 if (raw == null || raw.toString().length() > 32) throw new IllegalArgumentException();
                 var value = new BigDecimal(raw.toString());
                 if (value.signum() <= 0 || value.scale() > 6 || value.precision() - value.scale() > 14) throw new IllegalArgumentException();
-                values.add(value.stripTrailingZeros().toPlainString());
+                values.add(value);
             } catch (RuntimeException e) { throw new ServiceException("尺寸无效：" + field.key); }
         }
-        if ((HOLLOW_ROD.equals(category)||RING.equals(category)) && new BigDecimal(values.get(0)).compareTo(new BigDecimal(values.get(1)))<=0) throw new ServiceException("外径必须大于内径");
+        if ((HOLLOW_ROD.equals(category)||RING.equals(category)) && values.get(0).compareTo(values.get(1))<=0) throw new ServiceException("外径必须大于内径");
         var image = new BufferedImage(template.getWidth(),template.getHeight(),BufferedImage.TYPE_INT_RGB);
         var g = image.createGraphics();
         try {
             g.drawImage(template,0,0,null);
             g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
             for (int i=0;i<fields.size();i++) {
-                var f=fields.get(i);String text=values.get(i);int size=36;
+                var f=fields.get(i);String text=values.get(i).setScale(2,java.math.RoundingMode.HALF_UP).toPlainString();int size=36;
                 while (size>8 && g.getFontMetrics(new Font(Font.SANS_SERIF,Font.PLAIN,size)).stringWidth(text)>f.width-12) size--;
                 g.setColor(Color.WHITE);g.fillRect(f.x,f.y,f.width,f.height);
                 g.setFont(new Font(Font.SANS_SERIF,Font.PLAIN,size));g.setColor(Color.BLACK);

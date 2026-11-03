@@ -19,6 +19,18 @@ public class ProcessService extends MasterService<ProcessRecord> {
         this.jdbc = jdbc;
     }
 
+    @Override
+    protected void prepare(ProcessRecord form, ProcessRecord previous) {
+        ProcessTypeService.requireType(jdbc, form.getProcessType());
+    }
+
+    @Override
+    public java.util.List<ProcessRecord> list(ListQuery query) {
+        query.validate();
+        if (query.getProcessType() != null) ProcessTypeService.requireType(jdbc, query.getProcessType());
+        return super.list(query);
+    }
+
     /**
      * 检查业务引用和保护规则，不满足删除条件时抛出异常。
      */
