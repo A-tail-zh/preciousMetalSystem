@@ -18,6 +18,10 @@ public class ProductStep {
     @Digits(integer = 14, fraction = 6)
     @JsonFormat(shape = JsonFormat.Shape.STRING)
     private BigDecimal loss;
+    @Pattern(regexp="G_PER_PIECE|PERCENT",message="理论损耗单位无效")
+    private String lossUnit="PERCENT";
+    public String getLossUnit(){return lossUnit;}
+    public void setLossUnit(String value){lossUnit=value;}
     private String processName;
     @Pattern(regexp="PIECE|WEIGHT",message="请选择按件或按重量管理")
     private String measurementMode="PIECE";

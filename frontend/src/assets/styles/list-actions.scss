@@ -1,0 +1,89 @@
+// Explicit classes keep this palette out of dialogs, forms and navigation.
+#app .el-button.list-action {
+  --list-action-color: #409eff;
+  --list-action-hover: #66b1ff;
+  --list-action-active: #337ecc;
+  --list-action-text: #fff;
+  --list-action-border: var(--list-action-color);
+  --el-button-bg-color: var(--list-action-color);
+  --el-button-border-color: var(--list-action-border);
+  --el-button-text-color: var(--list-action-text);
+  --el-button-hover-bg-color: var(--list-action-hover);
+  --el-button-hover-border-color: var(--list-action-hover);
+  --el-button-hover-text-color: var(--list-action-text);
+  --el-button-active-bg-color: var(--list-action-active);
+  --el-button-active-border-color: var(--list-action-active);
+  --el-button-active-text-color: var(--list-action-text);
+  --el-button-disabled-bg-color: var(--list-action-color);
+  --el-button-disabled-border-color: var(--list-action-border);
+  --el-button-disabled-text-color: var(--list-action-text);
+  background: var(--el-button-bg-color);
+  border: 1px solid var(--el-button-border-color);
+  color: var(--el-button-text-color);
+  height: 35px;
+  min-width: 76px;
+  width: auto;
+  max-width: 100%;
+  padding: 0 14px;
+  margin: 0;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 400;
+  flex: 0 0 auto;
+
+  &.list-action--create, &.list-action--download {
+    --list-action-color: #67c23a;
+    --list-action-hover: #85ce61;
+    --list-action-active: #529b2e;
+  }
+  &.list-action--edit {
+    --list-action-color: #ee9b58;
+    --list-action-hover: #f8b47f;
+    --list-action-active: #be7c46;
+  }
+  &.list-action--delete {
+    --list-action-color: #f56c6c;
+    --list-action-hover: #f78989;
+    --list-action-active: #c45656;
+  }
+  &.list-action--neutral {
+    --list-action-color: #fff;
+    --list-action-border: #dcdfe6;
+    --list-action-text: #606266;
+    --list-action-hover: #f5f7fa;
+    --list-action-active: #e9edf2;
+  }
+  &.list-action--row {
+    height: 25px;
+    min-width: 0;
+    padding: 0 8px;
+    margin: 2px;
+    border-radius: 2px;
+    font-size: 13px;
+  }
+  &:hover:not(:disabled), &:focus-visible:not(:disabled) {
+    background: var(--el-button-hover-bg-color);
+    border-color: var(--el-button-hover-border-color);
+    color: var(--el-button-hover-text-color);
+  }
+  &:active:not(:disabled) {
+    background: var(--el-button-active-bg-color);
+    border-color: var(--el-button-active-border-color);
+    color: var(--el-button-active-text-color);
+  }
+  &:focus-visible {
+    outline: 2px solid #409eff;
+    outline-offset: 2px;
+  }
+  &:disabled {
+    background: var(--el-button-disabled-bg-color);
+    border-color: var(--el-button-disabled-border-color);
+    color: var(--el-button-disabled-text-color);
+    opacity: .6;
+    cursor: not-allowed;
+  }
+}
+
+@media (max-width: 768px) {
+  #app .el-button.list-action {height: 44px; min-height: 44px;}
+}

@@ -1,0 +1,2 @@
+import {defineConfig} from '@playwright/test'
+export default defineConfig({testDir:'./tests',testMatch:['unified-production-draft-refresh.spec.ts','warehouse-write-session.spec.ts'],workers:1,timeout:30000,use:{baseURL:'http://127.0.0.1:5196',viewport:{width:1440,height:1000},launchOptions:{channel:'chrome'},screenshot:'only-on-failure'},webServer:{command:'node node_modules/vite/bin/vite.js --port 5196 --strictPort',url:'http://127.0.0.1:5196',reuseExistingServer:false},outputDir:'../.runtime/unified-production-20261103/draft-tests',reporter:[['list']]})

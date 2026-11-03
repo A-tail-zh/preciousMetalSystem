@@ -69,7 +69,7 @@ public final class VolumeCalculator {
      * 将计算结果四舍五入保留六位小数，并校验整数位上限。
      */
     public static BigDecimal stored(BigDecimal value) {
-        BigDecimal rounded = value.setScale(6, RoundingMode.HALF_UP);
+        BigDecimal rounded = value.setScale(2, RoundingMode.HALF_UP);
         if (rounded.precision() - rounded.scale() > 14) throw new ServiceException("计算体积超过支持范围");
         return rounded;
     }

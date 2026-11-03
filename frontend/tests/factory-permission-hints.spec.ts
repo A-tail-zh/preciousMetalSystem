@@ -28,12 +28,12 @@ test('普通账号有工厂新增删除权限标记仍隐藏管理员入口',asy
  for(const name of ['添加','删除'])await expect(page.getByRole('button',{name,exact:true})).toHaveCount(0)
  await expect(page.getByRole('columnheader',{name:'操作',exact:true})).toHaveCount(0)
 })
-test('产品理论损耗默认0时也有每件单位和固定说明',async({page})=>{
+test('产品理论损耗默认0时也有百分比单位和固定说明',async({page})=>{
  await setup(page,'product');await page.getByRole('row').filter({hasText:'产品甲'}).getByRole('button',{name:'编辑',exact:true}).click()
  const dialog=page.getByRole('dialog');await expect(dialog).toBeVisible()
- await expect(dialog.getByText('理论损耗（g/件）',{exact:true})).toBeVisible()
- await expect(dialog.getByText(/理论损耗为该工序每件产品的预计损耗/)).toBeVisible()
- await expect(dialog.getByRole('textbox',{name:'第1道工序理论损耗（g/件）'})).toHaveValue('0')
+ await expect(dialog.getByText('理论损耗（%）',{exact:true})).toBeVisible()
+ await expect(dialog.getByText(/请按实际加工顺序添加工序/)).toHaveCount(0)
+ await expect(dialog.getByRole('textbox',{name:'第1道工序理论损耗（%）'})).toHaveValue('0.00')
 })
 test('仅编辑工厂账号通过编辑上下文加载，不依赖普通详情查询',async({page})=>{
  const requests=await setup(page,'factory',['metal:factory:list','metal:factory:edit'],9)
@@ -84,11 +84,11 @@ test('相同身份和权限的刷新不清空正在编辑的表单',async({page}
  await page.evaluate(async()=>{const path='/src/store/modules/user.ts';const{default:useUser}=await import(path);useUser().permissions=[...useUser().permissions]})
  await expect(dialog.getByLabel('工厂名称',{exact:true})).toHaveValue('保留输入')
 })
-for(const width of [1920,1440,768,390])test(`产品工序提示在${width}px不溢出且已有数值不变`,async({page})=>{
+for(const width of [1920,1440,768,390])test(`产品长工序提示在${width}px不显示且已有数值不变`,async({page})=>{
  await page.setViewportSize({width,height:1000});await setup(page,'product')
  await page.getByRole('row').filter({hasText:'产品甲'}).getByRole('button',{name:'编辑',exact:true}).click()
- const dialog=page.getByRole('dialog');await expect(dialog.getByText(/理论损耗为该工序每件产品的预计损耗/)).toBeVisible()
- await expect(dialog.getByRole('textbox',{name:'第1道工序理论损耗（g/件）'})).toHaveValue('0')
+ const dialog=page.getByRole('dialog');await expect(dialog.getByText(/请按实际加工顺序添加工序/)).toHaveCount(0)
+ await expect(dialog.getByRole('textbox',{name:'第1道工序理论损耗（%）'})).toHaveValue('0.00')
  const bounds=await dialog.boundingBox();expect(bounds!.x).toBeGreaterThanOrEqual(0);expect(bounds!.x+bounds!.width).toBeLessThanOrEqual(width+1)
  expect(await dialog.evaluate(e=>e.scrollWidth<=e.clientWidth+1)).toBeTruthy()
  await page.screenshot({path:`../.runtime/product-process-hints-${width}.png`,fullPage:true,animations:'disabled'})
@@ -98,7 +98,7 @@ for(const width of [1920,1440,768])test(`工序控件与操作按钮在${width}p
  await page.getByRole('row').filter({hasText:'产品甲'}).getByRole('button',{name:'编辑',exact:true}).click()
  const dialog=page.getByRole('dialog');await dialog.getByRole('button',{name:'添加工序',exact:true}).click();await dialog.getByRole('button',{name:'添加工序',exact:true}).click()
  for(const row of await dialog.locator('.process-step').all()){
-  const select=await row.locator('.process-choice .el-select__wrapper').boundingBox(),input=await row.locator('.el-input__wrapper').boundingBox()
+  const select=await row.locator('.process-choice .el-select__wrapper').boundingBox(),input=await row.locator('.loss-field .el-input__wrapper').boundingBox()
   expect(Math.abs(select!.y-input!.y)).toBeLessThanOrEqual(1)
   for(const button of await row.getByRole('button').all()){const box=await button.boundingBox();expect(Math.abs(box!.y-select!.y)).toBeLessThanOrEqual(1);expect(Math.abs(box!.height-select!.height)).toBeLessThanOrEqual(1)}
  }

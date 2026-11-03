@@ -115,7 +115,7 @@ public class SemiFlowService {
 
     public Map<String, Object> sourceBatch(Map<String, Object> stock) {
         if (stock.get("origin_batch_id") == null) throw fail("半成品缺少来源批次，请人工核对");
-        return one("SELECT b.*,i.product_id,i.product_snapshot,w.customer,w.status work_status FROM metal_process_batch b JOIN metal_work_order_item i ON i.item_id=b.item_id JOIN metal_work_order w ON w.work_order_id=b.work_order_id WHERE b.batch_id=? AND w.del_flag='0'", stock.get("origin_batch_id"));
+        return one("SELECT b.*,i.product_id,i.product_snapshot,w.customer,w.customer_id,w.status work_status FROM metal_process_batch b JOIN metal_work_order_item i ON i.item_id=b.item_id JOIN metal_work_order w ON w.work_order_id=b.work_order_id WHERE b.batch_id=? AND w.del_flag='0'", stock.get("origin_batch_id"));
     }
 
     public boolean isOwn(Map<String, Object> source, Map<String, Object> target) {
@@ -131,26 +131,35 @@ public class SemiFlowService {
         if (!"NORMAL".equals(stock.get("ownership_status"))) throw fail("半成品来源待核对，不能领用或释放");
         WarehouseService.validateOwnership(stock);
         var source = sourceBatch(stock);
-        var item = one("SELECT i.*,w.customer,w.factory_id FROM metal_work_order_item i JOIN metal_work_order w ON w.work_order_id=i.work_order_id WHERE i.item_id=?", target.get("item_id"));
+        var item = one("SELECT i.*,w.customer,w.customer_id,w.factory_id FROM metal_work_order_item i JOIN metal_work_order w ON w.work_order_id=i.work_order_id WHERE i.item_id=?", target.get("item_id"));
         if (num(stock.get("factory_id")) != num(item.get("factory_id")) || num(source.get("factory_id")) != num(item.get("factory_id")) || num(item.get("work_order_id")) != num(target.get("work_order_id")))
             throw fail("半成品不属于当前工厂或工单上下文");
-        if (!"SETTLED".equals(source.get("status")) || num(target.get("sequence_no")) <= 1)
+        ProcessingInputService.require(jdbc,stock,target);
+        boolean qualification=SemiSourcePolicyService.qualificationEntry(target);
+        if (!"SETTLED".equals(source.get("status")) || !qualification && num(target.get("sequence_no")) <= 1)
             throw fail("半成品来源须已结算并与当前工序衔接");
         var sp = JSON.parseObject(text(source.get("product_snapshot")));
         var tp = JSON.parseObject(text(item.get("product_snapshot")));
-        if (num(stock.get("reference_id")) != num(source.get("product_id")) || route(num(source.get("item_id")), num(source.get("sequence_no"))).size() != num(source.get("sequence_no")) || route(num(target.get("item_id")), num(target.get("sequence_no")) - 1).size() != num(target.get("sequence_no")) - 1 || sp == null || tp == null || !SemiFlowRules.compatible(num(source.get("product_id")), sp.getString("specification"), route(num(source.get("item_id")), num(source.get("sequence_no"))), num(item.get("product_id")), tp.getString("specification"), route(num(target.get("item_id")), isOwn(source, target) ? num(source.get("sequence_no")) : num(target.get("sequence_no")) - 1)))
+        if (sp==null || tp==null || text(sp.get("specification")).isBlank() || text(tp.get("specification")).isBlank()
+                || num(stock.get("reference_id"))!=num(source.get("product_id")) || num(source.get("product_id"))!=num(item.get("product_id"))
+                || !sp.getString("specification").trim().equals(tp.getString("specification").trim()))
+            throw fail("半成品产品或规格与目标工单不匹配");
+        if (qualification) {
+            if(skipPermitId!=null || skipPermitVersion!=null || num(source.get("work_order_id"))==num(target.get("work_order_id"))
+                    || !SemiSourcePolicyService.completeSavedRoute(jdbc,source)) throw fail("首工序资格接入须来自其他工单的完整半成品路线，不能冒用跳步许可");
+        } else if (route(num(source.get("item_id")), num(source.get("sequence_no"))).size() != num(source.get("sequence_no")) || route(num(target.get("item_id")), num(target.get("sequence_no")) - 1).size() != num(target.get("sequence_no")) - 1 || !SemiFlowRules.compatible(num(source.get("product_id")), sp.getString("specification"), route(num(source.get("item_id")), num(source.get("sequence_no"))), num(item.get("product_id")), tp.getString("specification"), route(num(target.get("item_id")), isOwn(source, target) ? num(source.get("sequence_no")) : num(target.get("sequence_no")) - 1)))
             throw fail("半成品产品、规格或已完成工序路线与目标工序不匹配");
         if (SemiMeasurementRules.weight(stock) != SemiMeasurementRules.weight(source))
             throw fail("库存计量方式与来源批次快照不一致");
-        if (!isOwn(source, target)) {
+        if (!qualification && !isOwn(source, target)) {
             var targetModes = jdbc.queryForList("SELECT measurement_mode FROM metal_work_order_step WHERE item_id=? AND sequence_no<=? ORDER BY sequence_no", target.get("item_id"), source.get("sequence_no"));
             var sourceModes = jdbc.queryForList("SELECT measurement_mode FROM metal_work_order_step WHERE item_id=? AND sequence_no<=? ORDER BY sequence_no", source.get("item_id"), source.get("sequence_no"));
             if (!targetModes.equals(sourceModes)) throw fail("来源与目标工艺计量方式快照不一致");
         }
         if (!text(stock.get("specification")).trim().equals(sp.getString("specification").trim()))
             throw fail("库存规格与来源工单快照不一致，请人工核对");
-        if (num(source.get("sequence_no")) >= num(target.get("sequence_no"))) throw fail("来源工序必须早于当前工序");
-        if (num(source.get("sequence_no")) + 1 != num(target.get("sequence_no")) || skipPermitId != null || source.get("execution_snapshot") != null)
+        if (!qualification && num(source.get("sequence_no")) >= num(target.get("sequence_no"))) throw fail("来源工序必须早于当前工序");
+        if (!qualification && (num(source.get("sequence_no")) + 1 != num(target.get("sequence_no")) || skipPermitId != null || source.get("execution_snapshot") != null))
             policy.decide(source, target, skipPermitId, skipPermitVersion);
         if (!isOwn(source, target) && SemiSourcePolicyService.hasSkipped(source))
             throw fail("来源含跳步轨迹，不符合跨工单完整加工路线");
@@ -159,7 +168,7 @@ public class SemiFlowService {
         } else {
             if (num(source.get("work_order_id")) == num(target.get("work_order_id")))
                 throw fail("同一工单不同产品明细不能相互替代");
-            if (!Set.of("COMPLETED", "CLOSED_PARTIAL").contains(text(source.get("work_status"))) || !SemiFlowRules.sameCustomer(text(source.get("customer")), text(item.get("customer"))) || !SemiFlowRules.sameCustomer(text(stock.get("organization")), text(item.get("customer"))))
+            if (!Set.of("COMPLETED", "CLOSED_PARTIAL").contains(text(source.get("work_status"))) || !MaterialOwnership.sameCustomer(stock,source,item))
                 throw fail("跨工单半成品须来自已关闭工单且属于同厂同客户");
             if (releaseId == null) throw fail("跨工单半成品须选择有效释放记录");
             var release = one("SELECT * FROM metal_semi_release WHERE release_id=?", releaseId);
@@ -171,7 +180,8 @@ public class SemiFlowService {
 
     private static final String USES = "SELECT (SELECT sequence_no FROM metal_process_batch WHERE batch_id=o.batch_id) target_sequence,u.release_id,l.line_id,l.quantity-COALESCE(r.quantity,0) used_quantity,l.net_weight-COALESCE(r.weight,0) used_weight FROM metal_semi_release_use u JOIN metal_warehouse_order_line l ON l.line_id=u.line_id JOIN metal_warehouse_order o ON o.order_id=l.order_id LEFT JOIN (SELECT x.source_line_id,SUM(x.quantity) quantity,SUM(x.net_weight) weight FROM metal_warehouse_order_line x JOIN metal_warehouse_order d ON d.order_id=x.order_id WHERE d.status='POSTED' AND d.type='SEMI_RETURN' GROUP BY x.source_line_id) r ON r.source_line_id=l.line_id WHERE o.status='POSTED'";
 
-    public Map<String, Object> availableRelease(long releaseId) {
+    public Map<String, Object> availableRelease(long releaseId) {return releaseBalance(releaseId,true);}
+    private Map<String, Object> releaseBalance(long releaseId,boolean reservations) {
         var release = one("SELECT * FROM metal_semi_release WHERE release_id=?", releaseId);
         long used = 0;
         BigDecimal weight = BigDecimal.ZERO;
@@ -179,14 +189,15 @@ public class SemiFlowService {
             used += num(r.get("used_quantity"));
             weight = weight.add(dec(r.get("used_weight")));
         }
-        release.put("available_quantity", num(release.get("quantity")) - used);
-        release.put("available_weight", dec(release.get("net_weight")).subtract(weight));
+        var pending=reservations?WarehouseReservations.release(jdbc,releaseId):Map.<String,Object>of("weight",BigDecimal.ZERO,"quantity",0L);
+        release.put("available_quantity", num(release.get("quantity")) - used - num(pending.get("quantity")));
+        release.put("available_weight", dec(release.get("net_weight")).subtract(weight).subtract(dec(pending.get("weight"))));
         return release;
     }
 
     public void reserveUse(Long releaseId, long lineId, Map<String, Object> stock, Map<String, Object> target, long qty, BigDecimal weight) {
         if (releaseId == null) return;
-        if (!SemiMeasurementRules.weight(stock) && qty > entryCapacity(num(target.get("item_id")), num(target.get("sequence_no"))))
+        if (!SemiMeasurementRules.weight(stock) && qty > entryCapacity(num(target.get("item_id")), num(target.get("sequence_no")),lineId))
             throw fail("外部接入件数超过前置步骤剩余覆盖数量");
         var release = availableRelease(releaseId);
         if (SemiMeasurementRules.weight(stock))
@@ -213,12 +224,24 @@ public class SemiFlowService {
     }
 
     public long entryCapacity(long item, long sequence) {
-        if (sequence <= 1) return 0;
+        return entryCapacity(item,sequence,-1);
+    }
+
+    private long entryCapacity(long item,long sequence,long excludeLine) {
+        if(sequence<1)return 0;
+        if(sequence==1){
+            var steps=jdbc.queryForList("SELECT s.*,w.processing_policy_version FROM metal_work_order_step s JOIN metal_work_order_item i ON i.item_id=s.item_id JOIN metal_work_order w ON w.work_order_id=i.work_order_id WHERE s.item_id=? AND s.sequence_no=1",item);
+            if(steps.size()!=1 || !SemiSourcePolicyService.qualificationEntry(steps.get(0)))return 0;
+            long issued=count("SELECT COALESCE(SUM(CASE WHEN o.type='PRODUCTION_OUT' AND l.category='SEMI' THEN l.quantity WHEN o.type='SEMI_RETURN' THEN -l.quantity ELSE 0 END),0) FROM metal_warehouse_order o JOIN metal_warehouse_order_line l ON l.order_id=o.order_id JOIN metal_process_batch b ON b.batch_id=o.batch_id WHERE b.item_id=? AND b.sequence_no=1 AND b.status<>'VOID' AND o.status='POSTED' AND l.line_id<>?",item,excludeLine);
+            long room=count("SELECT quantity FROM metal_work_order_item WHERE item_id=?",item)-issued-WarehouseReservations.external(jdbc,item,num(steps.get(0).get("process_id")));
+            if(room<0)throw fail("首工序半成品接入超过计划件数，请人工核对");
+            return room;
+        }
         long planned = count("SELECT quantity FROM metal_work_order_item WHERE item_id=?", item), room = planned;
         for (var step : jdbc.queryForList("SELECT sequence_no FROM metal_work_order_step WHERE item_id=? AND sequence_no<? AND measurement_mode='PIECE' AND sequence_no>COALESCE((SELECT MAX(w.sequence_no) FROM metal_work_order_step w WHERE w.item_id=metal_work_order_step.item_id AND w.sequence_no<? AND w.measurement_mode='WEIGHT'),0)", item, sequence, sequence)) {
             long seq = num(step.get("sequence_no"));
             long local = count("SELECT COALESCE(SUM(CASE WHEN status='SETTLED' THEN completed_quantity ELSE planned_quantity END),0) FROM metal_process_batch WHERE item_id=? AND sequence_no=? AND status IN ('OPEN','SETTLED')", item, seq);
-            room = Math.min(room, planned - local - credit(item, seq));
+            room = Math.min(room, planned - local - credit(item, seq) - WarehouseReservations.pendingCredit(jdbc,item,seq));
         }
         if (room < 0) throw fail("历史加工或接入数量超过计划，请人工核对");
         return room;
@@ -232,7 +255,7 @@ public class SemiFlowService {
         long held = 0;
         BigDecimal weight = BigDecimal.ZERO;
         for (var r : jdbc.queryForList("SELECT release_id FROM metal_semi_release WHERE inventory_id=? AND status='ACTIVE'", stock.get("inventory_id"))) {
-            var a = availableRelease(num(r.get("release_id")));
+            var a = releaseBalance(num(r.get("release_id")),false);
             held += num(a.get("available_quantity"));
             weight = weight.add(dec(a.get("available_weight")));
         }
@@ -241,7 +264,7 @@ public class SemiFlowService {
 
     public void guardStock(long stock) {
         for (var r : jdbc.queryForList("SELECT release_id FROM metal_semi_release WHERE inventory_id=? AND status='ACTIVE'", stock)) {
-            var a = availableRelease(num(r.get("release_id")));
+            var a = releaseBalance(num(r.get("release_id")),false);
             if (num(a.get("available_quantity")) > 0 || dec(a.get("available_weight")).signum() > 0)
                 throw fail("库存存在已释放额度，请先撤销释放；跨工单领用须通过生产出库");
         }
@@ -272,13 +295,17 @@ public class SemiFlowService {
         var w = work(work);
         if (num(w.get("factory_id")) != factory || !Set.of("WAITING_MATERIAL", "IN_PROGRESS").contains(text(w.get("status"))))
             throw fail("请选择当前工厂的待领料或生产中工单");
-        var target = one("SELECT s.*,i.work_order_id FROM metal_work_order_step s JOIN metal_work_order_item i ON i.item_id=s.item_id WHERE s.item_id=? AND s.process_id=? AND i.work_order_id=?", item, process, work);
+        var target = one("SELECT s.*,i.work_order_id,w.processing_policy_version,COALESCE(i.material_snapshot,i.product_snapshot) product_snapshot FROM metal_work_order_step s JOIN metal_work_order_item i ON i.item_id=s.item_id JOIN metal_work_order w ON w.work_order_id=i.work_order_id WHERE s.item_id=? AND s.process_id=? AND i.work_order_id=?", item, process, work);
         target.put("item_id", item);
         var out = new ArrayList<Map<String, Object>>();
-        for (var stock : jdbc.queryForList("SELECT * FROM metal_inventory WHERE factory_id=? AND warehouse_id=? AND del_flag='0' AND ownership_status='NORMAL' AND net_weight>0 AND category IN ('RAW','SEMI') ORDER BY CASE category WHEN 'RAW' THEN 0 ELSE 1 END,inventory_id", factory, warehouse)) {
+        String candidateSql="SELECT i.*,m.material_type,COALESCE(i.metal_type_id_snapshot,m.metal_type_id) metal_type_id,EXISTS(SELECT 1 FROM metal_process_batch b JOIN metal_warehouse_order o ON o.batch_id=b.batch_id WHERE b.batch_id=i.origin_batch_id AND b.work_order_id=? AND o.type='RAW_PROCESS_IN' AND o.status='POSTED') same_work_raw_output FROM metal_inventory i LEFT JOIN metal_material m ON i.category='RAW' AND m.material_id=i.reference_id WHERE i.factory_id=? AND i.warehouse_id=? AND i.del_flag='0' AND i.ownership_status='NORMAL' AND i.net_weight>0 AND i.category IN ('RAW','SEMI')";
+        if(!ProcessingPolicy.v2(target))candidateSql+=" AND (i.category<>'RAW' OR m.del_flag='0' AND m.metal_type_id=1)";
+        for (var stock : jdbc.queryForList(candidateSql+" ORDER BY CASE i.category WHEN 'RAW' THEN 0 ELSE 1 END,i.inventory_id",work,factory,warehouse)) {
             if ("RAW".equals(stock.get("category"))) {
                 try {
-                    new ProcessRawReturnService(jdbc, scope).guardStock(num(stock.get("inventory_id")), text(w.get("customer")), true, false);
+                    ProcessingInputService.require(jdbc,stock,target);
+                    new ProcessRawReturnService(jdbc, scope).guardProduction(num(stock.get("inventory_id")), w);
+                    MaterialOwnership.production(stock,w);
                     var candidate = stockCandidate(stock, null);
                     candidate.putAll(new ProcessRawReturnService(jdbc, scope).provenance(num(stock.get("inventory_id"))));
                     out.add(candidate);
@@ -331,7 +358,7 @@ public class SemiFlowService {
             } catch (
                     ServiceException e) {/* Invalid candidates are omitted; direct save still rejects with a reason. */}
         }
-        out.sort(Comparator.comparingInt(r -> "RAW".equals(r.get("category")) ? 0 : r.get("release_id") == null ? 1 : 2));
+        out.sort(Comparator.comparingInt(r -> ProcessingPolicy.v2(target) && "RAW".equals(r.get("category")) && truthEnabled(r.get("same_work_raw_output")) ? -1 : "RAW".equals(r.get("category")) ? 0 : r.get("release_id") == null ? 1 : 2));
         return out;
     }
 
@@ -340,16 +367,18 @@ public class SemiFlowService {
     }
 
     public void guardWork(long work) {
+        WarehouseReservations.work(jdbc,work);
         var blockers = jdbc.queryForList("SELECT r.release_id,w.order_no FROM metal_semi_release r JOIN metal_work_order w ON w.work_order_id=r.work_order_id WHERE r.work_order_id=? AND r.status='ACTIVE' ORDER BY r.release_id", work);
         if (!blockers.isEmpty()) throw fail("工单存在有效释放/下游依赖，请先处理：" + blockers);
     }
 
     private Map<String, Object> stockCandidate(Map<String, Object> stock, Map<String, Object> release) {
-        var r = new LinkedHashMap<>(stock);
+        var pending=WarehouseReservations.stock(jdbc,num(stock.get("inventory_id")));
+        var r = new LinkedHashMap<>(stock);r.put("reserved_weight",pending.get("weight"));r.put("reserved_quantity",pending.get("quantity"));
         r.put("id", text(stock.get("inventory_id")));
         r.put("choice_key", text(stock.get("inventory_id")) + (release == null ? "" : ":" + release.get("release_id")));
-        r.put("available_quantity", release == null ? stock.get("quantity") : Math.min(num(stock.get("quantity")), num(release.get("available_quantity"))));
-        r.put("available_weight", release == null ? stock.get("net_weight") : dec(stock.get("net_weight")).min(dec(release.get("available_weight"))));
+        r.put("available_quantity", release == null ? Math.max(0,num(stock.get("quantity"))-num(pending.get("quantity"))) : Math.max(0,Math.min(num(stock.get("quantity"))-num(pending.get("quantity")), num(release.get("available_quantity")))));
+        r.put("available_weight", release == null ? dec(stock.get("net_weight")).subtract(dec(pending.get("weight"))).max(BigDecimal.ZERO) : dec(stock.get("net_weight")).subtract(dec(pending.get("weight"))).min(dec(release.get("available_weight"))).max(BigDecimal.ZERO));
         if (release != null) {
             r.put("release_id", release.get("release_id"));
             r.put("release_remaining_quantity", release.get("available_quantity"));
@@ -367,17 +396,24 @@ public class SemiFlowService {
 
     public Map<String, Object> overview(Long workId) {
         var w = work(workId);
-        var items = jdbc.queryForList("SELECT i.item_id,i.quantity planned_quantity,i.product_snapshot,COALESCE((SELECT SUM(b.completed_quantity) FROM metal_process_batch b WHERE b.item_id=i.item_id AND b.status='SETTLED' AND b.sequence_no=(SELECT MAX(sequence_no) FROM metal_work_order_step WHERE item_id=i.item_id)),0) completed_quantity FROM metal_work_order_item i WHERE i.work_order_id=? ORDER BY i.sequence_no", workId);
-        for (var i : items)
-            i.put("cancelled_quantity", SemiFlowRules.cancelled(num(i.get("planned_quantity")), num(i.get("completed_quantity"))));
-        var stocks = jdbc.queryForList("SELECT i.*,b.item_id,s.process_name,b.sequence_no origin_process_sequence FROM metal_inventory i JOIN metal_process_batch b ON b.batch_id=i.origin_batch_id JOIN metal_work_order_step s ON s.item_id=b.item_id AND s.process_id=b.process_id WHERE b.work_order_id=? AND b.status='SETTLED' AND i.category='SEMI' AND i.del_flag='0' ORDER BY i.inventory_id", workId);
+        boolean raw=ProcessingPolicy.v2(w)&&"RAW_PROCESSING".equals(w.get("task_type"));
+        var items = jdbc.queryForList("SELECT i.item_id,i.quantity planned_quantity,i.product_snapshot,i.material_snapshot,i.planned_input_weight,COALESCE((SELECT SUM(b.completed_quantity) FROM metal_process_batch b WHERE b.item_id=i.item_id AND b.status='SETTLED' AND b.sequence_no=(SELECT MAX(sequence_no) FROM metal_work_order_step WHERE item_id=i.item_id)),0) completed_quantity FROM metal_work_order_item i WHERE i.work_order_id=? ORDER BY i.sequence_no", workId);
+        for (var i : items) {
+            if(raw){
+                i.put("planned_quantity",null);i.put("completed_quantity",null);i.put("cancelled_quantity",null);
+                i.put("committed_input_weight",RawPlanService.committedInput(jdbc,num(i.get("item_id"))));
+            }else i.put("cancelled_quantity", SemiFlowRules.cancelled(num(i.get("planned_quantity")), num(i.get("completed_quantity"))));
+        }
+        var stocks = jdbc.queryForList("SELECT i.*,b.item_id,s.process_name,b.sequence_no origin_process_sequence FROM metal_inventory i JOIN metal_process_batch b ON b.batch_id=i.origin_batch_id JOIN metal_work_order_step s ON s.item_id=b.item_id AND s.process_id=b.process_id WHERE b.work_order_id=? AND b.status='SETTLED' AND i.category IN ('RAW','SEMI') AND i.del_flag='0' ORDER BY i.inventory_id", workId);
         for (var stock : stocks) {
             long held = 0;
             BigDecimal weight = BigDecimal.ZERO;
-            for (var r : jdbc.queryForList("SELECT release_id FROM metal_semi_release WHERE inventory_id=? AND status='ACTIVE'", stock.get("inventory_id"))) {
-                var a = availableRelease(num(r.get("release_id")));
-                held += num(a.get("available_quantity"));
-                weight = weight.add(dec(a.get("available_weight")));
+            if("SEMI".equals(stock.get("category"))) {
+                for (var r : jdbc.queryForList("SELECT release_id FROM metal_semi_release WHERE inventory_id=? AND status='ACTIVE'", stock.get("inventory_id"))) {
+                    var a = availableRelease(num(r.get("release_id")));
+                    held += num(a.get("available_quantity"));
+                    weight = weight.add(dec(a.get("available_weight")));
+                }
             }
             stock.put("released_quantity", held);
             stock.put("released_weight", weight);
@@ -391,15 +427,16 @@ public class SemiFlowService {
             r.put("available_weight", a.get("available_weight"));
         }
         var progress = new ArrayList<Map<String, Object>>();
-        for (var s : jdbc.queryForList("SELECT s.item_id,s.process_id,s.sequence_no,s.process_name,s.measurement_mode,s.weight_stage_closed FROM metal_work_order_step s JOIN metal_work_order_item i ON i.item_id=s.item_id WHERE i.work_order_id=? ORDER BY i.sequence_no,s.sequence_no", workId)) {
+        for (var s : jdbc.queryForList("SELECT s.item_id,s.process_id,s.sequence_no,s.process_name,s.measurement_mode,s.weight_stage_closed,s.process_role,s.output_stage FROM metal_work_order_step s JOIN metal_work_order_item i ON i.item_id=s.item_id WHERE i.work_order_id=? ORDER BY i.sequence_no,s.sequence_no", workId)) {
             long local = count("SELECT COALESCE(SUM(completed_quantity),0) FROM metal_process_batch WHERE item_id=? AND process_id=? AND status='SETTLED'", s.get("item_id"), s.get("process_id"));
             s.put("local_quantity", SemiMeasurementRules.weight(s) ? null : local);
             s.put("route_covered", WeightStageProgressService.externalCovered(jdbc, num(s.get("item_id")), num(s.get("sequence_no"))));
-            s.put("output_weight", jdbc.queryForObject("SELECT COALESCE(SUM(l.net_weight),0) FROM metal_warehouse_order o JOIN metal_process_batch b ON b.batch_id=o.batch_id JOIN metal_warehouse_order_line l ON l.order_id=o.order_id WHERE b.item_id=? AND b.process_id=? AND b.status='SETTLED' AND o.status='POSTED' AND o.type IN ('SEMI_IN','FINISHED_IN')", BigDecimal.class, s.get("item_id"), s.get("process_id")));
+            s.put("output_weight", jdbc.queryForObject("SELECT COALESCE(SUM(l.net_weight),0) FROM metal_warehouse_order o JOIN metal_process_batch b ON b.batch_id=o.batch_id JOIN metal_warehouse_order_line l ON l.order_id=o.order_id WHERE b.item_id=? AND b.process_id=? AND b.status='SETTLED' AND o.status='POSTED' AND o.type IN ('RAW_PROCESS_IN','SEMI_IN','FINISHED_IN')", BigDecimal.class, s.get("item_id"), s.get("process_id")));
             long skipped = policy.skipCredit(num(s.get("item_id")), num(s.get("sequence_no")));
             s.put("skipped_quantity", skipped);
             s.put("external_quantity", credit(num(s.get("item_id")), num(s.get("sequence_no"))) - skipped);
             s.put("covered_quantity", local + num(s.get("external_quantity")) + skipped);
+            if(raw)for(String field:List.of("local_quantity","skipped_quantity","external_quantity","covered_quantity"))s.put(field,null);
             progress.add(s);
         }
         var uses = jdbc.queryForList("SELECT u.use_id,u.release_id,l.line_id,l.quantity,l.net_weight,o.order_no,o.work_order_id target_work_order_id,w.order_no target_work_order_no,o.status,u.route_snapshot FROM metal_semi_release_use u JOIN metal_semi_release r ON r.release_id=u.release_id JOIN metal_warehouse_order_line l ON l.line_id=u.line_id JOIN metal_warehouse_order o ON o.order_id=l.order_id JOIN metal_work_order w ON w.work_order_id=o.work_order_id WHERE r.work_order_id=? OR o.work_order_id=? ORDER BY u.use_id", workId, workId);
@@ -407,7 +444,7 @@ public class SemiFlowService {
     }
 
     private void verifyHistory(long work) {
-        for (var r : jdbc.queryForList("SELECT b.completed_quantity,r.report_id,r.voided,r.issued_weight report_issued,r.returned_weight report_returned,r.loss_weight report_loss,r.completed_quantity report_quantity,COALESCE(x.issued,0) issued,COALESCE(x.returned,0) returned,COALESCE(x.output_quantity,0) output_quantity FROM metal_process_batch b LEFT JOIN metal_work_report r ON r.batch_id=b.batch_id LEFT JOIN (SELECT o.batch_id,SUM(CASE WHEN o.type='PRODUCTION_OUT' THEN l.net_weight ELSE 0 END) issued,SUM(CASE WHEN o.type IN ('RAW_RETURN','SEMI_RETURN','PROCESS_RAW_RETURN','SEMI_IN','FINISHED_IN') THEN l.net_weight ELSE 0 END) returned,SUM(CASE WHEN o.type IN ('SEMI_IN','FINISHED_IN') THEN l.quantity ELSE 0 END) output_quantity FROM metal_warehouse_order o JOIN metal_warehouse_order_line l ON l.order_id=o.order_id WHERE o.status='POSTED' GROUP BY o.batch_id) x ON x.batch_id=b.batch_id WHERE b.work_order_id=? AND b.status='SETTLED'", work)) {
+        for (var r : jdbc.queryForList("SELECT b.completed_quantity,r.report_id,r.voided,r.issued_weight report_issued,r.returned_weight report_returned,r.loss_weight report_loss,r.completed_quantity report_quantity,COALESCE(x.issued,0) issued,COALESCE(x.returned,0) returned,COALESCE(x.output_quantity,0) output_quantity FROM metal_process_batch b LEFT JOIN metal_work_report r ON r.batch_id=b.batch_id LEFT JOIN (SELECT o.batch_id,SUM(CASE WHEN o.type='PRODUCTION_OUT' THEN COALESCE(l.processor_net_weight,l.net_weight) ELSE 0 END) issued,SUM(CASE WHEN o.type IN ('RAW_RETURN','SEMI_RETURN','PROCESS_RAW_RETURN','RAW_PROCESS_IN','SEMI_IN','FINISHED_IN') THEN COALESCE(l.processor_net_weight,l.net_weight) ELSE 0 END) returned,SUM(CASE WHEN o.type IN ('RAW_PROCESS_IN','SEMI_IN','FINISHED_IN') THEN l.quantity ELSE 0 END) output_quantity FROM metal_warehouse_order o JOIN metal_warehouse_order_line l ON l.order_id=o.order_id WHERE o.status='POSTED' GROUP BY o.batch_id) x ON x.batch_id=b.batch_id WHERE b.work_order_id=? AND b.status='SETTLED'", work)) {
             if (r.get("report_id") == null || Boolean.TRUE.equals(r.get("voided")) || dec(r.get("issued")).signum() <= 0 || dec(r.get("issued")).compareTo(dec(r.get("returned"))) < 0 || dec(r.get("report_issued")).compareTo(dec(r.get("issued"))) != 0 || dec(r.get("report_returned")).compareTo(dec(r.get("returned"))) != 0 || dec(r.get("report_loss")).compareTo(dec(r.get("issued")).subtract(dec(r.get("returned")))) != 0 || num(r.get("completed_quantity")) != num(r.get("output_quantity")) || num(r.get("report_quantity")) != num(r.get("completed_quantity")))
                 throw fail("历史报工、重量或完成件数异常，请人工核对后关闭");
         }
@@ -437,7 +474,10 @@ public class SemiFlowService {
                 checkCapacity(num(item.get("item_id")));
             verifyHistory(id);
             boolean unfinished = false;
-            for (var item : (List<Map<String, Object>>) overview(id).get("items"))
+            if(ProcessingPolicy.v2(w)&&"RAW_PROCESSING".equals(w.get("task_type"))){
+                WarehouseReservations.work(jdbc,id);
+                unfinished=count("SELECT COUNT(*) FROM metal_work_order_step s JOIN metal_work_order_item i ON i.item_id=s.item_id WHERE i.work_order_id=? AND (s.weight_stage_closed=FALSE OR NOT EXISTS(SELECT 1 FROM metal_process_batch b WHERE b.item_id=s.item_id AND b.process_id=s.process_id AND b.status='SETTLED'))",id)>0;
+            }else for (var item : (List<Map<String, Object>>) overview(id).get("items"))
                 unfinished |= num(item.get("cancelled_quantity")) > 0;
             if (!unfinished) throw fail("工单已足额完成，应按正常完成处理");
             if (count("SELECT COUNT(*) FROM metal_inventory i JOIN metal_process_batch b ON b.batch_id=i.origin_batch_id WHERE b.work_order_id=? AND (i.net_weight<0 OR i.quantity<0 OR i.ownership_status<>'NORMAL')", id) > 0)
@@ -462,11 +502,12 @@ public class SemiFlowService {
         String fp = hash(reference == null ? Arrays.asList(stockId, request, v, quantity, weight, reason) : Arrays.asList(stockId, request, v, quantity, weight, reason, reference));
         Long old = replay("metal_semi_release", "release_id", request, fp);
         if (old != null) return old;
+        weight=BusinessDecimal.positive(weight,"释放净重");
         stock = one("SELECT * FROM metal_inventory WHERE inventory_id=? AND del_flag='0' FOR UPDATE", stockId);
         version(stock, v);
         var source = sourceBatch(stock);
         if (SemiSourcePolicyService.hasSkipped(source)) throw fail("来源含跳步轨迹，不符合跨工单完整路线，不能释放");
-        if (!"SEMI".equals(stock.get("category")) || !"SETTLED".equals(source.get("status")) || !Set.of("COMPLETED", "CLOSED_PARTIAL").contains(text(source.get("work_status"))) || !SemiFlowRules.sameCustomer(text(stock.get("organization")), text(source.get("customer"))))
+        if (!"SEMI".equals(stock.get("category")) || !"SETTLED".equals(source.get("status")) || !Set.of("COMPLETED", "CLOSED_PARTIAL").contains(text(source.get("work_status"))) || !MaterialOwnership.sameCustomer(stock,source,source))
             throw fail("仅已关闭工单的同客户半成品可释放");
         if (!"NORMAL".equals(stock.get("ownership_status"))) throw fail("半成品来源待核对，不能释放");
         WarehouseService.validateOwnership(stock);
@@ -508,6 +549,7 @@ public class SemiFlowService {
                 throw fail("重复请求内容或人员不一致");
             return;
         }
+        WarehouseReservations.work(jdbc,workId);
         version(w, version);
         if (!Set.of("WAITING_MATERIAL", "IN_PROGRESS").contains(text(w.get("status"))))
             throw fail("当前工单状态不能变更工序投产状态");
@@ -534,6 +576,7 @@ public class SemiFlowService {
         String fp = hash(Arrays.asList(id, request, v, reason));
         if (replay("metal_semi_flow_event", "event_id", request, fp) != null) return;
         version(r, v);
+        WarehouseReservations.releaseReference(jdbc,id);
         var a = availableRelease(id);
         if (!"ACTIVE".equals(r.get("status")) || num(a.get("available_quantity")) != num(r.get("quantity")) || dec(a.get("available_weight")).compareTo(dec(r.get("net_weight"))) != 0)
             throw fail("释放记录已被使用，请先处理下游单据");

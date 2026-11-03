@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.validation.BeanPropertyBindingResult;
 import static org.junit.jupiter.api.Assertions.*;
 class InputValidationTest {
+ @Test void quotationWeightsRejectScientificNumericTokensBeforeStringBinding()throws Exception {for(String key:new String[]{"powderWeight","nonPowderWeight","lossWeight"})for(String token:new String[]{"1e2","1e0","1E-2","-0.004","1.1234567"}){var errors=InputPayloadValidation.check(InputPayloadValidation.parse("{\"items\":[{\""+key+"\":"+token+"}]}"),com.ruoyi.metal.catalog.QuotationSaveRequest.class);assertEquals("items[0]."+key,errors.get(0).get("field"));}assertTrue(InputPayloadValidation.check(InputPayloadValidation.parse("{\"items\":[{\"powderWeight\":10.123456,\"lossWeight\":0}]}"),com.ruoyi.metal.catalog.QuotationSaveRequest.class).isEmpty());}
 
  @Test void rejectsFractionalPieceBeforeJacksonCanTruncate()throws Exception {assertFalse(InputPayloadValidation.check(InputPayloadValidation.parse("{\"items\":[{\"quantity\":1.5}]}"),WorkOrderRequest.class).isEmpty());}
  @Test void rejectsExponentsInNumbersAndStrings()throws Exception {for(String n:new String[]{"1e2","\"1e2\""})assertFalse(InputPayloadValidation.check(InputPayloadValidation.parse("{\"lines\":[{\"netWeight\":"+n+"}]}"),WarehouseRequests.Order.class).isEmpty());}

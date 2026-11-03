@@ -8,13 +8,13 @@
   <div v-if="failed" role="alert">工序消耗加载失败 <el-button link type="primary" @click="load">重试</el-button></div>
   <el-alert v-for="warning in warnings" :key="warning" :title="warning" type="warning" :closable="false"/>
   <el-table ref="table" v-loading="loading" :data="rows" row-key="processId" border class="consumption-steps" :empty-text="failed?'加载失败，请重试':loading?' ':batchScope==='SETTLED'?'当前工序暂无已结算批次':'暂无工序快照'" @expand-change="expand">
-   <el-table-column v-if="canDrill" type="expand" width="45"><template #default="{row}"><ConsumptionDocuments v-if="expanded.includes(row.processId)" :key="generation+':'+row.processId" level="batches" :context="{workOrderId,itemId,processId:row.processId}" :title="productLabel+' / 第'+row.sequenceNo+'道·'+row.processName" :include-voided="includeVoided" :batch-scope="batchScope" :hide-report-action="batchScope==='SETTLED'" @report="(batchId:string)=>emit('report',row.processId,row.processName,batchId)"/></template></el-table-column>
+   <el-table-column v-if="canDrill" type="expand" width="45"><template #default="{row}"><ConsumptionDocuments :raw="raw||row.outputStage==='RAW'" v-if="expanded.includes(row.processId)" :key="generation+':'+row.processId" level="batches" :context="{workOrderId,itemId,processId:row.processId}" :title="productLabel+' / 第'+row.sequenceNo+'道·'+row.processName" :include-voided="includeVoided" :batch-scope="batchScope" :hide-report-action="batchScope==='SETTLED'" @report="(batchId:string)=>emit('report',row.processId,row.processName,batchId)"/></template></el-table-column>
    <el-table-column prop="sequenceNo" label="序号" width="62"/>
    <el-table-column prop="processName" label="工序" min-width="130"/>
-   <el-table-column v-for="c in columns" :key="c.key" :prop="c.key" :label="c.label" :min-width="135" align="right"><template #default="{row}">{{row[c.key]??'—'}}</template></el-table-column>
-   <el-table-column label="损耗(g)" min-width="190" align="right"><template #default="{row}"><div>已结算：{{row.settledLossWeight??'—'}}</div><div v-if="batchScope!=='SETTLED'&&row.openBatchCount">暂算差额：{{row.provisionalDifferenceWeight??'—'}}</div></template></el-table-column>
+   <el-table-column v-for="c in columns" :key="c.key" :prop="c.key" :label="c.label" :min-width="135" align="right"><template #default="{row}">{{businessValue(row[c.key],c.key)}}</template></el-table-column>
+   <el-table-column label="损耗(g)" min-width="190" align="right"><template #default="{row}"><div>已结算：{{decimalText(row.settledLossWeight??'—')}}</div><div v-if="batchScope!=='SETTLED'&&row.openBatchCount">暂算差额：{{decimalText(row.provisionalDifferenceWeight??'—')}}</div></template></el-table-column>
    <el-table-column label="实际损耗率（%）" min-width="150" align="right"><template #default="{row}">{{lossRateText(row.lossRatePercent)}}<p v-if="row.lossRateWarning">{{row.lossRateWarning}}</p></template></el-table-column>
-   <el-table-column prop="settledCompletedQuantity" label="结算完成(件)" min-width="115" align="right"><template #default="{row}">{{row.settledCompletedQuantity??'—'}}</template></el-table-column>
+   <el-table-column v-if="!raw&&!rows.every(r=>r.outputStage==='RAW')" prop="settledCompletedQuantity" label="结算完成(件)" min-width="115" align="right"><template #default="{row}">{{row.settledCompletedQuantity??'—'}}</template></el-table-column>
    <el-table-column prop="batchCount" label="有效批次" width="90" align="right"/>
    <el-table-column label="状态" min-width="155"><template #default="{row}"><el-tag :type="row.state==='REVIEW'?'warning':row.state==='SETTLED'?'success':'info'">{{consumptionStates[row.state]||row.state}}</el-tag><el-tag v-if="row.reportStatus" :type="row.reportStatus==='ABNORMAL'?'danger':'success'">{{row.reportStatus==='ABNORMAL'?'已结算批次含异常':'已结算批次正常'}}</el-tag><p v-for="w in row.warnings" :key="w">{{w}}</p></template></el-table-column>
   </el-table>
@@ -22,6 +22,8 @@
  </div>
 </template>
 <script setup lang="ts">
+import {decimalText,decimalColumn,businessValue} from '@/utils/business-decimal'
+
 import {lossRateText} from '@/utils/report-metrics'
 import { useActionPermission } from '@/composables/useActionPermission'
 const actionPermission = useActionPermission()
@@ -31,10 +33,10 @@ import useUserStore from '@/store/modules/user'
 import {processConsumption,consumptionStates,type Row} from '@/api/metal/warehouse'
 import {displayDateTime} from '@/utils/display-date-time'
 import ConsumptionDocuments from './ConsumptionDocuments.vue'
-const props=withDefaults(defineProps<{workOrderId:string;itemId:string;productLabel:string;processId?:string;batchScope?:'ALL'|'SETTLED'}>(),{batchScope:'ALL'}),emit=defineEmits<{report:[processId:string,name:string,batchId?:string]}>(),user=useUserStore()
+const props=withDefaults(defineProps<{raw?:boolean;workOrderId:string;itemId:string;productLabel:string;processId?:string;batchScope?:'ALL'|'SETTLED'}>(),{batchScope:'ALL'}),emit=defineEmits<{report:[processId:string,name:string,batchId?:string]}>(),user=useUserStore()
 const canDrill=computed(()=>actionPermission.hasAny(['metal:work-order:query','metal:work-report:query']))
 const processMeta=ref<Row>();const table=ref<any>();const rows=ref<Row[]>([]),warnings=ref<string[]>([]),readAt=ref(''),loading=ref(false),failed=ref(false),includeVoided=ref(false),expanded=ref<string[]>([]),generation=ref(0)
-const columns=[{key:'rawIssuedWeight',label:'原料领用(g)'},{key:'semiIssuedWeight',label:'半成品领用(g)'},{key:'issuedWeight',label:'领料合计(g)'},{key:'rawReturnedWeight',label:'原料还库(g)'},{key:'semiReturnedWeight',label:'半成品还库(g)'},{key:'processRawReturnedWeight',label:'加工余料还库(g)'},{key:'outputWeight',label:'产出(g)'},{key:'netInputWeight',label:'实际投入(g)'}]
+const columns=[{key:'rawIssuedWeight',label:'原料领用(g)'},{key:'semiIssuedWeight',label:'半成品领用(g)'},{key:'issuedWeight',label:'领料合计(g)'},{key:'rawReturnedWeight',label:'原料还库(g)'},{key:'semiReturnedWeight',label:'半成品还库(g)'},{key:'processRawReturnedWeight',label:'加工余料还库(g)'},{key:'outputWeight',label:'加工称产出(g)'},{key:'handoverDifference',label:'交接差额(g)'},{key:'netInputWeight',label:'实际投入(g)'}]
 let ticket=0,disposed=false
 const signature=()=>JSON.stringify([props.workOrderId,props.itemId,props.processId,props.batchScope])
 const canRead=()=>actionPermission.hasAny(['metal:work-order:query','metal:work-report:list'])&&(props.batchScope!=='SETTLED'||actionPermission.has('metal:work-report:query'))&&!!user.token&&user.token===getToken()

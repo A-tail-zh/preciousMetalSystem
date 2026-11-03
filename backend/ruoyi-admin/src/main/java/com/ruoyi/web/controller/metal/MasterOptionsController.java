@@ -15,7 +15,7 @@ import com.ruoyi.metal.security.FactoryScope;
  /**
   * 获取当前用户可访问的工厂选项。
   */
- @GetMapping("/factories") @PreAuthorize("@ss.hasAnyPermi('metal:production-line:add,metal:production-line:edit,system:user:add,system:user:edit,system:role:add,system:role:edit')")
+ @GetMapping("/factories") @PreAuthorize("@ss.hasAnyPermi('metal:customer:add,metal:customer:edit,metal:production-line:add,metal:production-line:edit,system:user:add,system:user:edit,system:role:add,system:role:edit')")
  public AjaxResult factories(){Long id=scope.currentFactory();return success(id==null?jdbc.queryForList("SELECT CAST(factory_id AS CHAR) id,factory_name name FROM metal_factory WHERE del_flag='0' ORDER BY factory_id"):jdbc.queryForList("SELECT CAST(factory_id AS CHAR) id,factory_name name FROM metal_factory WHERE del_flag='0' AND factory_id=?",id));}
  /**
   * 获取可选择的产品资料。
@@ -24,7 +24,7 @@ import com.ruoyi.metal.security.FactoryScope;
  /**
   * 获取可选择的工序资料或产品工序计划。
   */
- @GetMapping("/processes") @PreAuthorize("@ss.hasAnyPermi('metal:product:add,metal:product:edit')") public AjaxResult processes(){return success(jdbc.queryForList("SELECT CAST(process_id AS CHAR) id,process_name name FROM metal_process WHERE del_flag='0' ORDER BY process_id"));}
+ @GetMapping("/processes") @PreAuthorize("@ss.hasAnyPermi('metal:product:add,metal:product:edit')") public AjaxResult processes(){return success(jdbc.queryForList("SELECT CAST(p.process_id AS CHAR) id,p.process_name name,CAST(p.process_type AS CHAR) processType,t.type_name processTypeName FROM metal_process p JOIN metal_process_type t ON t.type_id=p.process_type WHERE p.del_flag='0' ORDER BY p.process_id"));}
  /**
   * 获取指定工厂的有效角色选项。
   */

@@ -66,6 +66,19 @@ router.beforeEach(async (to, from) => {
         return { path: '/' }
       }
     }
+    if (to.matched.some(route => route.path === '/:pathMatch(.*)*')) {
+      const refreshingToken=getToken()
+      try {
+        // 已登录标签页可能还没有加载刚新增的菜单路由。
+        const accessRoutes=await usePermissionStore().generateRoutes(refreshingToken)
+        if(getToken()!==refreshingToken)return false
+        accessRoutes.forEach((route:any)=>{if(!isHttp(route.path))router.addRoute(route)})
+        if(router.resolve(to.fullPath).matched.some(route=>route.path!=='/:pathMatch(.*)*'))
+          return {path:to.path,query:to.query,hash:to.hash,replace:true}
+      } catch {
+        if(getToken()!==refreshingToken)return false
+      }
+    }
     return true
   } else {
     // 没有token

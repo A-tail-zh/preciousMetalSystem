@@ -1,6 +1,6 @@
 package com.ruoyi.metal.service;
 
-import java.util.Set;
+import java.util.Objects;
 
 import org.springframework.stereotype.Service;
 import com.ruoyi.metal.catalog.*;
@@ -33,7 +33,19 @@ public class MaterialService extends MasterService<MaterialRecord> {
      */
     @Override
     protected void prepare(MaterialRecord row, MaterialRecord old) {
-        if (!Set.of("旧铱坩埚", "旧铱杆", "铱块", "铱粉").contains(row.getMaterialType()))
-            throw new ServiceException("物料类型无效");
+        String type = MaterialTypes.require(row.getMaterialType());
+        if (MaterialTypes.LEGACY.containsKey(row.getMaterialType())) {
+            if (row.getMetalTypeId() != null && !Long.valueOf(1).equals(row.getMetalTypeId()))
+                throw new ServiceException("旧物料类型仅适用于铱，请选择粉料、块料或旧料");
+            row.setMetalTypeId(1L);
+        }
+        row.setMaterialType(type);
+        if (row.getMetalTypeId() == null || row.getMetalTypeId() <= 0
+                || jdbc.queryForList("SELECT metal_type_id FROM metal_type WHERE metal_type_id=?", row.getMetalTypeId()).isEmpty())
+            throw new ServiceException("请选择有效金属类型");
+        if (old != null && (!Objects.equals(old.getMaterialType(), type)
+                || !Objects.equals(old.getMetalTypeId(), row.getMetalTypeId()))
+                && WarehouseReferences.materialReferenced(jdbc, old.getId()))
+            throw new ServiceException("物料已有库存、仓储或原料工单引用，不能修改物料类型或金属类型，请另建物料");
     }
 }

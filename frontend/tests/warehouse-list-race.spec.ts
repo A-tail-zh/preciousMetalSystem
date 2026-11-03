@@ -2,11 +2,12 @@ import {test,expect} from '@playwright/test'
 import {readFileSync} from 'node:fs'
 function setup(){
  const text=readFileSync(new URL('../src/views/metal/warehouse-common/WarehousePage.vue',import.meta.url),'utf8')
- const source=text.split(/\r?\n/).find(l=>l.startsWith('async function load()'))!
+ const source=text.slice(text.indexOf('function load(){return readList()}'),text.indexOf('\nasync function add()'))
+ if(!source.startsWith('function load(){'))throw Error('warehouse list fixture boundary missing')
  const pending:Array<{resolve:(r:any)=>void,reject:(e:Error)=>void}>=[]
  const warehouseList=()=>new Promise((resolve,reject)=>pending.push({resolve,reject}))
  const tab={value:'RAW'},loading={value:false},failed={value:false},rows={value:[]as any[]},total={value:0},selected={value:[]}
- const load=new Function('warehouseList','kind','query','tabs','tab','loading','failed','rows','total','selected','appliedFilters','let loadEpoch=0;const saving={value:false},adjustVisible={value:false};function invalidateAdjustment(){}'+source+';return load')(warehouseList,'inventory',{pageNum:1},[1],tab,loading,failed,rows,total,selected,{value:{}})
+ const load=new Function('warehouseList','kind','query','tabs','tab','loading','failed','rows','total','selected','appliedFilters','let loadEpoch=0,rowsOwner="";const saving={value:false},adjustVisible={value:false},adjustLoading={value:false},warehouseEditLoading={value:false},listBlocked={value:false},reading={value:false},listTable={value:undefined},route={fullPath:"/metal/inventory"},canReadList=()=>true,listIdentity=()=> "fixture",nextTick=async()=>{};function invalidateAdjustment(){}'+source+';return load')(warehouseList,'inventory',{pageNum:1},[1],tab,loading,failed,rows,total,selected,{value:{}})
  return{load,pending,tab,loading,failed,rows,total}
 }
 test('older tab response cannot overwrite newest rows and total',async()=>{

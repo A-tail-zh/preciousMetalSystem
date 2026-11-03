@@ -22,7 +22,7 @@ class ZeroRawReturnTest {
   jdbc=mock(JdbcTemplate.class);scope=mock(FactoryScope.class);warehouse=new WarehouseService(jdbc,scope);
   stock=new HashMap<>(Map.of("inventory_id",9L,"factory_id",1L,"warehouse_id",2L,"category","RAW","net_weight",new BigDecimal("100"),"quantity",0L,"code","RAW","name","原料","specification","粉料","del_flag","0"));
   origin=new HashMap<>();origin.putAll(Map.of("source_type","PRODUCTION_OUT","source_status","POSTED","source_factory",1L,"source_batch",8L,"category","RAW","reference_id",3L,"inventory_id",9L,"batch_no","","net_weight",new BigDecimal("300"),"quantity",0L));origin.putAll(Map.of("type","PRODUCTION_OUT","status","POSTED","factory_id",1L,"batch_id",8L,"code","RAW","name","原料","organization","供应企业"));
-  when(jdbc.queryForList(anyString(),any(Object[].class))).thenAnswer(a->{String sql=a.getArgument(0);
+  when(jdbc.queryForList(anyString(),any(Object[].class))).thenAnswer(a->{String sql=a.getArgument(0);if(sql.contains("FROM metal_warehouse_flow_line"))return List.of();
    if(sql.contains("FROM metal_warehouse WHERE"))return List.of(Map.of("factory_id",1L,"status","0"));
    if(sql.contains("FROM metal_work_order WHERE"))return List.of(Map.of("factory_id",1L,"status","IN_PROGRESS"));
    if(sql.contains("FROM metal_work_order_step"))return List.of(Map.of("sequence_no",1L,"product_id",6L,"work_order_id",7L));
@@ -45,7 +45,7 @@ class ZeroRawReturnTest {
  }
  WarehouseImportService.Input input(String type,Line line){return new WarehouseImportService.Input(1L,2L,type,7L,4L,5L,List.of(line),Map.of());}
  @Test void zeroReturnPostsAndLeavesBalanceUnchanged(){assertDoesNotThrow(()->postLine("RAW_RETURN",line("0.000000")));assertEquals(0,new BigDecimal("100").compareTo((BigDecimal)stock.get("net_weight")));assertEquals(0L,stock.get("quantity"));verify(jdbc).update(startsWith("UPDATE metal_inventory SET net_weight"),any(Object[].class));}
- @Test void zeroReturnImportKeepsSourceAndQuantity(){var rows=new WarehouseImportService(jdbc,scope).preview(input("RAW_RETURN",line("0.000000")));assertEquals("0.000000",rows.get(0).get("netWeight"));assertEquals("10",rows.get(0).get("sourceLineId"));assertEquals(0L,rows.get(0).get("quantity"));verify(jdbc,never()).update(any(PreparedStatementCreator.class),any(KeyHolder.class));}
+ @Test void zeroReturnImportKeepsSourceAndQuantity(){var rows=new WarehouseImportService(jdbc,scope).preview(input("RAW_RETURN",line("0.000000")));assertEquals("0.00",rows.get(0).get("netWeight"));assertEquals("10",rows.get(0).get("sourceLineId"));assertEquals(0L,rows.get(0).get("quantity"));verify(jdbc,never()).update(any(PreparedStatementCreator.class),any(KeyHolder.class));}
  @Test void negativeRawReturnRejectedBeforeWrites(){var e=assertThrows(InvocationTargetException.class,()->postLine("RAW_RETURN",line("-0.000001")));assertInstanceOf(ServiceException.class,e.getCause());assertThrows(ServiceException.class,()->new WarehouseImportService(jdbc,scope).preview(input("RAW_RETURN",line("-0.000001"))));verify(jdbc,never()).update(any(PreparedStatementCreator.class),any(KeyHolder.class));}
  @Test void otherTypesStillRejectZeroBeforeWrites(){for(String type:List.of("RAW_IN","PRODUCTION_OUT","SEMI_IN","FINISHED_IN","SEMI_OUT","PRODUCT_RETURN")){var e=assertThrows(InvocationTargetException.class,()->postLine(type,line("0")));assertInstanceOf(ServiceException.class,e.getCause());}verify(jdbc,never()).update(any(PreparedStatementCreator.class),any(KeyHolder.class));}
 }

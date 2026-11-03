@@ -31,7 +31,7 @@ public class WorkOrderService {
     @org.springframework.beans.factory.annotation.Value("${metal.auto-semi-release-enabled:true}")
     private boolean autoSemiReleaseEnabled=true;
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-    private static final String HEADER = "SELECT CAST(work_order_id AS CHAR) id,order_no orderNo,customer,CAST(factory_id AS CHAR) factoryId,CAST(production_line_id AS CHAR) productionLineId,CAST(owner_id AS CHAR) ownerId,factory_name factoryName,line_name lineName,owner_name ownerName,DATE_FORMAT(order_date,'%Y-%m-%d') orderDate,status,reject_reason rejectReason,create_by createBy,creator_name creatorName,DATE_FORMAT(create_time,'%Y-%m-%d %H:%i:%s') createTime,version,(EXISTS(SELECT 1 FROM metal_process_batch b WHERE b.work_order_id=metal_work_order.work_order_id) OR EXISTS(SELECT 1 FROM metal_warehouse_order o WHERE o.work_order_id=metal_work_order.work_order_id) OR EXISTS(SELECT 1 FROM metal_work_report r JOIN metal_work_order_item i ON i.item_id=r.item_id WHERE i.work_order_id=metal_work_order.work_order_id)) hasBusinessReferences FROM metal_work_order WHERE work_order_id=? AND del_flag='0'";
+    private static final String HEADER = "SELECT CAST(work_order_id AS CHAR) id,order_no orderNo,customer,CAST(customer_id AS CHAR) customerId,customer_version customerVersion,CAST(customer_snapshot AS CHAR) customerSnapshot,processing_type processingType,task_type taskType,processing_policy_version processingPolicyVersion,CAST(factory_id AS CHAR) factoryId,CAST(production_line_id AS CHAR) productionLineId,CAST(owner_id AS CHAR) ownerId,factory_name factoryName,line_name lineName,owner_name ownerName,DATE_FORMAT(order_date,'%Y-%m-%d') orderDate,status,reject_reason rejectReason,create_by createBy,creator_name creatorName,DATE_FORMAT(create_time,'%Y-%m-%d %H:%i:%s') createTime,version,(EXISTS(SELECT 1 FROM metal_process_batch b WHERE b.work_order_id=metal_work_order.work_order_id) OR EXISTS(SELECT 1 FROM metal_warehouse_order o WHERE o.work_order_id=metal_work_order.work_order_id) OR EXISTS(SELECT 1 FROM metal_work_report r JOIN metal_work_order_item i ON i.item_id=r.item_id WHERE i.work_order_id=metal_work_order.work_order_id)) hasBusinessReferences FROM metal_work_order WHERE work_order_id=? AND del_flag='0'";
 
     public WorkOrderService(JdbcTemplate jdbc, WorkOrderMapper mapper, FactoryScope scope, ProductService products) {
         this.jdbc = jdbc;
@@ -79,11 +79,15 @@ public class WorkOrderService {
     /**
      * 查询指定记录详情；业务层执行相应的访问权限检查。
      */
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public Map<String, Object> detail(Long id) {
         var order = header(id, false);
         access(order);
         capabilities(order);
-        order.put("items", items(id));
+        if(order.get("customerSnapshot")!=null)order.put("customerSnapshot",JSON.parseObject(text(order,"customerSnapshot")));
+        var detailItems=items(id);
+        executionTimes(id,detailItems);
+        order.put("items", detailItems);
         order.put("reviews", jdbc.queryForList("SELECT CAST(review_id AS CHAR) id,action,from_status fromStatus,to_status toStatus,reason,CAST(actor_id AS CHAR) actorId,actor_name actorName,DATE_FORMAT(create_time,'%Y-%m-%d %H:%i:%s') createTime FROM metal_work_order_review WHERE work_order_id=? ORDER BY review_id", id));
         order.put("reports", List.of());
         order.put("reportingAvailable", false);
@@ -91,10 +95,10 @@ public class WorkOrderService {
     }
 
     private List<Map<String, Object>> items(Long orderId) {
-        var result = jdbc.queryForList("SELECT CAST(item_id AS CHAR) id,CAST(product_id AS CHAR) productId,sequence_no sequenceNo,quantity,CAST(product_snapshot AS CHAR) snapshot FROM metal_work_order_item WHERE work_order_id=? ORDER BY sequence_no", orderId);
+        var result = jdbc.queryForList("SELECT CAST(item_id AS CHAR) id,CAST(product_id AS CHAR) productId,CAST(material_id AS CHAR) materialId,CAST(planned_input_weight AS CHAR) plannedInputWeight,sequence_no sequenceNo,quantity,CAST(COALESCE(material_snapshot,product_snapshot) AS CHAR) snapshot FROM metal_work_order_item WHERE work_order_id=? ORDER BY sequence_no", orderId);
         for (var item : result) {
             item.put("snapshot", JSON.parseObject(text(item, "snapshot")));
-            item.put("plans", jdbc.queryForList("SELECT CAST(process_id AS CHAR) processId,sequence_no sequenceNo,measurement_mode measurementMode,weight_stage_closed weightStageClosed,process_name processName,CAST(theoretical_loss AS CHAR) loss,DATE_FORMAT(start_time,'%Y-%m-%d %H:%i:%s') startTime,DATE_FORMAT(end_time,'%Y-%m-%d %H:%i:%s') endTime,DATE_FORMAT(actual_start_time,'%Y-%m-%d %H:%i:%s') actualStartTime,DATE_FORMAT(actual_end_time,'%Y-%m-%d %H:%i:%s') actualEndTime FROM metal_work_order_step WHERE item_id=? ORDER BY sequence_no", id(item.get("id"))));
+            item.put("plans", jdbc.queryForList("SELECT CAST(process_id AS CHAR) processId,sequence_no sequenceNo,loss_unit lossUnit,measurement_mode measurementMode,process_role processRole,output_stage outputStage,weight_stage_closed weightStageClosed,process_name processName,CAST(theoretical_loss AS CHAR) loss,DATE_FORMAT(start_time,'%Y-%m-%d %H:%i:%s') startTime,DATE_FORMAT(end_time,'%Y-%m-%d %H:%i:%s') endTime,DATE_FORMAT(actual_start_time,'%Y-%m-%d %H:%i:%s') actualStartTime,DATE_FORMAT(actual_end_time,'%Y-%m-%d %H:%i:%s') actualEndTime FROM metal_work_order_step WHERE item_id=? ORDER BY sequence_no", id(item.get("id"))));
         }
         return result;
     }
@@ -127,9 +131,15 @@ public class WorkOrderService {
     }
 
     private void lockDependencies(Long orderId, List<Long> additional, Long ownerId) {
-        Set<Long> productIds = new TreeSet<>(additional);
+        // Match material edits: lock materials before the work header/reference rows.
+        Set<Long> materialIds = new TreeSet<>();
+        for (var row : jdbc.queryForList("SELECT material_id FROM metal_work_order_item WHERE work_order_id=?", orderId))
+            if (row.get("material_id") != null) materialIds.add(id(row.get("material_id")));
+        for (Long key : materialIds)
+            jdbc.queryForList("SELECT material_id FROM metal_material WHERE material_id=? FOR UPDATE", key);
+        Set<Long> productIds = new TreeSet<>(additional.stream().filter(Objects::nonNull).toList());
         for (var row : jdbc.queryForList("SELECT product_id FROM metal_work_order_item WHERE work_order_id=?", orderId))
-            productIds.add(id(row.get("product_id")));
+            if(row.get("product_id")!=null)productIds.add(id(row.get("product_id")));
         for (Long key : productIds)
             jdbc.queryForList("SELECT product_id FROM metal_product WHERE product_id=? FOR UPDATE", key);
         Set<Long> processIds = new TreeSet<>();
@@ -199,7 +209,7 @@ public class WorkOrderService {
 
     private String hash(WorkOrderRequest request) {
         try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(request.toString().getBytes(StandardCharsets.UTF_8)));
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(request.fingerprintInput().getBytes(StandardCharsets.UTF_8)));
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
@@ -207,15 +217,24 @@ public class WorkOrderService {
 
     private Map<String, Object> snapshot(ProductRecord product) {
         Map<String, Object> value = new LinkedHashMap<>();
+        value.put("measurementPolicyVersion", MeasurementPolicy.VERSION);
         value.put("code", product.getCode());
         value.put("name", product.getName());
         value.put("category", product.getCategory());
+        value.put("calculationVersion",ProductService.version(product));
+        value.put("metalTypeId",product.getMetalTypeId()==null?"1":product.getMetalTypeId().toString());
+        value.put("metalTypeName",product.getMetalTypeName()==null?"铱":product.getMetalTypeName());
+        value.put("productType",product.getProductType()==null?ProductTypes.legacy(product.getCategory()):product.getProductType());
         value.put("specification", product.getSpecification());
-        value.put("dimensions", product.getDimensions());
+        var dimensionSnapshot=new TreeMap<String,String>();
+        if(ProductService.version(product)==2)dimensionSnapshot.putAll(ProductGeometry.normalize(product.getProductType(),product.getDimensions()));
+        else product.getDimensions().forEach((key,v)->dimensionSnapshot.put(key,BusinessDecimal.positive(new BigDecimal(v),"尺寸").toPlainString()));
+        value.put("dimensions", dimensionSnapshot);
         value.put("dimensionUnit", "cm");
-        value.put("volume", product.getVolume() == null ? null : product.getVolume().toPlainString());
-        value.put("purity", product.getPurity() == null ? null : product.getPurity().toPlainString());
-        value.put("weight", product.getWeight() == null ? null : product.getWeight().toPlainString());
+        if(ProductService.version(product)==2&&product.getDimensions().containsKey("angle"))value.put("dimensionUnits",Map.of("angle","°"));
+        value.put("volume", product.getVolume() == null ? null : BusinessDecimal.display(product.getVolume()));
+        value.put("purity", product.getPurity() == null ? null : BusinessDecimal.display(product.getPurity()));
+        value.put("weight", product.getWeight() == null ? null : BusinessDecimal.display(product.getWeight()));
         return value;
     }
 
@@ -224,21 +243,58 @@ public class WorkOrderService {
     }
 
     @SuppressWarnings("unchecked")
-    private List<Prepared> prepare(WorkOrderRequest request, List<Map<String, Object>> previous) {
+    private List<Prepared> prepare(WorkOrderRequest request, List<Map<String, Object>> previous,int policy,String taskType) {
         line(request.productionLineId(), request.factoryId(), true);
         if (request.orderDate().getYear() < 1000 || request.orderDate().getYear() > 9999)
             throw invalid("开单日期超出支持范围");
         Map<Long, Map<String, Object>> old = new HashMap<>();
         previous.forEach(item -> old.put(id(item.get("id")), item));
         Set<Long> used = new HashSet<>();
-        for (Long productId : request.items().stream().map(WorkOrderRequest.Item::productId).distinct().sorted().toList())
+        boolean raw="RAW_PROCESSING".equals(taskType);
+        request.items().forEach(item->validateItem(item,raw));
+        if (!previous.isEmpty()) validateRetainedItems(request.items(), previous, raw);
+        for (Long productId : request.items().stream().map(WorkOrderRequest.Item::productId).filter(Objects::nonNull).distinct().sorted().toList())
             if (jdbc.queryForList("SELECT product_id FROM metal_product WHERE product_id=? AND del_flag='0' FOR UPDATE", productId).isEmpty())
                 throw invalid("产品不存在或已删除");
+        for(Long materialId:request.items().stream().map(WorkOrderRequest.Item::materialId).filter(Objects::nonNull).distinct().sorted().toList())
+            if(jdbc.queryForList("SELECT material_id FROM metal_material WHERE material_id=? AND del_flag='0' FOR UPDATE",materialId).isEmpty())throw invalid("物料不存在或已删除");
         List<Prepared> result = new ArrayList<>();
         Set<Long> processIds = new TreeSet<>();
+        if(raw)for(var input:request.items())for(var plan:input.plans())processIds.add(plan.processId());
+        else{
+            for(var productId:request.items().stream().map(WorkOrderRequest.Item::productId).distinct().toList())
+                for(var row:jdbc.queryForList("SELECT process_id FROM metal_product_process WHERE product_id=?",productId))processIds.add(id(row.get("process_id")));
+            for(var item:previous)for(var step:(List<Map<String,Object>>)item.get("plans"))processIds.add(id(step.get("processId")));
+        }
+        for(Long processId:processIds)
+            if(jdbc.queryForList("SELECT process_id FROM metal_process WHERE process_id=? AND del_flag='0' FOR UPDATE",processId).isEmpty())throw invalid("工序不存在或已删除");
         for (var input : request.items()) {
             if (input.id() != null && (!old.containsKey(input.id()) || !used.add(input.id())))
                 throw new ServiceException("产品明细不属于本工单或重复", 403);
+            if(raw){
+                var retained=input.id()==null?null:old.get(input.id());
+                var material=jdbc.queryForList("SELECT m.material_code code,CONCAT(t.name,m.material_type) name,m.material_type materialType,CAST(m.metal_type_id AS CHAR) metalTypeId,t.name metalTypeName,m.specification FROM metal_material m JOIN metal_type t ON t.metal_type_id=m.metal_type_id WHERE m.material_id=? AND m.del_flag='0'",input.materialId());
+                if(material.isEmpty())throw invalid("物料不存在或金属无效，请重新选择");
+                boolean sameMaterial=retained!=null&&Objects.equals(text(retained,"materialId"),input.materialId().toString());
+                Map<String,Object> materialSnapshot=sameMaterial?(Map<String,Object>)retained.get("snapshot"):material.get(0);
+                if (!sameMaterial) {materialSnapshot=new LinkedHashMap<>(materialSnapshot);materialSnapshot.put("measurementPolicyVersion",MeasurementPolicy.VERSION);}
+                var previousSteps=sameMaterial?(List<Map<String,Object>>)retained.get("plans"):List.<Map<String,Object>>of();
+                boolean sameRoute=previousSteps.stream().map(s->id(s.get("processId"))).toList().equals(input.plans().stream().map(WorkOrderRequest.Plan::processId).toList());
+                var steps=new ArrayList<Map<String,Object>>();
+                for(int i=0;i<input.plans().size();i++){
+                    var plan=input.plans().get(i);
+                    var step=new LinkedHashMap<String,Object>(sameRoute?previousSteps.get(i):process(plan.processId()));
+                    BigDecimal loss=sameRoute?new BigDecimal(text(step,"loss")):BusinessDecimal.round(plan.theoreticalLoss());
+                    if(loss==null||loss.signum()<0||loss.compareTo(new BigDecimal("100"))>0)throw invalid("原料工序须填写0至100的理论损耗百分比");
+                    step.put("loss",loss.toPlainString());
+                    if(!sameRoute){step.put("lossUnit","PERCENT");step.put("measurementMode","WEIGHT");}
+                    steps.add(step);
+                }
+                validatePlans(input.plans(),steps.stream().map(s->id(s.get("processId"))).toList());
+                if(!sameRoute)route(steps,taskType);
+                result.add(new Prepared(materialSnapshot,steps,input));
+                continue;
+            }
             if (jdbc.queryForList("SELECT product_id FROM metal_line_product WHERE production_line_id=? AND product_id=? FOR UPDATE", request.productionLineId(), input.productId()).isEmpty())
                 throw invalid("产品必须关联到所选产线");
             var retained = input.id() == null ? null : old.get(input.id());
@@ -254,28 +310,78 @@ public class WorkOrderService {
                     Map<String, Object> s = new LinkedHashMap<>();
                     s.put("processId", step.getProcessId().toString());
                     s.put("processName", step.getProcessName());
-                    s.put("loss", step.getLoss().toPlainString());
+                    s.put("loss", BusinessDecimal.display(step.getLoss()));
                     s.put("measurementMode",step.getMeasurementMode());
+                    s.put("lossUnit",step.getLossUnit());
+                    if(!"PERCENT".equals(step.getLossUnit()))throw invalid("产品工序尚为历史g/件，请先配置理论损耗百分比");
                     steps.add(s);
                 }
             }
+            requireMetal(productSnapshot);
             if (steps.isEmpty()) throw invalid("产品尚未配置工序，请先维护产品工艺");
             validatePlans(input.plans(), steps.stream().map(s -> id(s.get("processId"))).toList());
+            if(policy>=ProcessingPolicy.VERSION&&(retained==null||!Objects.equals(text(retained,"productId"),input.productId().toString())))route(steps,taskType);
             steps.forEach(s -> processIds.add(id(s.get("processId"))));
             result.add(new Prepared(productSnapshot, steps, input));
         }
-        for (Long processId : processIds)
-            if (jdbc.queryForList("SELECT process_id FROM metal_process WHERE process_id=? AND del_flag='0' FOR UPDATE", processId).isEmpty())
-                throw invalid("工序不存在或已删除");
         owner(request.factoryId(), request.ownerId(), true);
         return result;
+    }
+
+    static void validateRetainedItems(List<WorkOrderRequest.Item> inputs, List<Map<String,Object>> previous, boolean raw) {
+        if (inputs.size()!=previous.size()) throw invalid("已保存工单的产品或物料明细不可增删，请新建工单调整工艺");
+        var saved=new HashMap<Long,Map<String,Object>>();
+        previous.forEach(item->saved.put(id(item.get("id")),item));
+        for(var input:inputs){
+            var old=saved.remove(input.id());
+            String key=raw?"materialId":"productId";
+            Long incoming=raw?input.materialId():input.productId();
+            if(old==null||!Objects.equals(id(old.get(key)),incoming))throw invalid("已保存工单的产品或物料快照不可替换，请新建工单");
+            @SuppressWarnings("unchecked") var steps=(List<Map<String,Object>>)old.get("plans");
+            if(input.plans().size()!=steps.size())throw invalid("已保存工单的工艺快照不可更改，请新建工单");
+            for(int i=0;i<steps.size();i++){
+                var plan=input.plans().get(i);var step=steps.get(i);
+                if(!Objects.equals(plan.processId(),id(step.get("processId"))))throw invalid("已保存工单的工艺顺序不可更改，请新建工单");
+                if(plan.theoreticalLoss()!=null&&plan.theoreticalLoss().compareTo(new BigDecimal(text(step,"loss")))!=0)throw invalid("已保存工单的理论损耗快照不可更改，请新建工单");
+            }
+        }
+    }
+
+    static void validateItem(WorkOrderRequest.Item input,boolean raw){
+        if(input==null)throw invalid("请填写工单明细");
+        if(raw){
+            if(input.productId()!=null||input.quantity()!=null&&input.quantity()!=0||input.materialId()==null||input.materialId()<=0)throw invalid("原料任务须选择物料，不能指定产品或件数");
+            BusinessDecimal.positive(input.plannedInputWeight(),"计划投入重量");
+        }else if(input.productId()==null||input.productId()<=0||input.quantity()==null||input.quantity()<1||input.quantity()>1000000||input.materialId()!=null||input.plannedInputWeight()!=null)throw invalid("产品任务须选择产品及有效件数");
+    }
+
+    private void requireMetal(Map<String,Object> snapshot){
+        long metal=ProcessingPolicy.metalId(snapshot);
+        if(jdbc.queryForList("SELECT metal_type_id FROM metal_type WHERE metal_type_id=?",metal).isEmpty())throw invalid("金属无效，请重新选择产品或物料");
+    }
+
+    private Map<String,Object> process(Long processId){
+        var rows=jdbc.queryForList("SELECT CAST(p.process_id AS CHAR) processId,p.process_name processName,t.type_name typeName FROM metal_process p JOIN metal_process_type t ON t.type_id=p.process_type WHERE p.process_id=? AND p.del_flag='0'",processId);
+        if(rows.isEmpty())throw invalid("工序或工序类型不存在或已删除");
+        return rows.get(0);
+    }
+
+    private void route(List<Map<String,Object>> steps,String taskType){
+        var types=steps.stream().map(step->text(process(id(step.get("processId"))),"typeName")).toList();
+        var modes=steps.stream().map(step->Objects.toString(step.get("measurementMode"),"PIECE")).toList();
+        var route=ProcessingPolicy.route(taskType,types,modes);
+        for(int i=0;i<steps.size();i++){
+            var step=steps.get(i);var selected=route.get(i);
+            step.put("processRole",selected.processRole());step.put("outputStage",selected.outputStage());step.put("measurementMode",selected.measurementMode());
+            if("RAW".equals(selected.outputStage()))step.put("lossUnit","PERCENT");
+        }
     }
 
     /**
      * 校验工序计划与产品工序配置的匹配关系。
      */
     public static void validatePlans(List<WorkOrderRequest.Plan> plans, List<Long> expected) {
-        if (plans == null || plans.size() != expected.size())
+        if (plans == null || plans.isEmpty() || plans.size() != expected.size() || new HashSet<>(expected).size()!=expected.size())
             throw invalid("工序计划时间必须完整填写，不得更改工艺顺序");
         LocalDateTime previous = null;
         for (int i = 0; i < plans.size(); i++) {
@@ -294,6 +400,77 @@ public class WorkOrderService {
         }
     }
 
+    private static void requireProcessing(String value,boolean legacy){
+        if(value==null&&legacy)return;
+        if(value==null||!Set.of("MATERIAL","DIRECT","SHORTAGE").contains(value))throw invalid("请选择加工类型");
+    }
+
+    private static String taskType(String value){
+        if(value==null)return "PRODUCTION";
+        if(!Set.of("PRODUCTION","RAW_PROCESSING").contains(value))throw invalid("请选择有效任务类型");
+        return value;
+    }
+
+    private static void rawProcessing(String task,String processing){
+        if("RAW_PROCESSING".equals(task)&&!Set.of("DIRECT","MATERIAL").contains(Objects.toString(processing,"")))throw invalid("原料任务请选择客户来料或工厂自有直接加工类型");
+    }
+
+    private Map<String,Object> customer(WorkOrderRequest request,Map<String,Object> current){
+        if("RAW_PROCESSING".equals(request.taskType()==null&&current!=null?text(current,"taskType"):request.taskType())&&"DIRECT".equals(request.processingType()==null&&current!=null?text(current,"processingType"):request.processingType())){
+            if(request.customerId()!=null||request.customerVersion()!=null)throw invalid("工厂自有原料任务不能指定客户");
+            return new LinkedHashMap<>(Map.of("name","工厂自有"));
+        }
+        if(request.customerId()==null){
+            if(current!=null&&current.get("customerId")==null&&request.factoryId().equals(id(current.get("factoryId"))))return new LinkedHashMap<>(Map.of("name",text(current,"customer")));
+            throw invalid("请选择当前工厂的客户");
+        }
+        var rows=jdbc.queryForList("SELECT customer_id,factory_id,customer_name name,company_name companyName,address,contact_name contactName,contact_phone contactPhone,department,version FROM metal_customer WHERE customer_id=? AND del_flag='0' FOR UPDATE",request.customerId());
+        if(rows.isEmpty())throw invalid("客户不存在或已删除，请重新选择");
+        var selected=rows.get(0);
+        if(!request.factoryId().equals(id(selected.get("factory_id"))))throw new ServiceException("客户不属于当前工厂",403);
+        if(request.customerVersion()==null||((Number)selected.get("version")).intValue()!=request.customerVersion())throw invalid("客户资料已变化，请刷新客户选项后重新选择");
+        if(current!=null&&Objects.equals(text(current,"customerId"),request.customerId().toString())&&current.get("customerSnapshot")!=null)return new LinkedHashMap<>(JSON.parseObject(text(current,"customerSnapshot")));
+        selected=new LinkedHashMap<>(selected);selected.remove("customer_id");selected.remove("factory_id");return selected;
+    }
+
+    public List<Map<String,Object>> customers(Long factoryId){
+        scope.check(factoryId);
+        return jdbc.queryForList("SELECT CAST(customer_id AS CHAR) id,customer_name name,company_name companyName,address,contact_name contactName,contact_phone contactPhone,department,version FROM metal_customer WHERE factory_id=? AND del_flag='0' ORDER BY customer_name,company_name,customer_id",factoryId);
+    }
+
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public List<Map<String,Object>> materials(Long work){
+        access(header(work,false));
+        return jdbc.queryForList("SELECT CAST(l.reference_id AS CHAR) materialId,l.code,m.material_type materialType,l.specification,CAST(SUM(l.net_weight) AS CHAR) netWeight FROM metal_warehouse_order o JOIN metal_warehouse_order_line l ON l.order_id=o.order_id LEFT JOIN metal_material m ON m.material_id=l.reference_id WHERE o.work_order_id=? AND o.type='PRODUCTION_OUT' AND o.status='POSTED' AND l.category='RAW' GROUP BY l.reference_id,l.code,m.material_type,l.specification ORDER BY l.reference_id,l.code",work);
+    }
+
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public List<Map<String,Object>> reports(Long work){
+        access(header(work,false));
+        var result=jdbc.queryForList("SELECT CAST(r.report_id AS CHAR) id,CAST(r.batch_id AS CHAR) batchId,CAST(r.item_id AS CHAR) itemId,CAST(r.process_id AS CHAR) processId,b.batch_no batchNo,JSON_UNQUOTE(JSON_EXTRACT(COALESCE(i.material_snapshot,i.product_snapshot),'$.name')) productName,s.process_name processName,b.process_role processRole,b.output_stage outputStage,b.measurement_mode measurementMode,r.loss_unit lossUnit,CAST(r.theoretical_loss AS CHAR) theoreticalLoss,CAST(r.loss_weight AS CHAR) lossWeight,CAST(r.issued_weight AS CHAR) issuedWeight,CAST(r.returned_weight AS CHAR) returnedWeight,(SELECT COALESCE(SUM(COALESCE(l.processor_net_weight,l.net_weight)),0) FROM metal_warehouse_order o JOIN metal_warehouse_order_line l ON l.order_id=o.order_id WHERE o.batch_id=r.batch_id AND o.status='POSTED' AND o.type IN ('RAW_PROCESS_IN','SEMI_IN','FINISHED_IN')) outputWeight,r.handover_difference handoverDifference,r.keeper_received_weight keeperReceivedWeight,r.processor_output_weight processorOutputWeight,r.processor_returned_weight processorReturnedWeight,r.status,DATE_FORMAT(r.create_time,'%Y-%m-%d %H:%i:%s') settledTime,CASE WHEN r.loss_unit='PERCENT' THEN CAST(r.loss_rate_percent AS CHAR) ELSE NULL END lossRatePercent FROM metal_work_report r JOIN metal_process_batch b ON b.batch_id=r.batch_id JOIN metal_work_order_item i ON i.item_id=r.item_id JOIN metal_work_order_step s ON s.item_id=r.item_id AND s.process_id=r.process_id WHERE b.work_order_id=? AND b.status='SETTLED' AND r.voided=FALSE ORDER BY r.create_time DESC,r.report_id DESC",work);
+        for(var row:result)if(!"PERCENT".equals(row.get("lossUnit"))){var loss=new BigDecimal(row.get("lossWeight").toString());var issued=new BigDecimal(row.get("issuedWeight").toString());var returned=new BigDecimal(row.get("returnedWeight").toString());var net=issued.subtract(returned).add(new BigDecimal(row.get("outputWeight").toString()));row.put("lossRatePercent",ReportMetrics.percentage(loss,net,loss.compareTo(issued.subtract(returned))==0));}
+        return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void executionTimes(Long work,List<Map<String,Object>> items){
+        var timings=new HashMap<String,Map<String,Object>>();
+        for(var row:jdbc.queryForList("SELECT b.item_id,b.process_id,MIN(x.first_issue) firstIssue,MAX(CASE WHEN b.status='SETTLED' AND r.voided=FALSE THEN r.create_time END) lastSettlement,SUM(b.status='OPEN') openCount FROM metal_process_batch b LEFT JOIN (SELECT o.batch_id,MIN(CASE WHEN o.warehouse_flow_id IS NULL THEN o.create_time WHEN f.status='POSTED' THEN f.posted_time END) first_issue FROM metal_warehouse_order o LEFT JOIN metal_warehouse_flow f ON f.flow_id=o.warehouse_flow_id WHERE o.status='POSTED' AND o.type='PRODUCTION_OUT' GROUP BY o.batch_id) x ON x.batch_id=b.batch_id LEFT JOIN metal_work_report r ON r.batch_id=b.batch_id WHERE b.work_order_id=? AND b.status<>'VOID' GROUP BY b.item_id,b.process_id",work))timings.put(row.get("item_id")+":"+row.get("process_id"),row);
+        var semi=new SemiFlowService(jdbc,scope);
+        for(var item:items)for(var plan:(List<Map<String,Object>>)item.get("plans")){
+            plan.put("actualStartTime",null);plan.put("actualEndTime",null);
+            var timing=timings.get(item.get("id")+":"+plan.get("processId"));
+            if(timing==null||timing.get("firstIssue")==null)continue;
+            plan.put("actualStartTime",formatTime(timing.get("firstIssue")));
+            var step=new LinkedHashMap<String,Object>();step.put("item_id",item.get("id"));step.put("sequence_no",plan.get("sequenceNo"));step.put("measurement_mode",plan.get("measurementMode"));step.put("weight_stage_closed",plan.get("weightStageClosed"));step.put("quantity",item.get("quantity"));
+            if(((Number)timing.get("openCount")).longValue()!=0||timing.get("lastSettlement")==null||!WeightStageProgressService.covered(jdbc,step,semi))continue;
+            Object end=timing.get("lastSettlement");
+            if("WEIGHT".equals(plan.get("measurementMode"))){var events=jdbc.queryForList("SELECT create_time FROM metal_weight_stage_event WHERE item_id=? AND process_id=? AND action='CLOSE' ORDER BY event_id DESC LIMIT 1",item.get("id"),plan.get("processId"));if(events.isEmpty())continue;if(formatTime(events.get(0).get("create_time")).compareTo(formatTime(end))>0)end=events.get(0).get("create_time");}
+            plan.put("actualEndTime",formatTime(end));
+        }
+    }
+    private static String formatTime(Object value){return value instanceof Timestamp t?t.toLocalDateTime().format(TIME):value instanceof LocalDateTime t?t.format(TIME):value.toString();}
+
     private Map<String, Object> owner(Long factoryId, Long ownerId, boolean lock) {
         var rows = jdbc.queryForList("SELECT COALESCE(NULLIF(nick_name,''),user_name) name FROM sys_user WHERE user_id=? AND factory_id=? AND status='0' AND del_flag='0'" + (lock ? " FOR UPDATE" : ""), ownerId, factoryId);
         if (rows.isEmpty()) throw invalid("负责人必须为本厂有效启用人员");
@@ -303,11 +480,12 @@ public class WorkOrderService {
     private void writeItems(Long orderId, List<Prepared> items) {
         int sequence = 0;
         for (var item : items) {
-            long itemId = insert("INSERT INTO metal_work_order_item(work_order_id,sequence_no,product_id,quantity,product_snapshot) VALUES(?,?,?,?,?)", orderId, ++sequence, item.input().productId(), item.input().quantity(), JSON.toJSONString(item.snapshot()));
+            boolean raw=item.input().materialId()!=null;
+            long itemId = insert("INSERT INTO metal_work_order_item(work_order_id,sequence_no,product_id,quantity,product_snapshot,material_id,material_snapshot,planned_input_weight) VALUES(?,?,?,?,?,?,?,?)", orderId, ++sequence, item.input().productId(), raw?0:item.input().quantity(), raw?"{}":JSON.toJSONString(item.snapshot()),item.input().materialId(),raw?JSON.toJSONString(item.snapshot()):null,raw?BusinessDecimal.positive(item.input().plannedInputWeight(),"计划投入重量"):null);
             for (int i = 0; i < item.steps().size(); i++) {
                 var step = item.steps().get(i);
                 var plan = item.input().plans().get(i);
-                jdbc.update("INSERT INTO metal_work_order_step(item_id,process_id,sequence_no,process_name,theoretical_loss,start_time,end_time,measurement_mode) VALUES(?,?,?,?,?,?,?,?)", itemId, plan.processId(), i + 1, text(step, "processName"), new BigDecimal(text(step, "loss")), Timestamp.valueOf(plan.startTime()), Timestamp.valueOf(plan.endTime()),SemiMeasurementRules.mode(step.get("measurementMode")));
+                jdbc.update("INSERT INTO metal_work_order_step(item_id,process_id,sequence_no,process_name,theoretical_loss,start_time,end_time,measurement_mode,loss_unit,process_role,output_stage) VALUES(?,?,?,?,?,?,?,?,?,?,?)", itemId, plan.processId(), i + 1, text(step, "processName"), new BigDecimal(text(step, "loss")), Timestamp.valueOf(plan.startTime()), Timestamp.valueOf(plan.endTime()),SemiMeasurementRules.mode(step.get("measurementMode")),Objects.toString(step.get("lossUnit"),"G_PER_PIECE"),step.get("processRole"),step.get("outputStage"));
             }
         }
     }
@@ -336,12 +514,16 @@ public class WorkOrderService {
             if (!"0".equals(row.get("del_flag"))) throw invalid("原工单已删除，不能重复创建");
             return row.get("work_order_id").toString();
         }
-        var prepared = prepare(request, List.of());
+        String task=taskType(request.taskType());
+        var customer=customer(request,null);
+        requireProcessing(request.processingType(),false);
+        rawProcessing(task,request.processingType());
+        var prepared = prepare(request, List.of(),ProcessingPolicy.EXECUTION_VERSION,task);
         String factory = jdbc.queryForObject("SELECT factory_name FROM metal_factory WHERE factory_id=?", String.class, request.factoryId());
         String lineName = text(line(request.productionLineId(), request.factoryId(), true), "name");
         String ownerName = text(owner(request.factoryId(), request.ownerId(), true), "name");
-        long orderId = insert("INSERT INTO metal_work_order(order_no,request_id,request_hash,request_actor,customer,factory_id,production_line_id,owner_id,factory_name,line_name,owner_name,order_date,create_by,creator_name,update_by,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'WAITING_MATERIAL')", reservedNumber, request.requestId(), fingerprint, SecurityUtils.getUserId(), request.customer().strip(), request.factoryId(), request.productionLineId(), request.ownerId(), factory, lineName, ownerName, java.sql.Date.valueOf(request.orderDate()), SecurityUtils.getUsername(), actorName(), SecurityUtils.getUsername());
-        jdbc.update("UPDATE metal_work_order SET auto_semi_release_eligible=? WHERE work_order_id=?",autoSemiReleaseEnabled,orderId);
+        long orderId = insert("INSERT INTO metal_work_order(order_no,request_id,request_hash,request_actor,customer,factory_id,production_line_id,owner_id,factory_name,line_name,owner_name,order_date,create_by,creator_name,update_by,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'WAITING_MATERIAL')", reservedNumber, request.requestId(), fingerprint, SecurityUtils.getUserId(), customer.get("name"), request.factoryId(), request.productionLineId(), request.ownerId(), factory, lineName, ownerName, java.sql.Date.valueOf(request.orderDate()), SecurityUtils.getUsername(), actorName(), SecurityUtils.getUsername());
+        jdbc.update("UPDATE metal_work_order SET auto_semi_release_eligible=?,customer_id=?,customer_version=?,customer_snapshot=?,processing_type=?,task_type=?,processing_policy_version=? WHERE work_order_id=?",autoSemiReleaseEnabled&&"PRODUCTION".equals(task),request.customerId(),customer.get("version"),customer.size()==1?null:JSON.toJSONString(customer),request.processingType(),task,ProcessingPolicy.EXECUTION_VERSION,orderId);
         writeItems(orderId, prepared);
         review(orderId, "CREATE", null, "WAITING_MATERIAL", null);
         return Long.toString(orderId);
@@ -363,12 +545,20 @@ public class WorkOrderService {
         access(current);
         version(current, request.version());
         editable(current);
-        var prepared = prepare(request, items(request.id()));
+        String task=taskType(request.taskType()==null?text(current,"taskType"):request.taskType());
+        if(!Objects.equals(task,taskType(text(current,"taskType"))))throw invalid("任务类型创建后不能更改");
+        var customer=customer(request,current);
+        String processing=request.processingType()==null?text(current,"processingType"):request.processingType();
+        requireProcessing(processing,current.get("processingType")==null);
+        rawProcessing(task,processing);
+        int policy=current.get("processingPolicyVersion")==null?1:((Number)current.get("processingPolicyVersion")).intValue();
+        var prepared = prepare(request, items(request.id()),policy,task);
         String factory = request.factoryId().equals(id(current.get("factoryId"))) ? text(current, "factoryName") : jdbc.queryForObject("SELECT factory_name FROM metal_factory WHERE factory_id=?", String.class, request.factoryId());
         String lineName = request.productionLineId().equals(id(current.get("productionLineId"))) ? text(current, "lineName") : text(line(request.productionLineId(), request.factoryId(), true), "name");
         String ownerName = request.ownerId().equals(id(current.get("ownerId"))) ? text(current, "ownerName") : text(owner(request.factoryId(), request.ownerId(), true), "name");
-        if (jdbc.update("UPDATE metal_work_order SET customer=?,factory_id=?,production_line_id=?,owner_id=?,factory_name=?,line_name=?,owner_name=?,order_date=?,version=version+1,update_by=?,update_time=NOW() WHERE work_order_id=? AND version=? AND del_flag='0'", request.customer().strip(), request.factoryId(), request.productionLineId(), request.ownerId(), factory, lineName, ownerName, java.sql.Date.valueOf(request.orderDate()), SecurityUtils.getUsername(), request.id(), request.version()) != 1)
+        if (jdbc.update("UPDATE metal_work_order SET customer=?,factory_id=?,production_line_id=?,owner_id=?,factory_name=?,line_name=?,owner_name=?,order_date=?,version=version+1,update_by=?,update_time=NOW() WHERE work_order_id=? AND version=? AND del_flag='0'", customer.get("name"), request.factoryId(), request.productionLineId(), request.ownerId(), factory, lineName, ownerName, java.sql.Date.valueOf(request.orderDate()), SecurityUtils.getUsername(), request.id(), request.version()) != 1)
             throw invalid("工单已被修改，请刷新后重试");
+        jdbc.update("UPDATE metal_work_order SET customer_id=?,customer_version=?,customer_snapshot=?,processing_type=? WHERE work_order_id=?",request.customerId(),customer.get("version"),customer.size()==1?null:JSON.toJSONString(customer),processing,request.id());
         jdbc.update("DELETE s FROM metal_work_order_step s JOIN metal_work_order_item i ON i.item_id=s.item_id WHERE i.work_order_id=?", request.id());
         jdbc.update("DELETE FROM metal_work_order_item WHERE work_order_id=?", request.id());
         writeItems(request.id(), prepared);
@@ -435,7 +625,22 @@ public class WorkOrderService {
      */
     public List<Map<String, Object>> availableProducts(Long lineId) {
         line(lineId, null, false);
-        return jdbc.queryForList("SELECT CAST(p.product_id AS CHAR) id,p.product_name name,p.product_category category,EXISTS(SELECT 1 FROM metal_product_process pp WHERE pp.product_id=p.product_id) hasProcesses FROM metal_line_product lp JOIN metal_product p ON p.product_id=lp.product_id WHERE lp.production_line_id=? AND p.del_flag='0' ORDER BY p.product_id", lineId);
+        return jdbc.queryForList("SELECT CAST(p.product_id AS CHAR) id,p.product_name name,p.product_category category,p.version version,CAST(p.metal_type_id AS CHAR) metalTypeId,EXISTS(SELECT 1 FROM metal_product_process pp WHERE pp.product_id=p.product_id) hasProcesses FROM metal_line_product lp JOIN metal_product p ON p.product_id=lp.product_id JOIN metal_type t ON t.metal_type_id=p.metal_type_id WHERE lp.production_line_id=? AND p.del_flag='0' ORDER BY p.product_id", lineId);
+    }
+
+    public List<Map<String,Object>> availableMaterials(Long factoryId){
+        scope.check(factoryId);
+        return jdbc.queryForList("SELECT CAST(m.material_id AS CHAR) id,m.material_code code,CONCAT(t.name,m.material_type) name,m.material_type materialType,m.specification,CAST(m.metal_type_id AS CHAR) metalTypeId,t.name metalTypeName FROM metal_material m JOIN metal_type t ON t.metal_type_id=m.metal_type_id WHERE m.del_flag='0' ORDER BY m.material_id");
+    }
+
+    public List<Map<String,Object>> rawProcesses(Long factoryId){
+        scope.check(factoryId);
+        var result=new ArrayList<Map<String,Object>>();
+        for(var process:jdbc.queryForList("SELECT CAST(p.process_id AS CHAR) id,p.process_name name,t.type_name typeName FROM metal_process p JOIN metal_process_type t ON t.type_id=p.process_type WHERE p.del_flag='0' ORDER BY p.process_id")){
+            try{ProcessingPolicy.route("RAW_PROCESSING",List.of(text(process,"typeName")),List.of("WEIGHT"));result.add(process);}
+            catch(ServiceException ignored){}
+        }
+        return result;
     }
 
     /**
@@ -448,6 +653,7 @@ public class WorkOrderService {
         var product = products.detail(productId);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("snapshot", snapshot(product));
+        result.put("version",product.getVersion());
         List<Map<String, Object>> steps = new ArrayList<>();
         for (var step : product.getProcesses()) {
             Map<String, Object> value = new LinkedHashMap<>();
@@ -455,10 +661,12 @@ public class WorkOrderService {
             value.put("processName", step.getProcessName());
             value.put("loss", step.getLoss().toPlainString());
             value.put("measurementMode",step.getMeasurementMode());
+            value.put("lossUnit",step.getLossUnit());
             value.put("startTime", null);
             value.put("endTime", null);
             steps.add(value);
         }
+        if(!steps.isEmpty())route(steps,"PRODUCTION");
         result.put("plans", steps);
         return result;
     }

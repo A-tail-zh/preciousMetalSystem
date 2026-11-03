@@ -1,15 +1,17 @@
 <template>
  <WorkOrderDetail v-if="detailId" :id="detailId" @back="back"/>
  <section v-else class="work-order-page">
-  <div class="order-toolbar"><el-button v-if="actionPermission.hasAny(['metal:work-order:add'])"  class="blue" @click="edit()">添加</el-button><el-button v-if="actionPermission.hasAny(['metal:work-order:edit'])"  class="orange" :disabled="selected.length!==1||!orderEditable(selected[0])" @click="edit(selected[0])">编辑</el-button><el-button v-if="actionPermission.hasAny(['metal:work-order:remove'])"  class="red" :disabled="!selected.length||selected.some(row=>row.canDelete!==true)||deleting" @click="remove(selected)">删除</el-button></div>
-  <el-table ref="tableRef" v-loading="loading" :data="rows" border class="order-table" @selection-change="selected=$event">
+  <div class="order-toolbar"><el-button v-if="actionPermission.hasAny(['metal:work-order:add'])" class="list-action list-action--create blue" @click="edit()">添加</el-button><el-button v-if="actionPermission.hasAny(['metal:work-order:add'])" class="list-action list-action--primary secondary-action" @click="edit(undefined,'RAW_PROCESSING')">独立原料加工</el-button><el-button v-if="actionPermission.hasAny(['metal:work-order:edit'])"  class="list-action list-action--edit orange" :disabled="selected.length!==1||!orderEditable(selected[0])" @click="edit(selected[0])">编辑</el-button><el-button v-if="actionPermission.hasAny(['metal:work-order:remove'])"  class="list-action list-action--delete red" :disabled="!selected.length||selected.some(row=>row.canDelete!==true)||deleting" @click="remove(selected)">删除</el-button><el-button v-if="actionPermission.hasAny(['metal:warehouse-order:add','metal:warehouse-order:query'])" class="list-action list-action--primary secondary-action" title="查询、续办或冲销历史独立酸洗批次" @click="acidWash?.open()">历史酸洗记录</el-button></div>
+  <p v-if="refreshFailed" role="status">列表更新失败，当前数据可能过期。<el-button link @click="load">重试</el-button></p>
+  <el-table ref="tableRef" v-loading="loading" :data="rows" row-key="id" border class="order-table" @selection-change="selected=$event">
    <el-table-column v-if="can('metal:work-order:edit')||can('metal:work-order:remove')" type="selection" width="50" align="center"/><el-table-column label="工单号" prop="orderNo" min-width="150" align="center"/><el-table-column label="客户" prop="customer" min-width="75" align="center"/><el-table-column label="工厂名称" prop="factoryName" min-width="90" align="center"/><el-table-column label="产线名称" prop="lineName" min-width="90" align="center"/><el-table-column label="负责人" prop="ownerName" min-width="75" align="center"/>
-   <el-table-column label="状态" min-width="130" align="center"><template #default="{row}">{{orderStatus[row.status]}}<template v-if="row.status==='REJECTED'">，原因：{{row.rejectReason}}</template></template></el-table-column>
-   <el-table-column label="创建人" prop="creatorName" min-width="65" align="center"/><el-table-column label="创建时间" prop="createTime" :formatter="dateTimeCell" width="140" align="center"/><el-table-column v-if="can('metal:work-order:query')||can('metal:work-order:edit')||can('metal:work-order:remove')" class-name="order-actions" label="操作" min-width="264" align="center"><template #default="{row}"><el-button v-if="actionPermission.hasAny(['metal:work-order:query'])"  class="blue row-button" @click="view(row)">查看</el-button><el-button v-if="actionPermission.hasAny(['metal:work-order:edit'])"  class="orange row-button" :disabled="!orderEditable(row)" :title="row.operationDisabledReason" @click="edit(row)">编辑</el-button><el-button v-if="actionPermission.hasAny(['metal:work-order:remove'])"  class="red row-button" :disabled="row.canDelete!==true||deleting" :title="row.operationDisabledReason" @click="remove([row])">删除</el-button></template></el-table-column>
+   <el-table-column label="任务类型" min-width="110"><template #default="{row}">{{row.taskType==='RAW_PROCESSING'?'原料加工':'产品生产'}}</template></el-table-column><el-table-column label="状态" min-width="130" align="center"><template #default="{row}">{{orderStatus[row.status]}}<template v-if="row.status==='REJECTED'">，原因：{{row.rejectReason}}</template></template></el-table-column>
+   <el-table-column label="创建人" prop="creatorName" min-width="65" align="center"/><el-table-column label="创建时间" prop="createTime" :formatter="dateTimeCell" width="140" align="center"/><el-table-column v-if="can('metal:work-order:query')||can('metal:work-order:edit')||can('metal:work-order:remove')" class-name="order-actions" label="操作" min-width="264" align="center"><template #default="{row}"><el-button v-if="actionPermission.hasAny(['metal:work-order:query'])"  class="list-action list-action--primary list-action--row blue row-button" @click="view(row)">查看</el-button><el-button v-if="actionPermission.hasAny(['metal:work-order:edit'])"  class="list-action list-action--edit list-action--row orange row-button" :disabled="!orderEditable(row)" :title="row.operationDisabledReason" @click="edit(row)">编辑</el-button><el-button v-if="actionPermission.hasAny(['metal:work-order:remove'])"  class="list-action list-action--delete list-action--row red row-button" :disabled="row.canDelete!==true||deleting" :title="row.operationDisabledReason" @click="remove([row])">删除</el-button></template></el-table-column>
   </el-table>
   <div v-if="failed" class="load-error">列表加载失败 <el-button link type="primary" @click="load">重试</el-button></div>
   <div class="order-pagination"><el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :page-sizes="[16,32,64]" :total="total" layout="total, sizes, prev, pager, next, jumper" @current-change="load" @size-change="sizeChanged"/></div>
   <WorkOrderForm ref="formRef" @saved="saved"/>
+  <AcidWashDialog ref="acidWash"/>
 
  </section>
 </template>
@@ -17,7 +19,8 @@
 import { useActionPermission } from '@/composables/useActionPermission'
 import {dateTimeCell} from '@/utils/display-date-time'
 import {getToken} from '@/utils/auth'
-import {ref,reactive,computed,onMounted,onBeforeUnmount,watch} from 'vue'
+import {ref,reactive,computed,onMounted,onBeforeUnmount,watch,nextTick} from 'vue'
+import {useInventoryRefresh} from '@/composables/useInventoryRefresh'
 import {useRoute,useRouter} from 'vue-router'
 import {ElMessage,ElMessageBox} from 'element-plus'
 import type {TableInstance} from 'element-plus'
@@ -26,32 +29,37 @@ import {orderList,orderDelete,orderStatus,orderEditable} from '@/api/metal/work-
 import type {WorkOrder} from '@/api/metal/work-order'
 import WorkOrderForm from './WorkOrderForm.vue'
 import WorkOrderDetail from './WorkOrderDetail.vue'
+import AcidWashDialog from '../warehouse-common/AcidWashDialog.vue'
 const actionPermission=useActionPermission()
 const user=useUserStore(),route=useRoute(),router=useRouter(),detailId=computed(()=>typeof route.query.id==='string'?route.query.id:'')
 const query=reactive({pageNum:1,pageSize:16}),rows=ref<WorkOrder[]>([]),selected=ref<WorkOrder[]>([]),total=ref(0),loading=ref(false),failed=ref(false),deleting=ref(false)
 const formRef=ref<InstanceType<typeof WorkOrderForm>>(),tableRef=ref<TableInstance>()
+const acidWash=ref<InstanceType<typeof AcidWashDialog>>()
+const reading=ref(false)
 let epoch=0,operationEpoch=0,scheduled=false,disposed=false
 const identity=()=>JSON.stringify([user.sessionReady,user.token,String(user.id),[...user.permissions].sort()])
 const sessionCurrent=()=>user.sessionReady&&!!user.token&&user.token===getToken()
 const can=(permission:string)=>sessionCurrent()&&actionPermission.has(permission)
 const canReadList=()=>!disposed&&!detailId.value&&can('metal:work-order:list')
 function clearList(){rows.value=[];selected.value=[];total.value=0;loading.value=false;failed.value=false;tableRef.value?.clearSelection()}
-function invalidateAccess(){++epoch;++operationEpoch;clearList();deleting.value=false;formRef.value?.invalidateSession()}
+function invalidateAccess(){++epoch;++operationEpoch;clearList();reading.value=false;deleting.value=false;formRef.value?.invalidateSession()}
 // Merge consecutive Pinia mutations and pagination events, but invalidate old reads immediately.
 function load(){++epoch;if(scheduled||disposed)return;scheduled=true;queueMicrotask(()=>{scheduled=false;if(canReadList())void readList()})}
-async function readList(){
+async function readList(background=false,contextCurrent=()=>true){
  const current=++epoch,account=identity(),path=route.fullPath,params={...query}
- const isCurrent=()=>current===epoch&&canReadList()&&identity()===account&&route.fullPath===path
+ const isCurrent=()=>contextCurrent()&&current===epoch&&canReadList()&&identity()===account&&route.fullPath===path&&(!background||!listBlocked.value&&!deleting.value)
  if(!isCurrent())return
- loading.value=true
- try{const response=await orderList(params,isCurrent);if(!isCurrent())return;rows.value=response.rows;total.value=response.total;selected.value=[];tableRef.value?.clearSelection();failed.value=false}
- catch{if(isCurrent())failed.value=true}
- finally{if(isCurrent())loading.value=false}
+ reading.value=true;if(!background)loading.value=true
+ try{const response=await orderList(params,isCurrent,background);if(!isCurrent())return;const chosen=new Set(selected.value.map(row=>row.id));rows.value=response.rows;total.value=response.total;failed.value=false;await nextTick();if(!isCurrent())return;tableRef.value?.clearSelection();for(const row of rows.value)if(chosen.has(row.id))tableRef.value?.toggleRowSelection(row,true);return true}
+ catch{if(isCurrent()&&!background)failed.value=true;return false}
+ finally{if(current===epoch){loading.value=false;reading.value=false}}
 }
+const listBlocked=computed(()=>!!formRef.value?.isOpen||!!acidWash.value?.isOpen)
+const {failed:refreshFailed}=useInventoryRefresh(context=>readList(true,context.isCurrent),listBlocked,{allowed:canReadList,reset:invalidateAccess},{paused:computed(()=>reading.value||deleting.value)})
 function sizeChanged(){query.pageNum=1;load()}
 function saved(added:boolean){if(!canReadList())return;if(added)query.pageNum=Math.max(1,Math.ceil((total.value+1)/query.pageSize));load()}
 const currentRow=(row:WorkOrder)=>!!row.id&&rows.value.some(r=>r.id===row.id)
-function edit(row?:WorkOrder){if(!canReadList()||!can(row?'metal:work-order:edit':'metal:work-order:add')||(row&&(!currentRow(row)||!orderEditable(row))))return;formRef.value?.open(row)}
+function edit(row?:WorkOrder,taskType:'PRODUCTION'|'RAW_PROCESSING'='PRODUCTION'){if(!canReadList()||!can(row?'metal:work-order:edit':'metal:work-order:add')||(row&&(!currentRow(row)||!orderEditable(row))))return;formRef.value?.open(row,taskType)}
 function view(row:WorkOrder){if(canReadList()&&can('metal:work-order:query')&&currentRow(row))router.push({path:'/metal/work-order',query:{id:row.id}})}
 function back(){router.push({path:'/metal/work-order'})}
 async function remove(targets:WorkOrder[]){
@@ -81,5 +89,6 @@ onBeforeUnmount(()=>{disposed=true;invalidateAccess();window.removeEventListener
 
 .order-table :deep(td.order-actions .cell){display:flex;align-items:center;justify-content:center;gap:4px;flex-wrap:nowrap;white-space:nowrap;padding:10px 8px}
 .order-table :deep(td.order-actions .row-button){width:58px;height:25px;flex:0 0 58px;margin:0;padding:0}
+.order-toolbar{flex-wrap:wrap}.order-toolbar .secondary-action{width:auto;min-width:116px}.work-order-page :deep(.el-table .cell),.work-order-page :deep(.el-table input){text-align:center}
 @media(max-width:768px){.order-pagination :deep(.el-pagination){max-width:100%;flex-wrap:wrap;justify-content:center;row-gap:8px}}
 </style>

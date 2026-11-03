@@ -2,7 +2,7 @@
  <el-dialog v-model="visible" title="工序消耗明细" width="min(1500px, 96vw)" class="settled-consumption-dialog" :close-on-click-modal="false" destroy-on-close>
   <template v-if="visible&&target">
    <p class="target-process">工序：{{target.processName}}</p>
-   <ProcessConsumption :key="generation" :work-order-id="target.workOrderId" :item-id="target.itemId" :process-id="target.processId" :product-label="target.productLabel" batch-scope="SETTLED"/>
+   <ProcessConsumption :raw="target.raw" :key="generation" :work-order-id="target.workOrderId" :item-id="target.itemId" :process-id="target.processId" :product-label="target.productLabel" batch-scope="SETTLED"/>
   </template>
   <template #footer><el-button @click="close">关闭</el-button></template>
  </el-dialog>
@@ -13,7 +13,7 @@ import {getToken} from '@/utils/auth'
 import useUserStore from '@/store/modules/user'
 import {useActionPermission} from '@/composables/useActionPermission'
 import ProcessConsumption from './ProcessConsumption.vue'
-interface Target{workOrderId:string;itemId:string;processId:string;processName:string;productLabel:string}
+interface Target{raw?:boolean;workOrderId:string;itemId:string;processId:string;processName:string;productLabel:string}
 const visible=ref(false),target=ref<Readonly<Target>>(),generation=ref(0)
 const user=useUserStore(),permission=useActionPermission()
 const canRead=()=>permission.has('metal:work-report:query')&&!!user.token&&user.token===getToken()
