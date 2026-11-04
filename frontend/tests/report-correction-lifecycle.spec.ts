@@ -1,0 +1,26 @@
+import{test,expect,type Page}from'@playwright/test'
+const deferred=()=>{let resolve!:()=>void;const promise=new Promise<void>(r=>resolve=r);return{promise,resolve}}
+async function setup(page:Page){await page.context().addCookies([{name:'Admin-Token',value:'correction-test',url:'http://127.0.0.1:5173'}]);const calls:any[]=[];let gate:ReturnType<typeof deferred>|undefined,error=false,network=false,httpError=false,errorCode=500,errorMessage='记录已被修改，请刷新后重试';
+await page.route('**/dev-api/**',async r=>{const u=new URL(r.request().url()),path=u.pathname.replace('/dev-api','');let body:any;try{body=r.request().postDataJSON()}catch{}calls.push({path,body});let out:any={code:200,data:[],rows:[],total:0};
+if(path==='/getInfo')out={code:200,user:{userId:1,userName:'admin'},roles:['admin'],permissions:['*:*:*']};
+else if(path==='/getRouters')out.data=[{path:'/metal',component:'Layout',children:[{path:'work-order',component:'metal/work-order/index',name:'CorrectionTest'}]}];
+else if(path==='/metal/work-order/list')out={code:200,rows:[{id:'A',orderNo:'WO-A',status:'IN_PROGRESS'}],total:1};
+else if(/^\/metal\/work-order\/[AB]$/.test(path)){const id=path.at(-1);out.data={id,orderNo:'WO-'+id,status:'IN_PROGRESS',items:[{id:'I'+id,quantity:5,snapshot:{name:'产品'+id},plans:[]}]}}
+else if(path==='/metal/work-report/summary'){const id=u.searchParams.get('workOrderId');out.data=[{itemId:'I'+id,processId:'P',processName:'工序'+id,status:'NORMAL'}]}
+else if(path==='/metal/work-report/step'){const id=u.searchParams.get('itemId')?.slice(1);out.data=[{id:'R'+id,batchId:'B'+id,batchNo:'BATCH-'+id,status:'NORMAL',voided:false}]}
+else if(/^\/metal\/work-report\/R[AB]$/.test(path)){const id=path.at(-1);out.data={id:'R'+id,batchId:'B'+id,batchNo:'BATCH-'+id,batchVersion:3,status:'NORMAL',voided:false,materials:[],orders:[]}}
+else if(path.endsWith('/reverse')){if(gate)await gate.promise;if(network){await r.abort('failed');return}out=error?{code:errorCode,msg:errorMessage,traceId:'correction-fixture-trace'}:{code:200}}
+await r.fulfill({json:out,status:path.endsWith('/reverse')&&httpError?401:200})});await page.goto('/metal/work-order');
+return{calls,get writes(){return calls.filter(c=>c.path.endsWith('/reverse'))},hold(){gate=deferred();return gate},set error(v:boolean){error=v},set network(v:boolean){network=v},set httpError(v:boolean){httpError=v},set errorCode(v:number){errorCode=v},set failureMessage(v:string){errorMessage=v},async open(){await page.getByRole('button',{name:'查看',exact:true}).click();await showReport(page)},async start(){await page.getByRole('dialog',{name:'查看报工',exact:true}).getByRole('button',{name:'批次纠错（冲销）',exact:true}).click();const d=correction(page);await expect(d).toBeVisible();return d}}
+}
+const correction=(p:Page)=>p.getByRole('dialog',{name:'批次纠错',exact:true})
+// The visible edit entry is removed; these checks exercise the retained dialog lifecycle directly.
+async function openLegacyReport(p:Page){await p.evaluate(()=>{let vm=(document.querySelector('.detail-page') as any).__vueParentComponent;while(vm&&vm.type?.__name!=='WorkOrderDetail')vm=vm.parent;if(!vm)throw Error('detail missing');void vm.setupState.reportDialog.open('IA','P','工序A')})}
+async function showReport(p:Page){await openLegacyReport(p);await expect(p.getByRole('dialog',{name:'查看报工',exact:true})).toBeVisible()}
+async function nav(p:Page,url:string){await p.evaluate(async url=>{await (document.querySelector('#app') as any).__vue_app__.config.globalProperties.$router.push(url)},url)}
+
+test('explicit missing batch never falls back to another batch report',async({page})=>{const s=await setup(page);await s.open();await page.evaluate(async()=>{let vm=(document.querySelector('.detail-page') as any).__vueParentComponent;while(vm&&vm.type?.__name!=='WorkOrderDetail')vm=vm.parent;await vm.setupState.reportDialog.open('IA','P','工序A','MISSING-BATCH')});await expect(page.getByRole('dialog',{name:'查看报工',exact:true})).not.toBeVisible();expect(s.writes).toHaveLength(0)})
+
+test('changing product invalidates an in-flight report open',async({page})=>{await setup(page);await page.route('**/dev-api/metal/work-order/A',r=>r.fulfill({json:{code:200,data:{id:'A',orderNo:'WO-A',status:'IN_PROGRESS',items:[{id:'IA',quantity:5,snapshot:{name:'产品A'},plans:[]},{id:'IA2',quantity:1,snapshot:{name:'产品B'},plans:[]}]}}}));const gate=deferred();let pending=false;await page.route('**/dev-api/metal/work-report/step?**',async r=>{pending=true;await gate.promise;await r.fulfill({json:{code:200,data:[{id:'RA',batchId:'BA',processId:'P',status:'NORMAL',voided:false}]}})});await page.getByRole('button',{name:'查看',exact:true}).click();await openLegacyReport(page);await expect.poll(()=>pending).toBe(true);await page.getByRole('tab',{name:'产品B 2（1件）',exact:true}).click();gate.resolve();await page.waitForTimeout(150);await expect(page.getByRole('dialog',{name:'查看报工',exact:true})).not.toBeVisible()})
+
+test('legacy report dialog retains original report table and both secondary entrances stay hidden',async({page})=>{const s=await setup(page);await s.open();const d=page.getByRole('dialog',{name:'查看报工',exact:true});await expect(d.locator('.material-report')).toBeVisible();await expect(d.getByText('查看工序消耗明细',{exact:true})).not.toBeVisible();await expect(d.getByText('查看批次与领还料依据',{exact:true})).not.toBeVisible()})

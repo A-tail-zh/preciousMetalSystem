@@ -1,0 +1,50 @@
+{
+  "image": "iridium-crucible-curved-bottom.png",
+  "width": 1536,
+  "height": 1024,
+  "unit": "cm",
+  "coordinateOrigin": "top-left",
+  "note": "Coordinates describe inner blank areas at original resolution; scale coordinates with image. Draw centered text, fit font to box. Diagram is schematic.",
+  "fields": [
+    {
+      "key": "innerDiameter",
+      "label": "内径",
+      "x": 1104,
+      "y": 548,
+      "width": 302,
+      "height": 44
+    },
+    {
+      "key": "innerHeight",
+      "label": "内高",
+      "x": 1104,
+      "y": 632,
+      "width": 302,
+      "height": 44
+    },
+    {
+      "key": "wallThickness",
+      "label": "壁厚",
+      "x": 1104,
+      "y": 716,
+      "width": 302,
+      "height": 44
+    },
+    {
+      "key": "bottomThickness",
+      "label": "底厚",
+      "x": 1104,
+      "y": 802,
+      "width": 302,
+      "height": 44
+    },
+    {
+      "key": "rHeight",
+      "label": "R高度",
+      "x": 1104,
+      "y": 887,
+      "width": 302,
+      "height": 44
+    }
+  ]
+}

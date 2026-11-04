@@ -1,0 +1,15 @@
+:root {
+ --business-header-height:56px;
+ --business-sidebar-width:220px;
+ --business-canvas:#f5f7fa;
+ --business-ink:#25364a;
+ --business-border:#e2e8f0;
+ --business-font:"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;
+}
+
+@media (max-width:768px) {
+ :root {--business-header-height:64px;}
+ .filter-toolbar-card .el-button {min-height:44px;}
+ .warehouse-dialog .el-dialog__footer .el-button,
+ .base-info-form-dialog .el-dialog__footer .el-button {min-height:44px;}
+}

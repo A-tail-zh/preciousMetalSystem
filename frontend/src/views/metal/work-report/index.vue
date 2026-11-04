@@ -1,0 +1,1 @@
+<template><WarehousePage kind="work-report"/></template><script setup lang="ts">import WarehousePage from '../warehouse-common/WarehousePage.vue'</script>

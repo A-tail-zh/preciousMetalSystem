@@ -1,0 +1,6 @@
+package com.ruoyi.framework.audit;
+import org.aspectj.lang.annotation.*;import org.springframework.stereotype.Component;
+@Aspect @Component public class AuditErrorAspect{
+ @Before("execution(public * com.ruoyi.framework.web.exception.GlobalExceptionHandler.*(..))") public void handled(org.aspectj.lang.JoinPoint p){AuditContext c=AuditContext.CURRENT.get();if(c==null)return;for(Object x:p.getArgs())if(x instanceof Throwable e)c.failureCode=e instanceof org.springframework.security.access.AccessDeniedException?"ACCESS_DENIED":e instanceof com.ruoyi.common.exception.ServiceException?"BUSINESS_REJECTED":e instanceof org.springframework.web.bind.MethodArgumentNotValidException||e instanceof org.springframework.validation.BindException||e instanceof jakarta.validation.ConstraintViolationException?"VALIDATION_REJECTED":"SYSTEM_ERROR";}
+ @AfterThrowing(pointcut="execution(public * com.ruoyi.web.controller..*(..))",throwing="error") public void failure(Throwable error){AuditContext c=AuditContext.CURRENT.get();if(c==null)return;c.failureCode=error instanceof org.springframework.security.access.AccessDeniedException?"ACCESS_DENIED":error instanceof com.ruoyi.common.exception.ServiceException?"BUSINESS_REJECTED":error.getClass().getName().contains("Validation")?"VALIDATION_REJECTED":"SYSTEM_ERROR";}
+}

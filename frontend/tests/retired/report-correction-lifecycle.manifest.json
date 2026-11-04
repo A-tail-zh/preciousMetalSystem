@@ -1,0 +1,181 @@
+{
+  "retiredCount": 17,
+  "hiddenEntryNegativeTest": "frontend/tests/report-correction-lifecycle.spec.ts: edit retains original report table and both secondary entrances stay hidden",
+  "serviceProtection": "backend/ruoyi-metal/src/test/java/com/ruoyi/metal/service/*Semi*Test.java; WarehouseAdjustmentReversal*Test.java",
+  "tests": [
+    {
+      "original": "browser Back closes owned confirmation and prevents any reversal",
+      "reason": "旧报工冲销入口已隐藏，产品要求保持隐藏；不再执行旧UI路径",
+      "risk": "browser Back closes owned confirmation and prevents any reversal",
+      "replacement": "frontend/tests/warehouse-reversal-lifecycle.spec.ts",
+      "status": "retired, not counted as passed",
+      "replacementTests": [
+        "browser Back dismisses warehouse confirmation without writes"
+      ]
+    },
+    {
+      "original": "switching work-order invalidates old correction",
+      "reason": "旧报工冲销入口已隐藏，产品要求保持隐藏；不再执行旧UI路径",
+      "risk": "switching work-order invalidates old correction",
+      "replacement": "frontend/tests/warehouse-reversal-lifecycle.spec.ts",
+      "status": "retired, not counted as passed",
+      "replacementTests": [
+        "current warehouse reversal cannot submit after route leave",
+        "closing detail invalidates its confirmation; reopening starts empty"
+      ]
+    },
+    {
+      "original": "route leave dismisses confirmation and reopening starts clean",
+      "reason": "旧报工冲销入口已隐藏，产品要求保持隐藏；不再执行旧UI路径",
+      "risk": "route leave dismisses confirmation and reopening starts clean",
+      "replacement": "frontend/tests/warehouse-reversal-lifecycle.spec.ts",
+      "status": "retired, not counted as passed",
+      "replacementTests": [
+        "current warehouse reversal cannot submit after route leave",
+        "closing detail invalidates its confirmation; reopening starts empty"
+      ]
+    },
+    {
+      "original": "normal correction shows batch and sends fixed target once",
+      "reason": "旧报工冲销入口已隐藏，产品要求保持隐藏；不再执行旧UI路径",
+      "risk": "normal correction shows batch and sends fixed target once",
+      "replacement": "frontend/tests/warehouse-reversal-lifecycle.spec.ts",
+      "status": "retired, not counted as passed",
+      "replacementTests": [
+        "warehouse reversal validates reason and submits fixed target once",
+        "batch-linked reversal fixes actual batch version and target"
+      ]
+    },
+    {
+      "original": "empty reason cannot send request",
+      "reason": "旧报工冲销入口已隐藏，产品要求保持隐藏；不再执行旧UI路径",
+      "risk": "empty reason cannot send request",
+      "replacement": "frontend/tests/warehouse-reversal-lifecycle.spec.ts",
+      "status": "retired, not counted as passed",
+      "replacementTests": [
+        "warehouse reversal validates reason and submits fixed target once",
+        "batch-linked reversal fixes actual batch version and target"
+      ]
+    },
+    {
+      "original": "pending request blocks duplicates and close",
+      "reason": "旧报工冲销入口已隐藏，产品要求保持隐藏；不再执行旧UI路径",
+      "risk": "pending request blocks duplicates and close",
+      "replacement": "frontend/tests/warehouse-reversal-lifecycle.spec.ts",
+      "status": "retired, not counted as passed",
+      "replacementTests": [
+        "pending reversal locks duplicate and close; late success cannot refresh after leave"
+      ]
+    },
+    {
+      "original": "late success after unmount cannot notify or refresh",
+      "reason": "旧报工冲销入口已隐藏，产品要求保持隐藏；不再执行旧UI路径",
+      "risk": "late success after unmount cannot notify or refresh",
+      "replacement": "frontend/tests/warehouse-reversal-lifecycle.spec.ts",
+      "status": "retired, not counted as passed",
+      "replacementTests": [
+        "pending reversal locks duplicate and close; late success cannot refresh after leave"
+      ]
+    },
+    {
+      "original": "version conflict preserves reason and requires reload without retry",
+      "reason": "旧报工冲销入口已隐藏，产品要求保持隐藏；不再执行旧UI路径",
+      "risk": "version conflict preserves reason and requires reload without retry",
+      "replacement": "frontend/tests/warehouse-reversal-lifecycle.spec.ts",
+      "status": "retired, not counted as passed",
+      "replacementTests": [
+        "warehouse reversal 409 preserves reason without retry"
+      ]
+    },
+    {
+      "original": "unrelated business confirmation survives report unmount",
+      "reason": "旧报工冲销入口已隐藏，产品要求保持隐藏；不再执行旧UI路径",
+      "risk": "unrelated business confirmation survives report unmount",
+      "replacement": "frontend/tests/warehouse-reversal-lifecycle.spec.ts",
+      "status": "retired, not counted as passed",
+      "replacementTests": [
+        "unrelated global confirmation survives leaving warehouse dialog"
+      ]
+    },
+    {
+      "original": "old failed request cannot alter new work-order correction",
+      "reason": "旧报工冲销入口已隐藏，产品要求保持隐藏；不再执行旧UI路径",
+      "risk": "old failed request cannot alter new work-order correction",
+      "replacement": "frontend/tests/warehouse-reversal-lifecycle.spec.ts",
+      "status": "retired, not counted as passed",
+      "replacementTests": [
+        "late business failure cannot replace reopened reversal input"
+      ]
+    },
+    {
+      "original": "ordinary failure keeps reason and unlocks without automatic retry",
+      "reason": "旧报工冲销入口已隐藏，产品要求保持隐藏；不再执行旧UI路径",
+      "risk": "ordinary failure keeps reason and unlocks without automatic retry",
+      "replacement": "frontend/tests/warehouse-reversal-lifecycle.spec.ts",
+      "status": "retired, not counted as passed",
+      "replacementTests": [
+        "warehouse reversal 500 preserves reason without retry"
+      ]
+    },
+    {
+      "original": "late network failure is silent on a new correction",
+      "reason": "旧报工冲销入口已隐藏，产品要求保持隐藏；不再执行旧UI路径",
+      "risk": "late network failure is silent on a new correction",
+      "replacement": "frontend/tests/warehouse-reversal-lifecycle.spec.ts",
+      "status": "retired, not counted as passed",
+      "replacementTests": [
+        "late network failure cannot replace reopened reversal input"
+      ]
+    },
+    {
+      "original": "cancel correction with 取消 sends no request",
+      "reason": "旧报工冲销入口已隐藏，产品要求保持隐藏；不再执行旧UI路径",
+      "risk": "cancel correction with 取消 sends no request",
+      "replacement": "frontend/tests/warehouse-reversal-lifecycle.spec.ts",
+      "status": "retired, not counted as passed",
+      "replacementTests": [
+        "warehouse reversal cancel 取消 sends nothing"
+      ]
+    },
+    {
+      "original": "cancel correction with 关闭 sends no request",
+      "reason": "旧报工冲销入口已隐藏，产品要求保持隐藏；不再执行旧UI路径",
+      "risk": "cancel correction with 关闭 sends no request",
+      "replacement": "frontend/tests/warehouse-reversal-lifecycle.spec.ts",
+      "status": "retired, not counted as passed",
+      "replacementTests": [
+        "warehouse reversal cancel 关闭 sends nothing"
+      ]
+    },
+    {
+      "original": "cancel correction with Escape sends no request",
+      "reason": "旧报工冲销入口已隐藏，产品要求保持隐藏；不再执行旧UI路径",
+      "risk": "cancel correction with Escape sends no request",
+      "replacement": "frontend/tests/warehouse-reversal-lifecycle.spec.ts",
+      "status": "retired, not counted as passed",
+      "replacementTests": [
+        "warehouse reversal cancel Escape sends nothing"
+      ]
+    },
+    {
+      "original": "stale scoped business401 still handles expiration of the current session",
+      "reason": "旧报工冲销入口已隐藏，产品要求保持隐藏；不再执行旧UI路径",
+      "risk": "stale scoped business401 still handles expiration of the current session",
+      "replacement": "frontend/tests/warehouse-reversal-lifecycle.spec.ts; frontend/tests/editor-session-race.spec.ts",
+      "status": "retired, not counted as passed",
+      "replacementTests": [
+        "stale warehouse business401 still expires only current session"
+      ]
+    },
+    {
+      "original": "stale scoped HTTP401 still handles expiration of the current session",
+      "reason": "旧报工冲销入口已隐藏，产品要求保持隐藏；不再执行旧UI路径",
+      "risk": "stale scoped HTTP401 still handles expiration of the current session",
+      "replacement": "frontend/tests/warehouse-reversal-lifecycle.spec.ts; frontend/tests/editor-session-race.spec.ts",
+      "status": "retired, not counted as passed",
+      "replacementTests": [
+        "stale warehouse HTTP401 still expires only current session"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+package com.ruoyi.metal.catalog;
+
+import java.math.BigDecimal;
+
+import jakarta.validation.constraints.*;
+import com.fasterxml.jackson.annotation.JsonFormat;
+
+/**
+ * 产品工序及理论损耗数据模型，承载业务字段及适用的参数校验规则。
+ */
+public class ProductStep {
+    @NotNull
+    @Positive
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
+    private Long processId;
+    @NotNull
+    @DecimalMin("0")
+    @Digits(integer = 14, fraction = 6)
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
+    private BigDecimal loss;
+    @Pattern(regexp="G_PER_PIECE|PERCENT",message="理论损耗单位无效")
+    private String lossUnit="PERCENT";
+    public String getLossUnit(){return lossUnit;}
+    public void setLossUnit(String value){lossUnit=value;}
+    private String processName;
+    @Pattern(regexp="PIECE|WEIGHT",message="请选择按件或按重量管理")
+    private String measurementMode="PIECE";
+    public String getMeasurementMode(){return measurementMode;}
+    public void setMeasurementMode(String v){measurementMode=v==null?"PIECE":v;}
+
+
+    public Long getProcessId() {
+        return processId;
+    }
+
+    public void setProcessId(Long v) {
+        processId = v;
+    }
+
+    public BigDecimal getLoss() {
+        return loss;
+    }
+
+    public void setLoss(BigDecimal v) {
+        loss = v;
+    }
+
+    public String getProcessName() {
+        return processName;
+    }
+
+    public void setProcessName(String v) {
+        processName = v;
+    }
+}

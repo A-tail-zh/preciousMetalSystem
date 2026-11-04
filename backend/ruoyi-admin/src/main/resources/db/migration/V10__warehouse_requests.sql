@@ -1,0 +1,1 @@
+CREATE TABLE metal_warehouse_request(request_id VARCHAR(36) PRIMARY KEY,kind VARCHAR(32) NOT NULL,request_hash CHAR(64) NOT NULL,actor_id BIGINT NOT NULL,result_id BIGINT NOT NULL,create_time DATETIME DEFAULT CURRENT_TIMESTAMP);
