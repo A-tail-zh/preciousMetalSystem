@@ -20,7 +20,7 @@ import {isRelogin,showSessionExpiry} from './session-expiry'
 function expired(config:any){
  const token=config?.sessionToken
  if(!token||token!==getToken()||location.pathname.startsWith('/login'))return
- useUserStore().sessionReady=false
+ const user=useUserStore();user.sessionEpoch++;user.sessionReady=false
  if(!isRelogin.show)showSessionExpiry(token,()=>getToken()===token,()=>useUserStore().logOut(token))
 }
 

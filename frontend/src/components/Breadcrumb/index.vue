@@ -34,7 +34,7 @@ function getBreadcrumb(): void {
   }
   // 判断是否为首页
   if (!isDashboard(matched[0])) {
-    matched = [{ path: "/index", meta: { title: "首页" } }].concat(matched)
+    matched = [{ path: "/", meta: { title: "首页" } }].concat(matched)
   }
   levelList.value = matched.filter(item => item.meta && item.meta.title && (item.meta.breadcrumb as boolean) !== false)
 }

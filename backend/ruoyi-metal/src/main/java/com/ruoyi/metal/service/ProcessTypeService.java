@@ -19,6 +19,14 @@ public class ProcessTypeService {
  @org.springframework.beans.factory.annotation.Autowired public ProcessTypeService(JdbcTemplate jdbc,com.ruoyi.metal.security.FactoryScope scope){this.jdbc=jdbc;this.scope=scope;}
  public List<Map<String,Object>> list(){return list(null);}
  public List<Map<String,Object>> list(Long requested){Long factory=scope.resolveFactory(requested);return jdbc.queryForList("SELECT CAST(type_id AS CHAR) id,type_name name,CAST(factory_id AS CHAR) factoryId FROM metal_process_type WHERE factory_id=? ORDER BY type_id",factory);}
+ @Transactional(rollbackFor=Exception.class)
+ public void remove(Long id){
+  Long factory=scope.catalogFactory("process-type",id);scope.lockFactories(List.of(factory));
+  if(jdbc.queryForList("SELECT type_id FROM metal_process_type WHERE type_id=? AND factory_id=? FOR UPDATE",id,factory).isEmpty())throw new ServiceException("工序类型不存在或已删除");
+  if(jdbc.queryForObject("SELECT COUNT(*) FROM metal_process WHERE process_type=?",Integer.class,id)>0)throw new ServiceException("工序类型已被工序引用，不能删除");
+  try{if(jdbc.update("DELETE FROM metal_process_type WHERE type_id=? AND factory_id=?",id,factory)!=1)throw new ServiceException("工序类型不存在或已删除");}
+  catch(org.springframework.dao.DataIntegrityViolationException e){throw new ServiceException("工序类型已被引用，不能删除");}
+ }
  public static String validName(String name){
   if(name==null||name.isBlank())throw new ServiceException("请输入工序类型名称");
   String normalized=name.strip();

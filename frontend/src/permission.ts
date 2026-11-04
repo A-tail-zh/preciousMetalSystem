@@ -9,6 +9,7 @@ import useUserStore from '@/store/modules/user'
 import useLockStore from '@/store/modules/lock'
 import useSettingsStore from '@/store/modules/settings'
 import usePermissionStore from '@/store/modules/permission'
+import auth from '@/plugins/auth'
 
 NProgress.configure({ showSpinner: false })
 
@@ -40,7 +41,7 @@ router.beforeEach(async (to, from) => {
       NProgress.done()
       return { path: '/' }
     }
-    if (useUserStore().roles.length === 0) {
+    if (!useUserStore().sessionReady || useUserStore().roles.length === 0) {
       const initializingToken=getToken()
       isRelogin.show = true
       try {
@@ -65,6 +66,10 @@ router.beforeEach(async (to, from) => {
         ElMessage.error(String(err))
         return { path: '/' }
       }
+    }
+    if (to.path === '/' || (to.path === '/index' && !auth.hasPermi('metal:dashboard:list'))) {
+      NProgress.done()
+      return { path: to.path === '/' && auth.hasPermi('metal:dashboard:list') ? '/index' : usePermissionStore().managementPath, replace: true }
     }
     if (to.matched.some(route => route.path === '/:pathMatch(.*)*')) {
       const refreshingToken=getToken()

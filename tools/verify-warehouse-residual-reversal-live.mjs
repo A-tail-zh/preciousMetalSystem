@@ -1,0 +1,29 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {randomUUID} from 'node:crypto';
+import {api,ok,detail,sql} from './local-test-client.mjs';
+import {warehouseFlowFixture} from './warehouse-flow-test-fixture.mjs';
+assert.equal(process.env.TEST_MYSQL_PORT,'3321');assert.equal(process.env.TEST_DB_SCHEMA,'heavy_metal_flow');assert.equal(sql('SELECT @@port'),'3321');assert.equal(process.env.TEST_API_BASE_URL,'http://127.0.0.1:8091');
+const checks=[],pass=name=>{checks.push(name);console.log('PASS '+name);};let f;
+try{
+ f=await warehouseFlowFixture();const stock=await f.incoming('CUSTOMER','20');
+ const issue=async(work,item,batch,weight)=>{const response=await f.submit('PRODUCTION_OUT',[{inventoryId:stock,netWeight:weight,quantity:0}],{workOrderId:work,itemId:item,processId:f.processB,batchId:batch,batchVersion:(await detail('/metal/process-batch',batch,f.admin)).version});let root=await f.flow(response.flowId);ok(await f.confirm(root,root.groups[0],f.processor));return (await detail('/metal/warehouse-order',response.id,f.admin)).lines[0];};
+ const source=await issue(f.flowWorkOrderId,f.flowItem.id,f.flowBatchId,'20');
+ let root=ok(await api('/metal/warehouse-flows/handover/'+f.flowBatchId,f.processor,'POST',{requestId:randomUUID(),version:(await detail('/metal/process-batch',f.flowBatchId,f.admin)).version,orderDate:'2026-11-03',physicalChecked:true,residualMode:'RETURNED',reason:'本轮冲销保护隔离验收',documents:[{type:'FINISHED_IN',warehouseId:f.warehouse,keeperId:f.ownerA,lines:[{category:'FINISHED',referenceId:f.productB,netWeight:'9',quantity:10}]},{type:'RAW_RETURN',warehouseId:f.warehouse,keeperId:f.ownerA,lines:[{category:'RAW',sourceLineId:source.id,netWeight:'10',quantity:0}]}]})).data;
+ for(const g of root.groups)root=ok(await f.confirm(root,g,f.keeper)).data;
+ const context=()=>api('/metal/warehouse-flows/closeout-context/'+f.flowWorkOrderId,f.processor).then(ok).then(r=>r.data);
+ assert.equal((await context()).status,'COMPLETED');assert.equal(Number((await context()).customerRemainingWeight),10);pass('A生产完成，客户余料10g');
+ const body=f.body();body.items=[{productId:f.productB,quantity:30,plans:[{processId:f.processB,startTime:'2026-11-03 09:00:00',endTime:'2026-11-03 10:00:00'}]}];const target=await f.createOrder(body),item=(await detail('/metal/work-order',target,f.admin)).items[0];
+ const reissue=async()=>{const batch=String(ok(await api('/metal/process-batch',f.admin,'POST',{requestId:randomUUID(),workOrderId:target,itemId:item.id,processId:f.processB,plannedQuantity:10})).id);await issue(target,item.id,batch,'4');return batch;};
+ const reverse=batch=>detail('/metal/process-batch',batch,f.admin).then(b=>api('/metal/process-batch/'+batch+'/reverse',f.admin,'POST',{version:b.version,reason:'隔离：冲销B再领4g'}));
+ const closeout=async(mode,weight,extra={})=>{const c=await context();return ok(await api('/metal/warehouse-flows/closeout/'+f.flowWorkOrderId,f.processor,'POST',{requestId:randomUUID(),version:c.version,mode,keeperId:f.ownerA,weight,reason:'隔离：后续客户收尾',...extra})).data;};
+ const undoCloseout=async()=>{const c=await context();ok(await api('/metal/warehouse-flows/closeout/'+f.flowWorkOrderId+'/reverse',f.admin,'POST',{requestId:randomUUID(),version:c.version,reason:'隔离：先撤回客户收尾'}));};
+ const snapshot=()=>sql(`SELECT JSON_OBJECT('stock',(SELECT net_weight FROM metal_inventory WHERE inventory_id=${stock}),'remaining',remaining_weight,'state',status,'version',version,'uses',(SELECT COUNT(*) FROM metal_work_order_residual_use WHERE residual_id=r.residual_id AND reversed=FALSE),'ledgers',(SELECT COUNT(*) FROM metal_stock_ledger WHERE inventory_id=${stock})) FROM metal_work_order_residual r WHERE work_order_id=${f.flowWorkOrderId}`);
+ const rejected=async(batch,name)=>{const before=snapshot(),response=await reverse(batch);assert.notEqual(response.code,200,name);assert.match(response.msg,/收尾/);assert.equal(snapshot(),before,'拒绝必须整体回滚库存、余料、使用及流水');pass(name);};
+ const b=await reissue();root=await closeout('RETURN','6');await rejected(b,'待确认客户返还阻止冲销先前再领，且整体回滚');for(const g of root.groups)root=ok(await f.confirm(root,g,f.keeper)).data;await rejected(b,'返还6g完成后阻止冲销B，不产生已完成却新增4g余额');
+ await undoCloseout();assert.equal(Number((await context()).customerRemainingWeight),6);pass('返还收尾自身可整体撤回，恢复6g');ok(await reverse(b));assert.equal(Number((await context()).customerRemainingWeight),10);pass('先撤回收尾后允许冲销B，完整恢复10g OPEN余料');
+ root=await closeout('STORAGE','10');for(const g of root.groups)root=ok(await f.confirm(root,g,f.keeper)).data;const afterStored=await reissue();ok(await reverse(afterStored));assert.equal(Number((await context()).customerRemainingWeight),10);assert.equal((await context()).closeout.status,'DONE');pass('代存之后发生的再领仍可撤销，不误拦较早的收尾');await undoCloseout();
+ const offsetBody=f.body();offsetBody.orderDate='2026-10-12';offsetBody.processingType='SHORTAGE';const older=await f.createOrder(offsetBody),offsetBatch=await reissue();root=await closeout('OFFSET','6',{offsetWorkOrderId:older});for(const g of root.groups)root=ok(await f.confirm(root,g,f.keeper)).data;await rejected(offsetBatch,'后续抵料完成阻止冲销先前再领');await undoCloseout();ok(await reverse(offsetBatch));assert.equal(Number((await context()).customerRemainingWeight),10);pass('抵料收尾自身可撤回，随后冲销再领正常');
+ const storedBatch=await reissue();root=await closeout('STORAGE','6');for(const g of root.groups)root=ok(await f.confirm(root,g,f.keeper)).data;await rejected(storedBatch,'再领之后办理的代存也阻止逆序冲销');await undoCloseout();ok(await reverse(storedBatch));assert.equal(Number((await context()).customerRemainingWeight),10);pass('代存先撤回后允许恢复先前再领');
+ fs.mkdirSync('.runtime/warehouse-fixes-20261103',{recursive:true});fs.writeFileSync('.runtime/warehouse-fixes-20261103/residual-reversal-live.json',JSON.stringify({passed:checks.length,checks},null,2));
+}finally{if(f){await f.cleanup();console.log('REGISTERED ISOLATED FIXTURE CLEANED; audit retained');}}

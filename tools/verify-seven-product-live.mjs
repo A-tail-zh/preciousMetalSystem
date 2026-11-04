@@ -1,0 +1,16 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';import {api,ok,sql,login} from './local-test-client.mjs';import {warehouseFlowFixture} from './warehouse-flow-test-fixture.mjs';
+assert.equal(process.env.TEST_MYSQL_PORT,'3321');assert.equal(process.env.TEST_DB_SCHEMA,'heavy_metal_flow');assert.equal(sql('SELECT @@port'),'3321');assert.equal(process.env.TEST_API_BASE_URL,'http://127.0.0.1:8091');
+const checks=[],pass=name=>{checks.push(name);console.log('PASS '+name);};let f;
+try{
+ f=await warehouseFlowFixture();const menus=ok(await api('/metal/options/menus',f.admin)).data;const metal=String(ok(await api('/metal/metal-types',f.admin,'POST',{name:f.prefix+'无报价密度'})).id);f.made.metalTypes.push(metal);
+ for(const permission of ['query','add','edit']){
+  const role=String(ok(await api('/system/role',f.admin,'POST',{roleName:f.prefix+'仅产品'+permission,factoryId:f.factoryA,roleSort:1,status:'0',menuIds:menus.filter(m=>m.perms==='metal:product:'+permission).map(m=>m.id)})).id);f.made.roles.push(role);const phone='132'+String(Date.now()).slice(-8),user=String(ok(await api('/system/user',f.admin,'POST',{phonenumber:phone,nickName:f.prefix+'产品'+permission,factoryId:f.factoryA,roleIds:[role],status:'0',password:f.password})).id);f.made.users.push(user);const token=await login(phone,f.password);
+  const list=ok(await api('/metal/product/calculation-rule',token));assert(Array.isArray(list.data));assert(list.volumeRule?.piValue);for(const r of list.data)assert.deepEqual(Object.keys(r).sort(),['density','metalTypeId','metalTypeName','version']);const one=ok(await api('/metal/product/calculation-rule?metalTypeId='+metal,token));assert(!Array.isArray(one.data));assert.equal(one.data.density,null);assert(one.volumeRule?.piValue);assert.notEqual((await api('/metal/quote-rule?metalTypeId=1',token)).code,200);pass('PR-03仅product:'+permission+'真实HTTP可读窄列表/单项/空密度，无报价单价权限');await api('/logout',token,'POST');
+ }
+ const full=ok(await api('/metal/quote-rule?metalTypeId=1',f.admin)).data;for(const key of ['powderPrice','nonPowderPrice','shortagePrice','lossPrice'])assert(Object.hasOwn(full,key));pass('PR-03完整报价授权接口仍保留四项单价');
+ const dimensions={length:'0.01',width:'0.01',height:'0.01'},code='ZERO_'+f.suffix;
+ assert.notEqual((await api('/metal/product/calculation-preview',f.admin,'POST',{metalTypeId:'1',productType:'方形盖',dimensions})).code,200);
+ assert.notEqual((await api('/metal/product',f.admin,'POST',{code,name:f.prefix+'零结果拒绝',metalTypeId:'1',productType:'方形盖',dimensions,processes:[]})).code,200);assert.equal(sql("SELECT COUNT(*) FROM metal_product WHERE product_code='"+code+"'"),'0');
+ assert.notEqual((await api('/metal/quotation/calculate',f.admin,'POST',{metalTypeId:'1',productType:'方形盖',dimensions,quantity:1})).code,200);pass('QR-01零体积在真实产品预览/保存/报价试算均拒绝，未落产品记录');
+ fs.writeFileSync('.runtime/seven-review-warehouse-20261103/live-product.json',JSON.stringify({passed:checks.length,checks,fixtureCleaned:false},null,2));
+}finally{if(f){await f.cleanup();const p='.runtime/seven-review-warehouse-20261103/live-product.json';if(fs.existsSync(p)){const r=JSON.parse(fs.readFileSync(p));r.fixtureCleaned=true;fs.writeFileSync(p,JSON.stringify(r,null,2));}console.log('REGISTERED ISOLATED FIXTURE CLEANED; audit retained');}}

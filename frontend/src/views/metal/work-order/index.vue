@@ -5,6 +5,7 @@
   <p v-if="refreshFailed" role="status">列表更新失败，当前数据可能过期。<el-button link @click="load">重试</el-button></p>
   <el-table ref="tableRef" v-loading="loading" :data="rows" row-key="id" border class="order-table" @selection-change="selected=$event">
    <el-table-column v-if="can('metal:work-order:edit')||can('metal:work-order:remove')" type="selection" width="50" align="center"/><el-table-column label="工单号" prop="orderNo" min-width="150" align="center"/><el-table-column label="客户" prop="customer" min-width="75" align="center"/><el-table-column label="工厂名称" prop="factoryName" min-width="90" align="center"/><el-table-column label="产线名称" prop="lineName" min-width="90" align="center"/><el-table-column label="负责人" prop="ownerName" min-width="75" align="center"/>
+   <el-table-column label="客户来料净重（g）" min-width="165" align="center"><template #default="{row}">{{row.taskType==='RAW_PROCESSING'&&row.processingType==='DIRECT'?'—':row.customerIncomingWeight==null?'未登记':decimalText(row.customerIncomingWeight)}}</template></el-table-column>
    <el-table-column label="任务类型" min-width="110"><template #default="{row}">{{row.taskType==='RAW_PROCESSING'?'原料加工':'产品生产'}}</template></el-table-column><el-table-column label="状态" min-width="130" align="center"><template #default="{row}">{{orderStatus[row.status]}}<template v-if="row.status==='REJECTED'">，原因：{{row.rejectReason}}</template></template></el-table-column>
    <el-table-column label="创建人" prop="creatorName" min-width="65" align="center"/><el-table-column label="创建时间" prop="createTime" :formatter="dateTimeCell" width="140" align="center"/><el-table-column v-if="can('metal:work-order:query')||can('metal:work-order:edit')||can('metal:work-order:remove')" class-name="order-actions" label="操作" min-width="264" align="center"><template #default="{row}"><el-button v-if="actionPermission.hasAny(['metal:work-order:query'])"  class="list-action list-action--primary list-action--row blue row-button" @click="view(row)">查看</el-button><el-button v-if="actionPermission.hasAny(['metal:work-order:edit'])"  class="list-action list-action--edit list-action--row orange row-button" :disabled="!orderEditable(row)" :title="row.operationDisabledReason" @click="edit(row)">编辑</el-button><el-button v-if="actionPermission.hasAny(['metal:work-order:remove'])"  class="list-action list-action--delete list-action--row red row-button" :disabled="row.canDelete!==true||deleting" :title="row.operationDisabledReason" @click="remove([row])">删除</el-button></template></el-table-column>
   </el-table>
@@ -18,6 +19,7 @@
 <script setup lang="ts">
 import { useActionPermission } from '@/composables/useActionPermission'
 import {dateTimeCell} from '@/utils/display-date-time'
+import {decimalText} from '@/utils/business-decimal'
 import {getToken} from '@/utils/auth'
 import {ref,reactive,computed,onMounted,onBeforeUnmount,watch,nextTick} from 'vue'
 import {useInventoryRefresh} from '@/composables/useInventoryRefresh'

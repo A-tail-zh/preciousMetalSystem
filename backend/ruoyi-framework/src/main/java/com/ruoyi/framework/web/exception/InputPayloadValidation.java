@@ -26,7 +26,16 @@ public final class InputPayloadValidation {
   if(token==com.fasterxml.jackson.core.JsonToken.VALUE_NULL)return com.fasterxml.jackson.databind.node.NullNode.instance;
   throw new com.fasterxml.jackson.core.JsonParseException(parser,"Invalid JSON token");
  }
- public static List<Map<String,String>> check(JsonNode node,Type type){var out=new ArrayList<Map<String,String>>();visit(node,type,"",out,0);return out;}
+ public static List<Map<String,String>> check(JsonNode node,Type type){
+  // Existing production tabs send empty raw-task-only fields; Jackson binds those blanks to null.
+  if(type==com.ruoyi.metal.catalog.WorkOrderRequest.class&&node!=null&&node.isObject()
+      &&(node.path("taskType").isMissingNode()||node.path("taskType").isNull()||"PRODUCTION".equals(node.path("taskType").asText()))){
+   node=node.deepCopy();
+   for(var item:node.path("items"))if(item.isObject())for(String field:List.of("materialId","plannedInputWeight"))
+    if(item.path(field).isTextual()&&item.path(field).asText().isEmpty())((com.fasterxml.jackson.databind.node.ObjectNode)item).putNull(field);
+  }
+  var out=new ArrayList<Map<String,String>>();visit(node,type,"",out,0);return out;
+ }
  private static void visit(JsonNode node,Type type,String path,List<Map<String,String>> out,int depth){
   if(node==null||depth>30||out.size()>=100)return;
   if(node.isNull()){if(type instanceof Class<?> c&&c.isPrimitive())out.add(InputValidationErrors.field(path,"Required",InputValidationErrors.label(path)+"不能为空"));return;}

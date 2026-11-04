@@ -17,7 +17,7 @@ test('六项真实页面、菜单、报价边界及原型比例',async({page,con
   const role=await create('/system/role',{roleName:`${f.prefix}角色_${suffix}`,factoryId:factory,roleSort:0,status:'0',menuIds:[]})
   const process=await create('/metal/process',{name:`${f.prefix}工序_${suffix}`,processType:1,description:'原描述'})
   const material=await create('/metal/material',{code:`BM${suffix}`,materialType:'铱粉',specification:'旧规格'})
-  const product=await create('/metal/product',{name:`${f.prefix}产品_${suffix}`,code:`BP${suffix}`,category:'铱环',dimensions:{outerDiameter:'12',innerDiameter:'10',height:'2'},processes:[{processId:process,loss:'0.123456'}]})
+  const product=await create('/metal/product',{name:`${f.prefix}产品_${suffix}`,code:`BP${suffix}`,metalTypeId:'1',productType:'环',dimensions:{outerDiameter:'12',innerDiameter:'10',thickness:'2'},processes:[{processId:process,loss:'0.123456'}]})
   const line=await create('/metal/production-line',{name:`${f.prefix}线_${suffix}`,code:`BL${suffix}`,factoryId:factory,productIds:[product]})
   const staff=await create('/system/user',{nickName:`${f.prefix}人员_${suffix}`,phonenumber:'137'+suffix.replace(/\D/g,'').slice(-8),factoryId:factory,roleIds:[role],status:'0',password:`Browser${suffix}`})
   await page.setViewportSize({width:1442,height:1026});await page.goto('/metal/factory')
@@ -32,14 +32,14 @@ test('六项真实页面、菜单、报价边界及原型比例',async({page,con
   await page.setViewportSize({width:1442,height:1026})
   await page.getByRole('button',{name:'基础信息管理'}).click();await expect(page.getByRole('link',{name:'产品管理',exact:true})).toHaveCount(0)
   await page.getByRole('button',{name:'基础信息管理'}).click()
-  const cases=[['工序管理','/metal/process',`${f.prefix}工序_${suffix}`,'工序描述','页面改描述',process],['物料管理','/metal/material',`BM${suffix}`,'规格型号','页面改规格',material],['产品管理','/metal/product',`${f.prefix}产品_${suffix}`,'理论成品净重（g）','2.123456',product],['产线管理','/metal/production-line',`${f.prefix}线_${suffix}`,'产线名称',`${f.prefix}改线_${suffix}`,line],['人员管理','/system/user',`${f.prefix}人员_${suffix}`,'姓名',`${f.prefix}改人员_${suffix}`,staff],['角色管理','/system/role',`${f.prefix}角色_${suffix}`,'角色名称',`${f.prefix}改角色_${suffix}`,role]]
+  const cases=[['工序管理','/metal/process',`${f.prefix}工序_${suffix}`,'工序描述','页面改描述',process],['物料管理','/metal/material',`BM${suffix}`,'规格型号','页面改规格',material],['产品管理','/metal/product',`${f.prefix}产品_${suffix}`,'纯度（%）','99.12',product],['产线管理','/metal/production-line',`${f.prefix}线_${suffix}`,'产线名称',`${f.prefix}改线_${suffix}`,line],['人员管理','/system/user',`${f.prefix}人员_${suffix}`,'姓名',`${f.prefix}改人员_${suffix}`,staff],['角色管理','/system/role',`${f.prefix}角色_${suffix}`,'角色名称',`${f.prefix}改角色_${suffix}`,role]]
   for(const [menu,path,name,label,value,id]of cases){
    await page.getByRole('link',{name:menu,exact:true}).click();await expect(page).toHaveURL(new RegExp(path+'$'))
    await expect(page.getByRole('link',{name:menu,exact:true})).toHaveClass(/active/);if(path==='/metal/material'){await page.getByPlaceholder('物料编码',{exact:true}).fill(String(name));await page.getByRole('button',{name:'查询',exact:true}).click()}
    const queryField:Record<string,string>={'/metal/process':'工序名称','/metal/product':'产品名称','/metal/production-line':'产线名称','/system/role':'角色名称'};if(queryField[String(path)]){await page.getByPlaceholder(queryField[String(path)],{exact:true}).fill(String(name));await page.getByRole('button',{name:'查询',exact:true}).click()}
    const row=page.getByRole('row').filter({hasText:name});await expect(row).toBeVisible();await row.getByRole('button',{name:'编辑',exact:true}).click()
    await page.getByRole('dialog').getByLabel(label,{exact:true}).fill(value);await save();await page.reload();if(path==='/metal/material'){await page.getByPlaceholder('物料编码',{exact:true}).fill(String(name));await page.getByRole('button',{name:'查询',exact:true}).click()}
-   const d=await detail(path,id,token);const key=label==='工序描述'?'description':label==='规格型号'?'specification':label==='理论成品净重（g）'?'weight':label==='姓名'?'nickName':label==='角色名称'?'roleName':'name';expect(d[key]).toBe(value)
+   const d=await detail(path,id,token);const key=label==='工序描述'?'description':label==='规格型号'?'specification':label==='纯度（%）'?'purity':label==='姓名'?'nickName':label==='角色名称'?'roleName':'name';if(key==='purity')expect(Number(d[key])).toBe(Number(value));else expect(d[key]).toBe(value)
    if(path==='/metal/product'){expect(d.unit).toBeUndefined();await expect(page.getByRole('columnheader',{name:'单位',exact:true})).toHaveCount(0)}
    if(queryField[String(path)]){await page.getByPlaceholder(queryField[String(path)],{exact:true}).fill(String(d.name??d.nickName??d.roleName??d.code));await page.getByRole('button',{name:'查询',exact:true}).click()}
    await expect(page.getByRole('row').filter({hasText:d.name??d.nickName??d.roleName??d.code})).toBeVisible()
@@ -47,8 +47,8 @@ test('六项真实页面、菜单、报价边界及原型比例',async({page,con
   }
   // Exercise new forms against the real server, including factory/role selections.
   for(const [menu,path,name,fields,selects]of [
-   ['物料管理','/metal/material',`UM${suffix}`,{'物料编码':`UM${suffix}`},[['物料类型','铱粉']]],
-   ['产品管理','/metal/product',`${f.prefix}新增产品_${suffix}`,{'产品编号':`UP${suffix}`,'产品名称':`${f.prefix}新增产品_${suffix}`,'外径（cm）':'12','内径（cm）':'10','高度（cm）':'2'},[['产品类别','铱环']]],
+   ['物料管理','/metal/material',`UM${suffix}`,{'物料编码':`UM${suffix}`},[['物料类型','粉料'],['金属类型','铱']]],
+   ['产品管理','/metal/product',`${f.prefix}新增产品_${suffix}`,{'产品编号':`UP${suffix}`,'产品名称':`${f.prefix}新增产品_${suffix}`,'外径（cm）':'12','内径（cm）':'10','厚（cm）':'2'},[['金属类型','铱'],['产品类型','环']]],
    ['产线管理','/metal/production-line',`${f.prefix}新增线_${suffix}`,{'产线编号':`UL${suffix}`,'产线名称':`${f.prefix}新增线_${suffix}`},[['所属工厂',`${f.prefix}厂_${suffix}`]]],
    ['角色管理','/system/role',`${f.prefix}新增角色_${suffix}`,{'角色名称':`${f.prefix}新增角色_${suffix}`},[['所属工厂',`${f.prefix}厂_${suffix}`]]],
    ['人员管理','/system/user',`${f.prefix}新增人员_${suffix}`,{'手机号':'135'+suffix.replace(/\D/g,'').slice(-8),'姓名':`${f.prefix}新增人员_${suffix}`,'初始密码':`Browser${suffix}`},[['所属工厂',`${f.prefix}厂_${suffix}`],['角色',`${f.prefix}改角色_${suffix}`]]]

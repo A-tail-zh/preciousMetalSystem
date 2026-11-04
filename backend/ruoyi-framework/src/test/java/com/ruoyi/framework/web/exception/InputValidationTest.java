@@ -6,6 +6,28 @@ import org.junit.jupiter.api.Test;
 import org.springframework.validation.BeanPropertyBindingResult;
 import static org.junit.jupiter.api.Assertions.*;
 class InputValidationTest {
+ @Test void incomingWeightsKeepNullAndZeroAndRejectMalformedTokens()throws Exception {
+  for(Class<?> type:new Class<?>[]{WorkOrderRequest.class,WorkOrderRequest.IncomingWeightChange.class}){
+   for(String value:new String[]{"null","0","\"123.456\""})assertTrue(InputPayloadValidation.check(InputPayloadValidation.parse("{\"customerIncomingWeight\":"+value+"}"),type).isEmpty());
+   for(String value:new String[]{"\"\"","\"1e3\"","1e3","true"}){
+    var errors=InputPayloadValidation.check(InputPayloadValidation.parse("{\"customerIncomingWeight\":"+value+"}"),type);
+    assertEquals("customerIncomingWeight",errors.get(0).get("field"));assertTrue(errors.get(0).get("message").startsWith("客户来料净重"));
+   }
+  }
+ }
+ @Test void oldProductionTabsCanSendEmptyRawOnlyFields()throws Exception {
+  for(String task:new String[]{"", "\"taskType\":\"PRODUCTION\","}){
+   String json="{"+task+"\"items\":[{\"materialId\":\"\",\"plannedInputWeight\":\"\"}]}";
+   assertTrue(InputPayloadValidation.check(InputPayloadValidation.parse(json),WorkOrderRequest.class).isEmpty());
+   var mapper=new ObjectMapper().findAndRegisterModules();var bound=mapper.readValue(json,WorkOrderRequest.class);assertNull(bound.items().get(0).plannedInputWeight());assertNull(bound.items().get(0).materialId());
+  }
+ }
+ @Test void rawAndOtherDecimalFieldsKeepStrictValidation()throws Exception {
+  for(String value:new String[]{"\"\"", "\"1e3\"", "1e3"})assertFalse(InputPayloadValidation.check(InputPayloadValidation.parse("{\"taskType\":\"RAW_PROCESSING\",\"items\":[{\"plannedInputWeight\":"+value+"}]}"),WorkOrderRequest.class).isEmpty());
+  assertFalse(InputPayloadValidation.check(InputPayloadValidation.parse("{\"items\":[{\"plannedInputWeight\":\"1e3\"}]}"),WorkOrderRequest.class).isEmpty());
+  assertFalse(InputPayloadValidation.check(InputPayloadValidation.parse("{\"lines\":[{\"netWeight\":\"\"}]}"),WarehouseRequests.Order.class).isEmpty());
+  var errors=InputPayloadValidation.check(InputPayloadValidation.parse("{\"taskType\":\"RAW_PROCESSING\",\"items\":[{\"plannedInputWeight\":\"\"}]}"),WorkOrderRequest.class);assertTrue(errors.get(0).get("message").startsWith("计划投入净重"));
+ }
  @Test void quotationWeightsRejectScientificNumericTokensBeforeStringBinding()throws Exception {for(String key:new String[]{"powderWeight","nonPowderWeight","lossWeight"})for(String token:new String[]{"1e2","1e0","1E-2","-0.004","1.1234567"}){var errors=InputPayloadValidation.check(InputPayloadValidation.parse("{\"items\":[{\""+key+"\":"+token+"}]}"),com.ruoyi.metal.catalog.QuotationSaveRequest.class);assertEquals("items[0]."+key,errors.get(0).get("field"));}assertTrue(InputPayloadValidation.check(InputPayloadValidation.parse("{\"items\":[{\"powderWeight\":10.123456,\"lossWeight\":0}]}"),com.ruoyi.metal.catalog.QuotationSaveRequest.class).isEmpty());}
 
  @Test void rejectsFractionalPieceBeforeJacksonCanTruncate()throws Exception {assertFalse(InputPayloadValidation.check(InputPayloadValidation.parse("{\"items\":[{\"quantity\":1.5}]}"),WorkOrderRequest.class).isEmpty());}

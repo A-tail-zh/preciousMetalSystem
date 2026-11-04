@@ -21,7 +21,7 @@ async function setup(page:Page,admin=true){
 test('existing admin tab refreshes authorized routes when customer menu is added',async({page})=>{
  const state=await setup(page);expect(state.routerRequests).toBe(1);state.enable()
  await page.getByRole('link',{name:'客户管理',exact:true}).click()
- await expect(page.locator('.customer-page')).toBeVisible();expect(state.routerRequests).toBe(2);expect(state.customerRequests).toBe(1)
+ await expect(page.locator('.customer-page')).toBeVisible();expect(state.routerRequests).toBe(2);await expect.poll(()=>state.customerRequests).toBe(1)
 })
 test('route refresh preserves query and hash',async({page})=>{
  const state=await setup(page);state.enable()

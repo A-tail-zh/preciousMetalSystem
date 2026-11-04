@@ -98,6 +98,7 @@ public class ProductService extends FactoryCatalogService<ProductRecord> {
         for(int i=0;i<row.getProcesses().size();i++){
             String mode=SemiMeasurementRules.mode(row.getProcesses().get(i).getMeasurementMode());
             if(i==row.getProcesses().size()-1&&mode.equals("WEIGHT"))throw new ServiceException("最后一道工序产出成品，须按件管理");
+            if(mode.equals("WEIGHT")&&"G_PER_PIECE".equals(row.getProcesses().get(i).getLossUnit()))throw new ServiceException("按重量管理须先重新配置损耗百分比");
         }
         List<Long> ids = row.getProcesses().stream().map(ProductStep::getProcessId).toList();
         if (new HashSet<>(ids).size() != ids.size()) throw new ServiceException("同一工序不能重复选择");
@@ -112,8 +113,7 @@ public class ProductService extends FactoryCatalogService<ProductRecord> {
             for(var process:jdbc.queryForList("SELECT p.process_id,t.type_name FROM metal_process p JOIN metal_process_type t ON t.type_id=p.process_type WHERE p.process_id IN ("+marks+")",ids.toArray()))
                 types.put(((Number)process.get("process_id")).longValue(),Objects.toString(process.get("type_name"),""));
             if(types.size()!=ids.size())throw new ServiceException("工序类型不存在，请重新选择有效工序");
-            var route=ProcessingPolicy.route("PRODUCTION",ids.stream().map(types::get).toList(),row.getProcesses().stream().map(ProductStep::getMeasurementMode).toList());
-            for(int i=0;i<route.size();i++)row.getProcesses().get(i).setMeasurementMode(route.get(i).measurementMode());
+            ProcessingPolicy.route("PRODUCTION",ids.stream().map(types::get).toList(),row.getProcesses().stream().map(ProductStep::getMeasurementMode).toList());
         }
     }
 

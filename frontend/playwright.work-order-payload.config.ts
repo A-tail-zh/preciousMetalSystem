@@ -1,0 +1,2 @@
+import {defineConfig} from '@playwright/test'
+export default defineConfig({testDir:'./tests',testMatch:['work-order-payload-weight.spec.ts','catalog-type-deletion.spec.ts','quotation-display.spec.ts','work-order-customer-loss.spec.ts','work-order-form-session.spec.ts'],workers:1,timeout:30000,use:{baseURL:'http://127.0.0.1:5201',launchOptions:{channel:'chrome'}},outputDir:'../.runtime/work-order-payload-switch-20261104/ui-results',reporter:[['list'],['json',{outputFile:'../.runtime/work-order-payload-switch-20261104/ui-results.json'}]]})

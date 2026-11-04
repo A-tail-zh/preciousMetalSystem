@@ -88,7 +88,11 @@ function exportCurrent(){if(canonical(values())!==canonical(applied.value)){ElMe
 function factoryChanged(){emit('factory',draft.factoryId??'');metalEpoch++;metalOptions.value=[];delete draft.metalTypeId;delete draft.processType;delete draft.productId;void loadMetals();for(const field of fields.value.filter(f=>['roles','warehouses','people','products'].includes(f.remote??''))){delete draft[field.key];choices[field.key]=[];more[field.key]=false;epochs[field.key]=(epochs[field.key]??0)+1}}
 async function search(field:Field,keyword:string,append=false){if(!field.remote)return;const key=field.key,current=epochs[key]=(epochs[key]??0)+1;busy[key]=true;const pageNum=append?(pages[key]??1)+1:1;keywords[key]=keyword;try{const response=await request({url:'/metal/filter-options/'+field.remote,params:{module:props.kind,keyword,pageNum,factoryId:draft.factoryId}}) as unknown as {rows:Option[];hasMore:boolean};if(current!==epochs[key])return;const selected=choices[key]?.find(o=>o.id===draft[key]);const merged=append?[...(choices[key]??[]),...response.rows]:response.rows;if(selected&&!merged.some(o=>o.id===selected.id))merged.unshift(selected);choices[key]=merged;more[key]=response.hasMore;pages[key]=pageNum}catch{}finally{if(current===epochs[key])busy[key]=false}}
 watch(()=>props.orderKind,()=>{delete draft.type;delete applied.value.type;emit('apply',{...applied.value})})
-defineExpose({reset})
+function removeProcessType(id:string){
+ if(draft.processType===id)delete draft.processType
+ if(applied.value.processType===id){delete applied.value.processType;emit('apply',{...applied.value})}
+}
+defineExpose({reset,removeProcessType})
 </script>
 <style scoped>
 .filter-trailing-actions{margin-left:auto;max-width:100%;display:flex;align-items:center}

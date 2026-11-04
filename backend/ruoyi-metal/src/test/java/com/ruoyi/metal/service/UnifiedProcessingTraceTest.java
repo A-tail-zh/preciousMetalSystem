@@ -74,7 +74,7 @@ class UnifiedProcessingTraceTest {
   when(products.detail(1L)).thenReturn(product);
   when(jdbc.queryForList(anyString(),any(Object[].class))).thenAnswer(call->call.<String>getArgument(0).startsWith("SELECT factory_id")?List.of(Map.of("factory_id",2L)):List.of(Map.of("product_id",1L)));
   var service=new WorkOrderService(jdbc,null,mock(FactoryScope.class),products);
-  var result=service.productPlans(1L,3L);assertEquals(9,result.get("version"));assertEquals(2,((Map<?,?>)result.get("snapshot")).get("measurementPolicyVersion"));
+  var result=service.productPlans(1L,3L);assertEquals(9,result.get("version"));assertEquals(3,((Map<?,?>)result.get("snapshot")).get("measurementPolicyVersion"));
   service.availableProducts(3L);String options=queries(jdbc).stream().filter(sql->sql.startsWith("SELECT CAST(p.product_id")).findFirst().orElseThrow();assertTrue(options.contains("p.version"));
  }
  private static List<String> queries(JdbcTemplate jdbc){return mockingDetails(jdbc).getInvocations().stream().filter(call->call.getMethod().getName().equals("queryForList")).map(call->(String)call.getArgument(0)).toList();}

@@ -5,7 +5,7 @@ test('shared batch budget, independent source cap, edited row exclusion and dele
  const drafts=[{sourceLineId:'a',netWeight:'30'},{sourceLineId:'c',netWeight:'5'}]
  expect(available(a,[a,b],drafts)).toBe('55.000000');expect(available(b,[a,b],drafts)).toBe('5.000000')
  expect(available(a,[a,b],drafts,0)).toBe('85.000000');expect(available(a,[a,b],drafts.slice(1))).toBe('85.000000')
- expect(error(a,[a,b],drafts,'55')).toBe('');expect(error(a,[a,b],drafts,'55.000001')).toContain('55.000000')
+ expect(error(a,[a,b],drafts,'55')).toBe('');expect(error(a,[a,b],drafts,'55.000001')).toBe('剩余可退净重最多55.00g（已扣除产出及本单其他待还明细）')
 })
 test('exact decimals and unrelated batches',()=>{
  const s={...a,remainingWeight:'0.300000',batchRemainingWeight:'0.300000',returnableWeight:'0.300000'}

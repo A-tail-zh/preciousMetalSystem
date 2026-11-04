@@ -75,12 +75,13 @@ class WorkOrderRawSnapshotTest {
   doAnswer(call->{eligible.set(call.getArgument(1));assertEquals(Integer.valueOf(3),call.<Integer>getArgument(7));return 1;}).when(jdbc).update(startsWith("UPDATE metal_work_order SET auto_semi_release_eligible="),any(Object[].class));
   var service=new WorkOrderService(jdbc,null,mock(FactoryScope.class),products);var auto=WorkOrderService.class.getDeclaredField("autoSemiReleaseEnabled");auto.setAccessible(true);auto.set(service,enabled);
   var item=raw?new WorkOrderRequest.Item(null,null,0,List.of(plan(5,BigDecimal.ONE)),4L,BigDecimal.TEN):new WorkOrderRequest.Item(null,4L,1,List.of(plan(5,null)));
-  var input=new WorkOrderRequest(null,null,UUID.randomUUID().toString(),null,1L,2L,3L,LocalDate.of(2026,11,3),List.of(item),raw?null:9L,raw?null:1,"DIRECT",raw?"RAW_PROCESSING":"PRODUCTION");
+  var input=new WorkOrderRequest(null,null,UUID.randomUUID().toString(),null,1L,2L,3L,LocalDate.of(2026,11,3),List.of(item),raw?null:9L,raw?null:1,"DIRECT",raw?"RAW_PROCESSING":"PRODUCTION",raw?null:new BigDecimal("123.456"),null);
   try(var security=mockStatic(SecurityUtils.class)){
    security.when(SecurityUtils::getUserId).thenReturn(7L);security.when(SecurityUtils::getUsername).thenReturn("planner");
    var user=new SysUser();user.setNickName("计划员");var login=new LoginUser();login.setUser(user);security.when(SecurityUtils::getLoginUser).thenReturn(login);
    service.create(input);
   }
+  verify(jdbc).update("UPDATE metal_work_order SET customer_incoming_weight=? WHERE work_order_id=?",raw?null:new BigDecimal("123.46"),100L);
   return Objects.requireNonNull(eligible.get());
  }
 }

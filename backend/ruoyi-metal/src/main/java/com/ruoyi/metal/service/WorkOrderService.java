@@ -1,6 +1,7 @@
 package com.ruoyi.metal.service;
 
 import java.util.*;
+import java.math.BigDecimal;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.sql.*;
@@ -31,7 +32,7 @@ public class WorkOrderService {
     @org.springframework.beans.factory.annotation.Value("${metal.auto-semi-release-enabled:true}")
     private boolean autoSemiReleaseEnabled=true;
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-    private static final String HEADER = "SELECT CAST(work_order_id AS CHAR) id,order_no orderNo,customer,CAST(customer_id AS CHAR) customerId,customer_version customerVersion,CAST(customer_snapshot AS CHAR) customerSnapshot,processing_type processingType,task_type taskType,processing_policy_version processingPolicyVersion,CAST(factory_id AS CHAR) factoryId,CAST(production_line_id AS CHAR) productionLineId,CAST(owner_id AS CHAR) ownerId,factory_name factoryName,line_name lineName,owner_name ownerName,DATE_FORMAT(order_date,'%Y-%m-%d') orderDate,status,reject_reason rejectReason,create_by createBy,creator_name creatorName,DATE_FORMAT(create_time,'%Y-%m-%d %H:%i:%s') createTime,version,(EXISTS(SELECT 1 FROM metal_process_batch b WHERE b.work_order_id=metal_work_order.work_order_id) OR EXISTS(SELECT 1 FROM metal_warehouse_order o WHERE o.work_order_id=metal_work_order.work_order_id) OR EXISTS(SELECT 1 FROM metal_work_report r JOIN metal_work_order_item i ON i.item_id=r.item_id WHERE i.work_order_id=metal_work_order.work_order_id)) hasBusinessReferences FROM metal_work_order WHERE work_order_id=? AND del_flag='0'";
+    private static final String HEADER = "SELECT CAST(work_order_id AS CHAR) id,order_no orderNo,customer,CAST(customer_id AS CHAR) customerId,customer_version customerVersion,CAST(customer_snapshot AS CHAR) customerSnapshot,processing_type processingType,CAST(customer_incoming_weight AS CHAR) customerIncomingWeight,task_type taskType,processing_policy_version processingPolicyVersion,CAST(factory_id AS CHAR) factoryId,CAST(production_line_id AS CHAR) productionLineId,CAST(owner_id AS CHAR) ownerId,factory_name factoryName,line_name lineName,owner_name ownerName,DATE_FORMAT(order_date,'%Y-%m-%d') orderDate,status,reject_reason rejectReason,create_by createBy,creator_name creatorName,DATE_FORMAT(create_time,'%Y-%m-%d %H:%i:%s') createTime,version,(EXISTS(SELECT 1 FROM metal_process_batch b WHERE b.work_order_id=metal_work_order.work_order_id) OR EXISTS(SELECT 1 FROM metal_warehouse_order o WHERE o.work_order_id=metal_work_order.work_order_id) OR EXISTS(SELECT 1 FROM metal_work_report r JOIN metal_work_order_item i ON i.item_id=r.item_id WHERE i.work_order_id=metal_work_order.work_order_id)) hasBusinessReferences FROM metal_work_order WHERE work_order_id=? AND del_flag='0'";
 
     public WorkOrderService(JdbcTemplate jdbc, WorkOrderMapper mapper, FactoryScope scope, ProductService products) {
         this.jdbc = jdbc;
@@ -217,7 +218,7 @@ public class WorkOrderService {
 
     private Map<String, Object> snapshot(ProductRecord product) {
         Map<String, Object> value = new LinkedHashMap<>();
-        value.put("measurementPolicyVersion", MeasurementPolicy.VERSION);
+        value.put("measurementPolicyVersion", MeasurementPolicy.CONFIGURABLE_VERSION);
         value.put("code", product.getCode());
         value.put("name", product.getName());
         value.put("category", product.getCategory());
@@ -278,7 +279,7 @@ public class WorkOrderService {
                 if(material.isEmpty())throw invalid("物料不存在或金属无效，请重新选择");
                 boolean sameMaterial=retained!=null&&Objects.equals(text(retained,"materialId"),input.materialId().toString());
                 Map<String,Object> materialSnapshot=sameMaterial?(Map<String,Object>)retained.get("snapshot"):material.get(0);
-                if (!sameMaterial) {materialSnapshot=new LinkedHashMap<>(materialSnapshot);materialSnapshot.put("measurementPolicyVersion",MeasurementPolicy.VERSION);}
+                if (!sameMaterial) {materialSnapshot=new LinkedHashMap<>(materialSnapshot);materialSnapshot.put("measurementPolicyVersion",MeasurementPolicy.CONFIGURABLE_VERSION);}
                 var previousSteps=sameMaterial?(List<Map<String,Object>>)retained.get("plans"):List.<Map<String,Object>>of();
                 boolean sameRoute=previousSteps.stream().map(s->id(s.get("processId"))).toList().equals(input.plans().stream().map(WorkOrderRequest.Plan::processId).toList());
                 var steps=new ArrayList<Map<String,Object>>();
@@ -495,6 +496,37 @@ public class WorkOrderService {
         jdbc.update("INSERT INTO metal_work_order_review(work_order_id,action,from_status,to_status,reason,actor_id,actor_name) VALUES(?,?,?,?,?,?,?)", orderId, action, from, to, reason, SecurityUtils.getUserId(), actorName());
     }
 
+    static BigDecimal incomingWeight(BigDecimal value,String task,String processing){
+        if(value==null)return null;
+        if("RAW_PROCESSING".equals(task)&&"DIRECT".equals(processing))throw invalid("工厂自有原料任务不能登记客户来料净重");
+        if(value.signum()<0||value.precision()-value.scale()>14||value.scale()>6)throw invalid("客户来料净重须为非负数，最多14位整数、6位小数");
+        return BusinessDecimal.round(value);
+    }
+
+    static String incomingChange(Object previous,BigDecimal weight,String reason){
+        var before=previous==null?null:new BigDecimal(previous.toString());
+        if(before==null?weight==null:weight!=null&&before.compareTo(weight)==0)return null;
+        if(reason==null||reason.isBlank()||reason.length()>300)throw invalid("请填写来料更正原因，最多300字");
+        return "客户来料净重："+(before==null?"未登记":BusinessDecimal.display(before)+"g")+" → "+(weight==null?"未登记":BusinessDecimal.display(weight)+"g")+"；原因："+reason.trim();
+    }
+
+    @Transactional(rollbackFor=Exception.class,isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
+    public void changeIncomingWeight(Long work,WorkOrderRequest.IncomingWeightChange input){
+        if(input==null||input.version()==null||input.version()<0)throw invalid("更正来料净重须提供版本号");
+        var initial=header(work,false);
+        access(initial);
+        scope.lockFactories(List.of(id(initial.get("factoryId"))));
+        var current=header(work,true);
+        access(current);
+        if(!Objects.equals(initial.get("factoryId"),current.get("factoryId")))throw invalid("工单归属已变化，请刷新后重试");
+        version(current,input.version());
+        var weight=incomingWeight(input.customerIncomingWeight(),text(current,"taskType"),text(current,"processingType"));
+        String reason=incomingChange(current.get("customerIncomingWeight"),weight,input.reason());
+        if(reason==null)return;
+        if(jdbc.update("UPDATE metal_work_order SET customer_incoming_weight=?,version=version+1,update_by=?,update_time=NOW() WHERE work_order_id=? AND version=? AND del_flag='0'",weight,SecurityUtils.getUsername(),work,input.version())!=1)throw invalid("工单已被修改，请刷新后重试");
+        review(work,"INCOMING_CHANGE",text(current,"status"),text(current,"status"),reason);
+    }
+
     @Transactional(rollbackFor = Exception.class, isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     /**
      * 新增记录并保存关联资料。
@@ -519,6 +551,7 @@ public class WorkOrderService {
         var customer=customer(request,null);
         requireProcessing(request.processingType(),false);
         rawProcessing(task,request.processingType());
+        var incoming=incomingWeight(request.customerIncomingWeight(),task,request.processingType());
         var prepared = prepare(request, List.of(),ProcessingPolicy.EXECUTION_VERSION,task);
         String factory = jdbc.queryForObject("SELECT factory_name FROM metal_factory WHERE factory_id=?", String.class, request.factoryId());
         String lineName = text(line(request.productionLineId(), request.factoryId(), true), "name");
@@ -526,6 +559,7 @@ public class WorkOrderService {
         long orderId = insert("INSERT INTO metal_work_order(order_no,request_id,request_hash,request_actor,customer,factory_id,production_line_id,owner_id,factory_name,line_name,owner_name,order_date,create_by,creator_name,update_by,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'WAITING_MATERIAL')", reservedNumber, request.requestId(), fingerprint, SecurityUtils.getUserId(), customer.get("name"), request.factoryId(), request.productionLineId(), request.ownerId(), factory, lineName, ownerName, java.sql.Date.valueOf(request.orderDate()), SecurityUtils.getUsername(), actorName(), SecurityUtils.getUsername());
         jdbc.update("UPDATE metal_work_order SET auto_semi_release_eligible=?,customer_id=?,customer_version=?,customer_snapshot=?,processing_type=?,task_type=?,processing_policy_version=? WHERE work_order_id=?",autoSemiReleaseEnabled&&"PRODUCTION".equals(task),request.customerId(),customer.get("version"),customer.size()==1?null:JSON.toJSONString(customer),request.processingType(),task,ProcessingPolicy.EXECUTION_VERSION,orderId);
         jdbc.update("UPDATE metal_work_order SET loss_rate_basis='OUTBOUND_TOTAL' WHERE work_order_id=?",orderId);
+        jdbc.update("UPDATE metal_work_order SET customer_incoming_weight=? WHERE work_order_id=?",incoming,orderId);
         writeItems(orderId, prepared);
         review(orderId, "CREATE", null, "WAITING_MATERIAL", null);
         return Long.toString(orderId);
@@ -553,6 +587,8 @@ public class WorkOrderService {
         String processing=request.processingType()==null?text(current,"processingType"):request.processingType();
         requireProcessing(processing,current.get("processingType")==null);
         rawProcessing(task,processing);
+        var incoming=incomingWeight(request.customerIncomingWeight(),task,processing);
+        String incomingReason=incomingChange(current.get("customerIncomingWeight"),incoming,request.incomingWeightChangeReason());
         int policy=current.get("processingPolicyVersion")==null?1:((Number)current.get("processingPolicyVersion")).intValue();
         var prepared = prepare(request, items(request.id()),policy,task);
         String factory = request.factoryId().equals(id(current.get("factoryId"))) ? text(current, "factoryName") : jdbc.queryForObject("SELECT factory_name FROM metal_factory WHERE factory_id=?", String.class, request.factoryId());
@@ -561,10 +597,12 @@ public class WorkOrderService {
         if (jdbc.update("UPDATE metal_work_order SET customer=?,factory_id=?,production_line_id=?,owner_id=?,factory_name=?,line_name=?,owner_name=?,order_date=?,version=version+1,update_by=?,update_time=NOW() WHERE work_order_id=? AND version=? AND del_flag='0'", customer.get("name"), request.factoryId(), request.productionLineId(), request.ownerId(), factory, lineName, ownerName, java.sql.Date.valueOf(request.orderDate()), SecurityUtils.getUsername(), request.id(), request.version()) != 1)
             throw invalid("工单已被修改，请刷新后重试");
         jdbc.update("UPDATE metal_work_order SET customer_id=?,customer_version=?,customer_snapshot=?,processing_type=? WHERE work_order_id=?",request.customerId(),customer.get("version"),customer.size()==1?null:JSON.toJSONString(customer),processing,request.id());
+        jdbc.update("UPDATE metal_work_order SET customer_incoming_weight=? WHERE work_order_id=?",incoming,request.id());
         jdbc.update("DELETE s FROM metal_work_order_step s JOIN metal_work_order_item i ON i.item_id=s.item_id WHERE i.work_order_id=?", request.id());
         jdbc.update("DELETE FROM metal_work_order_item WHERE work_order_id=?", request.id());
         writeItems(request.id(), prepared);
         review(request.id(), "EDIT", text(current, "status"), text(current, "status"), null);
+        if(incomingReason!=null)review(request.id(),"INCOMING_CHANGE",text(current,"status"),text(current,"status"),incomingReason);
     }
 
     @Transactional(rollbackFor = Exception.class, isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)

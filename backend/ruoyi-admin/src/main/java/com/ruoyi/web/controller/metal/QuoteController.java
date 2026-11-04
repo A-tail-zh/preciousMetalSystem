@@ -32,13 +32,17 @@ public class QuoteController extends BaseController {
 
 
     @GetMapping("/metal/metal-types")
-    @PreAuthorize("@ss.hasAnyPermi('metal:material:list,metal:material:query,metal:material:add,metal:material:edit,metal:product:list,metal:product:query,metal:product:add,metal:product:edit,metal:quote-rule:list,metal:quote-rule:edit,metal:quotation:list')")
+    @PreAuthorize("@ss.hasAnyPermi('metal:material:list,metal:material:query,metal:material:add,metal:material:edit,metal:material:remove,metal:product:list,metal:product:query,metal:product:add,metal:product:edit,metal:product:remove,metal:quote-rule:list,metal:quote-rule:edit,metal:quotation:list')")
     public AjaxResult metals(@RequestParam(name="factoryId",required=false) Long factoryId){return success(service.metals(factoryId));}
     public record MetalName(@jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max=100) String name,@jakarta.validation.constraints.Positive Long factoryId){}
     @PostMapping("/metal/metal-types")
     @PreAuthorize("@ss.hasAnyPermi('metal:material:add,metal:material:edit,metal:product:add,metal:product:edit,metal:quote-rule:edit')")
     @Log(title="新增金属类型",businessType=BusinessType.INSERT)
     public AjaxResult addMetal(@Valid @RequestBody MetalName input){return success().put("id",service.addMetal(input.name(),input.factoryId()));}
+    @DeleteMapping("/metal/metal-types/{id}")
+    @PreAuthorize("@ss.hasAnyPermi('metal:material:remove,metal:product:remove,metal:quote-rule:edit')")
+    @Log(title="删除金属类型",businessType=BusinessType.DELETE)
+    public AjaxResult removeMetal(@PathVariable Long id){service.removeMetal(id);return success();}
     @GetMapping("/metal/quote-rule/list")
     @PreAuthorize("@ss.hasPermi('metal:quote-rule:list')")
     public AjaxResult rules(@RequestParam(required=false) Long metalTypeId,@RequestParam(name="factoryId",required=false) Long factoryId){return success(service.rules(metalTypeId,factoryId));}

@@ -117,8 +117,9 @@ test('residual probe preserves entered weight and failed request identity',async
  await page.route('**/dev-api/metal/warehouse/options/people?**',r=>r.fulfill({json:{code:200,data:[{id:'K',name:'库管',nickName:'库管'}]}}))
  await page.route('**/dev-api/metal/warehouse-flows/closeout/W',r=>{bodies.push(r.request().postDataJSON());return r.fulfill({status:503,json:{msg:'暂时不可用'}})})
  await mountBusiness(page,'work-order/WorkOrderResidualPanel.vue',{workOrderId:'W'})
+ await expect(page.getByRole('button',{name:'本人发起客户余料收尾'})).toBeEnabled()
  await page.evaluate(()=>{let vm=(document.querySelector('.residual-panel') as any).__vueParentComponent;while(vm&&vm.type?.__name!=='WorkOrderResidualPanel')vm=vm.parent;Object.assign(vm.setupState,{mode:'OFFSET',keeperId:'K',offsetWorkOrderId:'OLD',weight:'12.345',reason:'保留称重'})})
- await page.getByRole('button',{name:'本人发起客户余料收尾'}).click();await expect.poll(()=>bodies.length).toBe(1);await tick(page,100);version=2;await event(page);await tick(page,100)
+ await page.getByRole('button',{name:'本人发起客户余料收尾'}).click();await expect.poll(()=>bodies.length).toBe(1);expect(bodies[0].weight).toBe('12.345');await tick(page,100);version=2;await event(page);await tick(page,100)
  expect(await page.evaluate(()=>{let vm=(document.querySelector('.residual-panel') as any).__vueParentComponent;while(vm&&vm.type?.__name!=='WorkOrderResidualPanel')vm=vm.parent;return vm.setupState.weight})).toBe('12.345')
  await page.getByRole('button',{name:'重试原请求'}).click({force:true});await expect.poll(()=>bodies.length).toBe(2);expect(bodies[1]).toEqual(bodies[0])
 })
@@ -154,9 +155,10 @@ test('production overview displays RAW stocks as weight without piece release ac
 })
 test('master candidate change marks the draft stale without removing the selected metal',async({page})=>{
  await setup(page);let metals=[{id:'T',name:'原金属'}]
- await page.route('**/dev-api/metal/metal-types',r=>r.fulfill({json:{code:200,data:metals}}))
+ await page.route('**/dev-api/metal/options/factories',r=>r.fulfill({json:{code:200,data:[{id:'F',name:'本厂'}]}}))
+ await page.route('**/dev-api/metal/metal-types**',r=>r.fulfill({json:{code:200,data:metals}}))
  await page.route('**/dev-api/metal/material/list?**',r=>r.fulfill({json:{code:200,rows:[{id:'M',version:1,code:'候选物料',specification:'规格',materialType:'粉料'}],total:1}}))
- await page.route('**/dev-api/metal/material/M',r=>r.fulfill({json:{code:200,data:{id:'M',version:1,metalTypeId:'T',code:'候选物料',specification:'规格',materialType:'粉料'}}}))
+ await page.route('**/dev-api/metal/material/M',r=>r.fulfill({json:{code:200,data:{id:'M',version:1,factoryId:'F',metalTypeId:'T',code:'候选物料',specification:'规格',materialType:'粉料'}}}))
  await mountBusiness(page,'MasterDataPage.vue',{kind:'material'});await page.locator('.master-table .el-table__body').getByRole('button',{name:'编辑',exact:true}).click({force:true});await tick(page,100);const d=page.getByRole('dialog');await expect(d).toContainText('原金属');metals=[];await event(page);await tick(page,100);await expect(d).toContainText('资料已变化');await expect(d).toContainText('原金属')
 })
 test('ledger periodic reads retain expanded detail page and selected item',async({page})=>{

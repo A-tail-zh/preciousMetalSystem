@@ -58,6 +58,9 @@ test('returned raw receipt revises declared weight with its own reason',async({p
 test('historical raw revision missing category never displays pieces',async({page})=>{
  const {dialog:d}=await setup(page,{revisions:[{id:'80',revision:0,orderNo:'OLD-01',warehouseName:'原料仓',lines:[{...structuredClone(line),line:{code:'OLD-RAW',quantity:0}}]}]});await d.getByText('验收及修订历史',{exact:true}).click();await expect(d).toContainText('OLD-RAW');await expect(d).not.toContainText('件')
 })
+test('historical raw revision retains explicit piece measurement',async({page})=>{
+ const {dialog:d}=await setup(page,{revisions:[{id:'80',revision:0,orderNo:'OLD-01',warehouseName:'原料仓',lines:[{...structuredClone(line),line:{code:'PIECE-RAW',effectiveMeasurementMode:'PIECE',quantity:3}}]}]});await d.getByText('验收及修订历史',{exact:true}).click();await expect(d).toContainText('3 件')
+})
 test('administrator permissions still cannot accept for a different keeper',async({page})=>{const {dialog:d}=await setup(page,{group:{keeperId:'9'}},['*:*:*']);await expect(d).toContainText('请由仓管员仓管甲登录验收');await expect(d.getByRole('button',{name:'本人库管验收',exact:true})).toHaveCount(0)})
 test('multi-warehouse receipt only accepts its waiting warehouse',async({page})=>{
  const groups=[{id:'8',keeperId:'7',keeperName:'仓管甲',confirmedBy:'7',confirmedByName:'仓管甲',status:'CONFIRMED',warehouseName:'一仓',orderNo:'IN-1',type:'RAW_IN',order:{},lines:[structuredClone(line)]},{id:'9',keeperId:'7',keeperName:'仓管甲',status:'WAITING',warehouseName:'二仓',orderNo:'IN-2',type:'RAW_IN',order:{},lines:[{...structuredClone(line),id:'82'}]}]

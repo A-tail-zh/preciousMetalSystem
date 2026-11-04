@@ -11,7 +11,7 @@ async function setup(page:Page){
   await page.context().addCookies([{name:'Admin-Token',value:f.admin,url:'http://127.0.0.1:5173'}]);await page.goto('/metal/warehouse-order');await page.getByRole('tab',{name:'还库单',exact:true}).click();await page.locator('.toolbar').getByRole('button',{name:'添加',exact:true}).click();
   const d=page.getByRole('dialog',{name:'添加还库工单',exact:true});await expect(d).toBeVisible();await pick(page,d,'工厂',f.prefix+'厂A');await pick(page,d,'还库类型','加工余料还库');
   await pick(page,d,'生产工单',f.work.orderNo);await pick(page,d,'产品明细',f.prefix+'产品A 1');await pick(page,d,'工序',f.prefix+'焊接');
-  await expect(d.getByText(/剩余可登记 10.000000g/)).toBeVisible();await pick(page,d,'仓库/库房',f.prefix+'库房');
+  await expect(d.getByText(/剩余可登记 10.00g/)).toBeVisible();await pick(page,d,'仓库/库房',f.prefix+'库房');
   return {f,d,b2};
  }catch(e){await f.cleanup();throw e}
 }
@@ -20,8 +20,8 @@ for(const width of [1920,1440,768,390])test(`加工余料真实录入布局 ${wi
  try{
   await expect(s.d.getByLabel('客户',{exact:true})).toHaveValue(s.f.prefix);await expect(s.d.getByLabel('客户',{exact:true})).toHaveAttribute('readonly','');
   await s.d.locator('.line-toolbar').getByRole('button',{name:'添加',exact:true}).click();const line=page.getByRole('dialog',{name:'物料明细',exact:true});
-  await pick(page,line,'回收原材料','WH_M1_'+s.f.suffix+' / 铱粉 / 夹具');await line.getByLabel('实测净重(g)',{exact:true}).fill('8');await line.getByRole('button',{name:'确认',exact:true}).click();
-  await expect(line).not.toBeVisible();await expect(s.d.getByText(/剩余可登记 2.000000g/)).toBeVisible();await expect(s.d).not.toContainText('对应出库工单');
+  await pick(page,line,'回收原材料','WH_M1_'+s.f.suffix+' / 铱粉料 / 夹具');await line.getByLabel('实测净重(g)',{exact:true}).fill('8');await line.getByRole('button',{name:'确认',exact:true}).click();
+  await expect(line).not.toBeVisible();await expect(s.d.getByText(/剩余可登记 2.00g/)).toBeVisible();await expect(s.d).not.toContainText('对应出库工单');
   const completed=s.d.getByLabel('实际完成数量',{exact:true}),settle=s.d.getByRole('checkbox',{name:'全部领回料已登记，确认结算',exact:true});
   await expect(completed).toHaveCount(0);await settle.locator("..").click();await expect(completed).toBeInViewport();
   const quantityBox=await completed.boundingBox(),checkboxBox=await settle.locator('..').boundingBox();
@@ -41,5 +41,23 @@ for(const width of [1920,1440,768,390])test(`加工余料真实录入布局 ${wi
 })
 
 test('加工余料超过批次额度时前端不添加明细',async({page})=>{
- test.setTimeout(60000);const s=await setup(page);try{await s.d.locator('.line-toolbar').getByRole('button',{name:'添加',exact:true}).click();const line=page.getByRole('dialog',{name:'物料明细',exact:true});await pick(page,line,'回收原材料','WH_M1_'+s.f.suffix+' / 铱粉 / 夹具');await line.getByLabel('实测净重(g)',{exact:true}).fill('10.000001');await line.getByRole('button',{name:'确认',exact:true}).click();await expect(page.getByText('加工余料本单合计最多可还10.000000g',{exact:true})).toBeVisible();await expect(line).toBeVisible();expect(sql('SELECT COUNT(*) FROM metal_process_raw_return_line WHERE batch_id='+s.b2)).toBe('0')}finally{await s.f.cleanup()}
+ test.setTimeout(60000);const s=await setup(page);try{await s.d.locator('.line-toolbar').getByRole('button',{name:'添加',exact:true}).click();const line=page.getByRole('dialog',{name:'物料明细',exact:true});await pick(page,line,'回收原材料','WH_M1_'+s.f.suffix+' / 铱粉料 / 夹具');await line.getByLabel('实测净重(g)',{exact:true}).fill('10.01');await line.getByRole('button',{name:'确认',exact:true}).click();await expect(page.getByText('加工余料本单合计最多可还10.00g',{exact:true})).toBeVisible();await expect(line).toBeVisible();expect(sql('SELECT COUNT(*) FROM metal_process_raw_return_line WHERE batch_id='+s.b2)).toBe('0')}finally{await s.f.cleanup()}
 })
+
+for(const failure of ['network','http'])test(`recovery context ${failure} error stays Chinese`,async({page})=>{
+ test.setTimeout(60000);const s=await setup(page);
+ try{
+  await page.route('**/dev-api/metal/warehouse/options/process-raw-return-context**',r=>failure==='network'?r.abort('failed'):r.fulfill({status:503,body:'Service Unavailable'}));
+  await s.d.getByRole('button',{name:'刷新额度',exact:true}).click();await expect(s.d.locator('p[role=alert]')).toHaveText('加工余料额度加载失败，请重试');
+ }finally{await s.f.cleanup()}
+});
+
+test('recovery save uses the batch version refreshed during validation',async({page})=>{
+ test.setTimeout(60000);const s=await setup(page);
+ try{
+  const person=s.f.prefix+'角色A｜'+s.f.prefix+'负责人A｜'+s.f.phoneA;await pick(page,s.d,'经办人',person);await page.keyboard.press('Escape');await pick(page,s.d,'仓管员',person);await page.keyboard.press('Escape');await s.d.getByLabel('还库原因').fill('测试刷新后的批次版本');
+  await s.d.locator('.line-toolbar').getByRole('button',{name:'添加',exact:true}).click();const line=page.getByRole('dialog',{name:'物料明细',exact:true});await pick(page,line,'回收原材料','WH_M1_'+s.f.suffix+' / 铱粉料 / 夹具');await line.getByLabel('实测净重(g)',{exact:true}).fill('5');await line.getByRole('button',{name:'确认',exact:true}).click();await expect(line).not.toBeVisible();
+  let fail=true,version=0;await page.route('**/dev-api/metal/warehouse/options/process-raw-return-context**',async r=>{if(fail){await r.fulfill({status:503,body:'Service Unavailable'});return}const real=await r.fetch(),body=await real.json();version=Number(body.data.version)+1;body.data.version=version;await r.fulfill({json:body})});await s.d.getByRole('button',{name:'刷新额度',exact:true}).click();await expect(s.d.locator('p[role=alert]')).toBeVisible();fail=false;
+  let sent:any;await page.route('**/dev-api/metal/warehouse-order',async r=>{sent=r.request().postDataJSON();await r.fulfill({json:{code:200,id:'TEST'}})});/* Invoke the real submit method to isolate payload serialization; the UI disables its button while context is missing. */await s.d.evaluate(async el=>{let vm=(el as any).__vueParentComponent;while(vm&&vm.type?.__name!=='WarehouseOrderForm')vm=vm.parent;await vm.setupState.save()});await expect.poll(()=>sent?.batchVersion).toBeGreaterThan(0);expect(sent.batchVersion).toBe(version);await expect(s.d).not.toBeVisible();
+ }finally{await s.f.cleanup()}
+});

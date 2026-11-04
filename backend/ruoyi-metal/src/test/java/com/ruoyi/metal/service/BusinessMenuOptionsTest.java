@@ -6,4 +6,11 @@ class BusinessMenuOptionsTest {
  @Test void onlyImplementedModulesAndActionsRemain(){var result=BusinessMenuOptions.filter(rows(),true,Set.of());assertEquals(List.of("1","4","5","6","8","9","10"),result.stream().map(r->r.get("id")).toList());assertTrue(result.stream().noneMatch(r->r.containsKey("component")));}
  @Test void ownedPermissionsAndAdminOnlyLogsRemainRestricted(){var result=BusinessMenuOptions.filter(rows(),false,Set.of("metal:product:list","monitor:operlog:list","monitor:runtime-log:list"));assertEquals(List.of("1","4","9"),result.stream().map(r->r.get("id")).toList());}
  @Test void everyReturnedParentExistsOrIsRoot(){var result=BusinessMenuOptions.filter(rows(),true,Set.of());var ids=new HashSet<>();result.forEach(r->ids.add(r.get("id")));assertTrue(result.stream().allMatch(r->"0".equals(r.get("parentId"))||ids.contains(r.get("parentId"))));}
+ @Test void dashboardCanOnlyBeGrantedByAnOwner(){
+  var rows=List.of(row("58","0","C","index","metal:dashboard:list"));
+  assertEquals(1,BusinessMenuOptions.filter(rows,true,Set.of()).size());
+  assertEquals(1,BusinessMenuOptions.filter(rows,false,Set.of("metal:dashboard:list")).size());
+  assertEquals(1,BusinessMenuOptions.filter(rows,false,Set.of("*:*:*")).size());
+  assertTrue(BusinessMenuOptions.filter(rows,false,Set.of("metal:work-order:list")).isEmpty());
+ }
 }

@@ -77,7 +77,6 @@ import type { LoginForm } from '@/types/api/login'
 const title = import.meta.env.VITE_APP_TITLE
 const footerContent = defaultSettings.footerContent
 const userStore = useUserStore()
-const route = useRoute()
 const router = useRouter()
 const proxy = getCurrentInstance()!.proxy!
 
@@ -101,11 +100,6 @@ const loading = ref(false)
 const captchaEnabled = ref(true)
 // 注册开关
 const register = ref(false)
-const redirect = ref<string | undefined>(undefined)
-
-watch(route, (newRoute: any) => {
-    redirect.value = (newRoute.query && newRoute.query.redirect) as string | undefined
-}, { immediate: true })
 
 function handleLogin(): void {
   ;(proxy.$refs.loginRef as import('element-plus').FormInstance).validate((valid: boolean) => {
@@ -124,14 +118,7 @@ function handleLogin(): void {
       }
       // 调用action的登录方法
       userStore.login(loginForm.value).then(() => {
-        const query = route.query
-        const otherQueryParams = Object.keys(query).reduce((acc: Record<string, any>, cur) => {
-          if (cur !== "redirect") {
-            acc[cur] = query[cur]
-          }
-          return acc
-        }, {})
-        router.push({ path: redirect.value || "/", query: otherQueryParams })
+        router.replace('/')
       }).catch(() => {
         loading.value = false
         // 重新获取验证码

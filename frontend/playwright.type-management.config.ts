@@ -1,0 +1,2 @@
+import {defineConfig} from '@playwright/test'
+export default defineConfig({testDir:'./tests',testMatch:['catalog-type-deletion.spec.ts'],workers:1,timeout:30000,use:{baseURL:'http://127.0.0.1:5201',viewport:{width:1440,height:1000},launchOptions:{channel:'chrome'}},outputDir:'../.runtime/type-management-20261104/ui-results',reporter:[['list'],['json',{outputFile:'../.runtime/type-management-20261104/ui-results.json'}]]})

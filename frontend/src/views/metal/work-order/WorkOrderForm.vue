@@ -9,8 +9,10 @@
    <el-alert v-if="stale" title="数据已更新，请重新核对；当前草稿已保留，不能继续提交旧版本。" type="warning" :closable="false" show-icon><el-button link type="primary" @click="reloadDraft">重新加载资料</el-button></el-alert>
    <el-alert v-if="refreshFailed" title="自动更新失败，当前资料可能已过期；输入已保留。" type="warning" :closable="false"/>
    <el-alert v-if="pendingSave" title="提交结果尚未确认，请重试原请求，勿另建重复工单。" type="warning" :closable="false"/>
-   <el-form-item v-if="!raw||form.processingType!=='DIRECT'" label="客户名称" prop="customerId"><el-select :model-value="form.customerId" filterable :disabled="!form.factoryId" :placeholder="legacyCustomer&&form.factoryId===originalFactory&&!form.customerId?form.customer+'（历史客户）':'请选择客户'" @change="changeCustomer"><template #label>{{form.customer}} / {{form.customerSnapshot?.companyName??'历史未记录'}}</template><el-option v-if="form.customerId&&!customers.some(c=>c.id===form.customerId)" :value="form.customerId" :label="form.customer+'（已删除，请重选）'" disabled/><el-option v-for="option in customers" :key="option.id" :value="option.id" :label="option.name+' / '+option.companyName"/></el-select><el-button link type="primary" :disabled="!form.factoryId||optionsLoading||saving" @click="refreshCustomers">刷新客户</el-button><WarehouseCustomerDialog v-if="hasFormAccess()&&!saving&&!pendingSave" :factory-id="form.factoryId" :factory-name="factories.find(f=>f.id===form.factoryId)?.name??''" :context-key="dialogGeneration" :is-context-current="customerContextCurrent" @created="customerCreated" @blocked="customerBlocked=$event"/></el-form-item>
+   <el-form-item v-if="!raw||form.processingType!=='DIRECT'" label="客户名称" prop="customerId"><el-select :model-value="form.customerId" filterable :disabled="!form.factoryId" :placeholder="legacyCustomer&&form.factoryId===originalFactory&&!form.customerId?form.customer+'（历史客户）':'请选择客户'" @change="changeCustomer"><template #label>{{form.customer}} / {{form.customerSnapshot?.companyName??'历史未记录'}}</template><el-option v-if="form.customerId&&!customers.some(c=>c.id===form.customerId)" :value="form.customerId" :label="form.customer+'（已删除，请重选）'" disabled/><el-option v-for="option in customers" :key="option.id" :value="option.id" :label="option.name+' / '+option.companyName"/></el-select><el-button link type="primary" :disabled="!form.factoryId||optionsLoading||saving" @click="refreshCustomers">刷新客户</el-button><WarehouseCustomerDialog v-if="hasFormAccess()&&!saving&&!pendingSave" :factory-id="form.factoryId" :factory-name="factories.find(f=>f.id===form.factoryId)?.name??''" :context-key="dialogGeneration" :is-context-current="customerContextCurrent" :find-customers="orderCustomers" @created="customerCreated" @blocked="customerBlocked=$event"/></el-form-item>
    <el-form-item v-for="field in raw&&form.processingType==='DIRECT'?[]:customerFields" :key="field.key" :label="field.label"><el-input :model-value="customerText(field.key)" readonly/></el-form-item>
+   <el-form-item v-if="!raw||form.processingType!=='DIRECT'" label="客户来料净重（g）" label-width="145px" prop="customerIncomingWeight" :rules="[fieldRule(v=>decimalError(v,'客户来料净重',{optional:true}))]"><BusinessDecimalInput v-model="form.customerIncomingWeight" aria-label="客户来料净重（g）" placeholder="可留空，表示未登记"/></el-form-item>
+   <el-form-item v-if="incomingChanged" label="来料更正原因" prop="incomingWeightChangeReason" :rules="[fieldRule(v=>textError(v,'来料更正原因',300,true))]"><el-input v-model="form.incomingWeightChangeReason" aria-label="来料更正原因" type="textarea" maxlength="300" show-word-limit/></el-form-item>
    <el-form-item label="加工类型" prop="processingType"><el-select v-model="form.processingType" @change="processingChanged" placeholder="请选择加工类型"><el-option v-for="(label,value) in raw?rawProcessingTypes:processingTypes" :key="value" :value="value" :label="label"/></el-select></el-form-item>
    <el-form-item label="产线" prop="productionLineId"><el-select :model-value="form.productionLineId" fit-input-width :teleported="false" :disabled="!form.factoryId||!!form.id" @visible-change="resetSelectScroll" @change="changeLine"><el-option v-for="option in lines" :key="option.id" :value="option.id" :label="option.name"/></el-select></el-form-item><p v-if="form.factoryId&&!optionsLoading&&!opening&&!lines.length" class="order-error">当前工厂暂无可用产线，请先在产线管理中创建并绑定</p>
    <el-form-item label="开单日期" prop="orderDate"><el-date-picker v-model="form.orderDate" type="date" value-format="YYYY-MM-DD" format="YYYY-MM-DD" :teleported="true" placeholder="请选择日期"/></el-form-item>
@@ -33,8 +35,9 @@
 </template>
 <script setup lang="ts">
 import BusinessDecimalInput from '@/components/BusinessDecimalInput.vue'
+import {roundDecimal} from '@/utils/business-decimal'
 import {requiredRule} from '@/utils/input-validation'
-import {decimalError,integerRules,integerError,fieldRule,textRules,applyFieldErrors} from '@/utils/input-validation'
+import {decimalError,integerRules,integerError,fieldRule,textError,textRules,applyFieldErrors} from '@/utils/input-validation'
 import { useActionPermission } from '@/composables/useActionPermission'
 const actionPermission=useActionPermission()
 import {personLabel} from '@/utils/person-label'
@@ -66,18 +69,20 @@ const blank=():WorkOrder=>({taskType:'PRODUCTION',requestId:createUUID(),custome
 const form=reactive<WorkOrder>(blank()),factories=ref<OrderOption[]>([]),lines=ref<OrderOption[]>([]),owners=ref<OrderOption[]>([]),availableProducts=ref<OrderOption[]>([])
 const availableMaterials=ref<OrderOption[]>([]),rawProcesses=ref<OrderOption[]>([])
 const customers=ref<CustomerOption[]>([])
-function processingChanged(){if(raw.value&&form.processingType==='DIRECT'){form.customer='工厂自有';form.customerId='';form.customerVersion=undefined;form.customerSnapshot=undefined}}
+function processingChanged(){if(raw.value&&form.processingType==='DIRECT'){form.customer='工厂自有';form.customerId='';form.customerVersion=undefined;form.customerSnapshot=undefined;form.customerIncomingWeight=null}}
 const customerFields=[{key:'companyName',label:'客户公司名称'},{key:'address',label:'客户地址'},{key:'contactName',label:'联络人名称'},{key:'contactPhone',label:'联络人电话'},{key:'department',label:'部门（非必填）'}] as const
 let originalCustomerId:string|undefined,originalCustomerSnapshot:CustomerSnapshot|undefined,legacyCustomer=false,legacyProcessing=false
+let originalIncomingWeight:string|null|undefined
+const incomingChanged=computed(()=>!!form.id&&roundDecimal(form.customerIncomingWeight??'')!==roundDecimal(originalIncomingWeight??''))
 function customerText(key:keyof CustomerSnapshot){return form.customerSnapshot?.[key]??(legacyCustomer&&form.factoryId===originalFactory&&!form.customerId?'历史未记录':'')}
-function changeCustomer(value:string){const selected=customers.value.find(c=>c.id===value);if(!selected)return;form.customerId=value;form.customerVersion=selected.version;form.customerSnapshot=value===originalCustomerId&&originalCustomerSnapshot?originalCustomerSnapshot:{...selected};form.customer=form.customerSnapshot.name}
+function changeCustomer(value:string){const selected=customers.value.find(c=>c.id===value);if(!selected)return;if(value!==form.customerId)form.customerIncomingWeight=null;form.customerId=value;form.customerVersion=selected.version;form.customerSnapshot=value===originalCustomerId&&originalCustomerSnapshot?originalCustomerSnapshot:{...selected};form.customer=form.customerSnapshot.name}
 const required=(message:string)=>[{required:true,message,trigger:'change'}]
 function planRules(item:WorkOrderItem,stepIndex:number,field:'startTime'|'endTime'){return [fieldRule(value=>{if(!value)return field==='startTime'?'请选择开始时间':'请选择结束时间';const step=item.plans[stepIndex];if(step.startTime&&step.endTime&&step.startTime>=step.endTime)return '开始时间须早于结束时间';if(field==='startTime'&&stepIndex>0&&item.plans[stepIndex-1].endTime&&(step.startTime??'')<(item.plans[stepIndex-1].endTime??''))return '不能早于上一工序结束时间';return ''},'change')]}
 const quantityInputs=new WeakMap<object,string>()
 const rules:FormRules={customerId:[fieldRule(v=>!(raw.value&&form.processingType==='DIRECT')&&!v&&(!legacyCustomer||form.factoryId!==originalFactory)?'请选择当前工厂的客户':'','change')],processingType:[fieldRule(v=>!v&&!legacyProcessing?'请选择加工类型':'','change')],factoryId:required('请选择工厂'),productionLineId:required('请选择产线'),ownerId:required('请选择负责人'),orderDate:required('请选择开单日期')}
 const opening=ref(false),openError=ref(false)
 let originalFactory=''
-let epoch=0,dependencyEpoch=0,disposed=false,retryOpen:()=>void=()=>{},formAccess='',accessPermission=''
+let customerProbeEpoch=0,epoch=0,dependencyEpoch=0,disposed=false,retryOpen:()=>void=()=>{},formAccess='',accessPermission=''
 const identity=()=>JSON.stringify([user.sessionReady,user.token,String(user.id),[...user.permissions].sort()])
 const sessionCurrent=()=>user.sessionReady&&!!user.token&&user.token===getToken()
 const hasFormAccess=()=>!disposed&&sessionCurrent()&&!!formAccess&&formAccess===identity()&&actionPermission.has(accessPermission)
@@ -107,6 +112,7 @@ async function open(row?:WorkOrder,taskType:'PRODUCTION'|'RAW_PROCESSING'='PRODU
   draft.taskType??='PRODUCTION';draft.items.forEach(item=>{item.key=createUUID();if(draft.taskType==='RAW_PROCESSING')for(const plan of item.plans)plan.theoreticalLoss??=plan.loss});if(draft.ownerId&&!dependent[1].data.some(o=>o.id===draft.ownerId))draft.ownerId=''
   for(const key of Object.keys(form))delete(form as unknown as Record<string,unknown>)[key]
   originalFactory=draft.factoryId;originalCustomerId=draft.customerId;originalCustomerSnapshot=draft.customerSnapshot;legacyCustomer=!!draft.id&&!draft.customerId;legacyProcessing=!!draft.id&&!draft.processingType
+  originalIncomingWeight=draft.customerIncomingWeight
   availableMaterials.value=dependent[3].data;rawProcesses.value=dependent[4].data;customers.value=dependent[2].data as CustomerOption[]
   if(draft.customerId)draft.customerVersion=customers.value.find(c=>c.id===draft.customerId)?.version
   Object.assign(form,draft);factories.value=factoryList;lines.value=dependent[0].data;owners.value=dependent[1].data;availableProducts.value=productList;opened.value=true
@@ -128,7 +134,7 @@ async function refreshCustomers(){
 async function confirmReset(){if(!form.items.some(item=>item.productId||item.materialId||item.plans.length)&&!form.ownerId&&!form.productionLineId)return true;try{await ElMessageBox.confirm('变更工厂或产线将清空相关产品和计划时间，是否继续？','确认变更',{confirmButtonText:'继续',cancelButtonText:'取消',type:'warning'});return true}catch{return false}}
 async function changeFactory(value:string){
  if(!hasFormAccess()||saving.value||customerBlocked.value||value===form.factoryId)return;const current=epoch,ticket=++dependencyEpoch;if(!await confirmReset()||disposed||current!==epoch||!hasFormAccess()||ticket!==dependencyEpoch)return
- optionsLoading.value=true;form.factoryId=value;form.customer='';form.customerId='';form.customerVersion=undefined;form.customerSnapshot=undefined;customers.value=[];processingChanged();form.productionLineId='';form.ownerId='';form.items=[blankItem()];availableProducts.value=[];lines.value=[];owners.value=[]
+ optionsLoading.value=true;form.factoryId=value;form.customer='';form.customerId='';form.customerVersion=undefined;form.customerSnapshot=undefined;form.customerIncomingWeight=null;customers.value=[];processingChanged();form.productionLineId='';form.ownerId='';form.items=[blankItem()];availableProducts.value=[];lines.value=[];owners.value=[]
  try{const result=await loadFactoryOptions(value,()=>current===epoch&&ticket===dependencyEpoch&&hasFormAccess());if(!disposed&&current===epoch&&hasFormAccess()&&ticket===dependencyEpoch&&form.factoryId===value){lines.value=result[0].data;owners.value=result[1].data;customers.value=result[2].data as CustomerOption[];availableMaterials.value=result[3].data;rawProcesses.value=result[4].data}}catch{}finally{if(current===epoch&&ticket===dependencyEpoch)optionsLoading.value=false}
 }
 async function changeLine(value:string){
@@ -142,9 +148,10 @@ async function changeProduct(item:WorkOrderItem,value:string){
 }
 async function submit(){if(!hasFormAccess()||saving.value||customerBlocked.value||stale.value&&!pendingSave.value||optionsLoading.value||!opened.value||!actionPermission.has(form.id?'metal:work-order:edit':'metal:work-order:add'))return;const current=epoch;saving.value=true;try{if(!await formRef.value?.validate().catch(()=>false)||disposed||current!==epoch||!hasFormAccess()||!actionPermission.has(form.id?'metal:work-order:edit':'metal:work-order:add'))return;if(!form.items.length||form.items.length>100){ElMessage.error('须填写1～100项明细');return}for(const [index,item]of form.items.entries()){item.quantity=raw.value?0:Number(item.quantity);if(raw.value?(!item.materialId||!!decimalError(item.plannedInputWeight,'计划投入净重',{positive:true})||!item.plans.length||item.plans.some(p=>!rawProcesses.value.some(o=>o.id===p.processId)||!!decimalError(p.theoreticalLoss,'理论损耗',{max:100}))||new Set(item.plans.map(p=>p.processId)).size!==item.plans.length):(!item.productId||!item.plans.length||!Number.isInteger(item.quantity))){ElMessage.error(raw.value?'请选择待处理原料、正数投入净重及不重复的前处理工序，损耗须在0至100之间':'第'+(index+1)+'项须选择配置工序的产品并填写整数数量');return}let previous='';for(const plan of item.plans){if(!plan.startTime||!plan.endTime||plan.startTime>=plan.endTime){ElMessage.error('第'+(index+1)+'项的工序开始时间须早于结束时间');return}if(previous&&plan.startTime<previous){ElMessage.error('后一工序不能早于前一工序结束');return}previous=plan.endTime}}
  const payload=pendingSave.value??JSON.parse(JSON.stringify(form)) as WorkOrder,added=!payload.id;submittedPayload=payload;await orderSave(payload,()=>current===epoch&&hasFormAccess());if(disposed||current!==epoch||!hasFormAccess())return;pendingSave.value=undefined;submittedPayload=undefined;ElMessage.success(added?'添加成功':'修改成功');opened.value=false;notifyInventoryChanged();emit('saved',added)}catch(error:any){if(!disposed&&current===epoch&&hasFormAccess()){if(submittedPayload&&typeof error.code!=='number')pendingSave.value=submittedPayload;else{pendingSave.value=undefined;if(/版本|刷新|重新加载/.test(error.message??''))stale.value=true}applyFieldErrors(formRef.value,error)}}finally{if(current===epoch)saving.value=false}}
+watch(customerBlocked,()=>{customerProbeEpoch++},{flush:'sync'})
 async function probeDraft(context:InventoryRefreshContext){
- const round=epoch,dependency=dependencyEpoch,factory=form.factoryId,line=form.productionLineId
- const valid=()=>context.isCurrent()&&round===epoch&&dependency===dependencyEpoch&&hasFormAccess()&&opened.value&&!saving.value&&!optionsLoading.value&&factory===form.factoryId&&line===form.productionLineId
+ const probeRound=customerProbeEpoch,round=epoch,dependency=dependencyEpoch,factory=form.factoryId,line=form.productionLineId
+ const valid=()=>context.isCurrent()&&probeRound===customerProbeEpoch&&!customerBlocked.value&&round===epoch&&dependency===dependencyEpoch&&hasFormAccess()&&opened.value&&!saving.value&&!optionsLoading.value&&factory===form.factoryId&&line===form.productionLineId
  if(!valid())return
  if(form.id){const response=await orderDetail(form.id,valid,!actionPermission.has('metal:work-order:query'),true);if(valid()&&(response.data.version!==form.version||response.data.canEdit===false))stale.value=true;return}
  if(!factory)return
@@ -156,7 +163,7 @@ async function probeDraft(context:InventoryRefreshContext){
  customers.value=clientList.data;owners.value=ownerList.data;lines.value=lineList.data;availableProducts.value=productList.data;availableMaterials.value=materialList.data;rawProcesses.value=processList.data
 }
 async function reloadDraft(){if(saving.value)return;try{await ElMessageBox.confirm('重新加载会替换当前草稿，请先记录需要保留的修改。是否重新加载？','重新核对',{confirmButtonText:'重新加载',cancelButtonText:'保留草稿'});await open(form.id?{id:form.id} as WorkOrder:undefined,form.taskType)}catch{}}
-const {failed:refreshFailed}=useInventoryRefresh(probeDraft,ref(false),{allowed:hasFormAccess,reset:invalidateSession},{paused:computed(()=>!opened.value||saving.value||opening.value||optionsLoading.value||!!pendingSave.value)})
+const {failed:refreshFailed}=useInventoryRefresh(probeDraft,ref(false),{allowed:hasFormAccess,reset:invalidateSession},{paused:computed(()=>!opened.value||customerBlocked.value||saving.value||opening.value||optionsLoading.value||!!pendingSave.value)})
 onBeforeRouteLeave(()=>saving.value||customerBlocked.value||pendingSave.value?false:undefined);onBeforeRouteUpdate(()=>saving.value||customerBlocked.value||pendingSave.value?false:undefined)
 defineExpose({open,invalidateSession,isOpen:computed(()=>opened.value||opening.value)})
 </script>

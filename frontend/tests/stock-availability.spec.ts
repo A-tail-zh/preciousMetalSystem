@@ -15,6 +15,12 @@ test('product stock checks weight and pieces independently, while raw stock igno
  expect(check(stock,{inventoryId:'1',netWeight:'2',quantity:3},[{inventoryId:'1',netWeight:'2',quantity:3}])).toContain('数量');
  expect(check({...stock,category:'RAW',quantity:0},{inventoryId:'1',netWeight:'10',quantity:0},[])).toBe('');
 });
+test('submitted reservations reduce physical availability before this draft is counted',()=>{
+ const stock={category:'RAW',netWeight:'100',quantity:0,reservedWeight:'80',reservedQuantity:0};
+ expect(check(stock,{inventoryId:'1',netWeight:'20'},[])).toBe('');
+ expect(check(stock,{inventoryId:'1',netWeight:'20.01'},[])).toContain('库存不足');
+ expect(check({...stock,category:'SEMI',quantity:10,reservedQuantity:8},{inventoryId:'1',netWeight:'10',quantity:3},[])).toContain('数量');
+});
 
 test('released transfer rejects orphan pieces or weight using exact aggregate decimals',()=>{const b={quantity:4,netWeight:'40.000000'};expect(releasedTransferError(b,[{quantity:4,netWeight:'39'}])).toContain('同时');expect(releasedTransferError(b,[{quantity:3,netWeight:'40'}])).toContain('同时');expect(releasedTransferError(b,[{quantity:1,netWeight:'5'},{quantity:3,netWeight:'35'}])).toBe('');expect(releasedTransferError(b,[{quantity:2,netWeight:'19'}])).toBe('');expect(releasedTransferError(b,[{quantity:2,netWeight:'20'},{quantity:2,netWeight:'19'}])).toContain('同时');expect(releasedTransferError({quantity:2,netWeight:'0.300000'},[{quantity:1,netWeight:'0.100000'},{quantity:1,netWeight:'0.200000'}])).toBe('');expect(releasedTransferError({quantity:2,netWeight:'0.300000'},[{quantity:2,netWeight:'0.299999'}])).toContain('同时')})
 

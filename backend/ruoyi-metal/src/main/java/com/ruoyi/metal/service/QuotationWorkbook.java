@@ -15,15 +15,13 @@ public final class QuotationWorkbook {
         int row=0;row=line(sheet,row,style,"报价单号："+quote.get("quoteNo"));row=line(sheet,row,style,"所属工厂："+quote.get("factoryName")+"    保存时间："+quote.get("createTime"));
         int index=0;
         for(Object value:(List<?>)quote.get("items")){
-            Map<?,?> item=(Map<?,?>)value,rule=(Map<?,?>)item.get("rule"),volume=(Map<?,?>)item.get("volumeRule");index++;
+            Map<?,?> item=(Map<?,?>)value;index++;
             row=line(sheet,row+1,style,"商品 "+index+"  "+item.get("category")+"    "+item.get("processingTypeName")+"    数量："+item.get("quantity"));
             int start=row;
             List<String> lines=new ArrayList<>();Map<?,?> dims=(Map<?,?>)item.get("dimensions");
             for(Object field:(List<?>)item.get("dimensionFields")){Map<?,?> f=(Map<?,?>)field;lines.add(f.get("label")+"："+dims.get(f.get("key"))+f.get("unit"));}
-            for(var field:List.of(new String[]{"powderWeight","来料粉料重量（g）"},new String[]{"nonPowderWeight","来料非粉料重量（g）"},new String[]{"lossWeight","理论损失重量（g）"},new String[]{"volume","单件体积（cm³）"},new String[]{"unitWeight","单件理论重量（g）"},new String[]{"totalWeight","总理论重量（g）"}))if(item.get(field[0])!=null)lines.add(field[1]+"："+item.get(field[0]));
-            for(var field:List.of(new String[]{"density","密度（g/cm³）"},new String[]{"powderPrice","粉料单价（元/g）"},new String[]{"nonPowderPrice","非粉料单价（元/g）"},new String[]{"shortagePrice","欠料单价（元/g）"},new String[]{"lossPrice","理论损失单价（元/g）"}))lines.add(field[1]+"："+BusinessDecimal.display(rule.get(field[0])));
-            lines.add("π："+volume.get("piValue")+"    弧底系数："+volume.get("curvedBottomFactor"));
-            for(var field:List.of(new String[]{"powderAmount","粉料加工费（元）"},new String[]{"nonPowderAmount","非粉料加工费（元）"},new String[]{"productAmount","欠料产品费用（元）"},new String[]{"lossAmount","损失费用（元）"},new String[]{"totalPrice","商品金额（元）"}))lines.add(field[1]+"："+item.get(field[0]));
+            for(var field:List.of(new String[]{"powderWeight","来料粉料重量（g）"},new String[]{"nonPowderWeight","来料非粉料重量（g）"},new String[]{"lossWeight","理论损失重量（g）"},new String[]{"unitWeight","单件理论重量（g）"},new String[]{"totalWeight","总理论重量（g）"}))if(item.get(field[0])!=null)lines.add(field[1]+"："+item.get(field[0]));
+            for(var field:List.of(new String[]{"lossAmount","损失费用（元）"},new String[]{"totalPrice","商品金额（元）"}))lines.add(field[1]+"："+item.get(field[0]));
             for(String text:lines){var r=sheet.createRow(row);r.setHeightInPoints(28);var cell=r.createCell(0);cell.setCellStyle(style);cell.setCellValue(text);sheet.addMergedRegion(new CellRangeAddress(row,row,0,4));row++;}
             var anchor=book.getCreationHelper().createClientAnchor();anchor.setCol1(5);anchor.setCol2(10);anchor.setRow1(start);anchor.setRow2(start+14);anchor.setAnchorType(ClientAnchor.AnchorType.MOVE_AND_RESIZE);
             var picture=sheet.createDrawingPatriarch().createPicture(anchor,book.addPicture(image.apply(index),Workbook.PICTURE_TYPE_PNG));picture.resize(0.4);

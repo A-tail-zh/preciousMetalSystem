@@ -4,6 +4,15 @@ import java.math.BigDecimal;import java.util.*;import org.springframework.jdbc.c
 public final class WeightStageProgressService {
  private WeightStageProgressService(){}
  public static boolean hasWeightInput(JdbcTemplate j,long batch){BigDecimal n=j.queryForObject("SELECT COALESCE(SUM(CASE WHEN o.type='PRODUCTION_OUT' THEN l.net_weight WHEN o.type='SEMI_RETURN' THEN -COALESCE(l.processor_net_weight,l.net_weight) ELSE 0 END),0) FROM metal_warehouse_order o JOIN metal_warehouse_order_line l ON l.order_id=o.order_id WHERE o.batch_id=? AND o.status='POSTED' AND l.category='SEMI' AND l.measurement_mode='WEIGHT'",BigDecimal.class,batch);return n!=null&&n.signum()>0;}
+ public static boolean hasWeightInput(JdbcTemplate j,Map<String,?> batch){
+  if(!MeasurementPolicy.configurable(j,batch))return hasWeightInput(j,SemiFlowService.num(batch.get("batch_id")));
+  BigDecimal net=BigDecimal.ZERO;
+  for(var line:SemiFlowService.measurementInputs(j,batch))if(InventoryMeasurement.weight(line)){
+   BigDecimal weight=SemiFlowService.dec(line.get("processor_net_weight")==null?line.get("net_weight"):line.get("processor_net_weight"));
+   net="PRODUCTION_OUT".equals(line.get("type"))?net.add(weight):net.subtract(weight);
+  }
+  return net.signum()>0;
+ }
  public static BigDecimal semiInput(JdbcTemplate j,long batch){return j.queryForObject("SELECT COALESCE(SUM(CASE WHEN o.type='PRODUCTION_OUT' THEN l.net_weight WHEN o.type='SEMI_RETURN' THEN -COALESCE(l.processor_net_weight,l.net_weight) ELSE 0 END),0) FROM metal_warehouse_order o JOIN metal_warehouse_order_line l ON l.order_id=o.order_id WHERE o.batch_id=? AND o.status='POSTED' AND l.category='SEMI'",BigDecimal.class,batch);}
  static boolean qualificationCovered(JdbcTemplate j,long item,long sequence){
   return j.queryForObject("SELECT COUNT(*) FROM metal_work_order_step s JOIN metal_raw_qualification_use q ON q.item_id=s.item_id JOIN metal_warehouse_order_line l ON l.line_id=q.line_id AND l.inventory_id=q.inventory_id JOIN metal_warehouse_order o ON o.order_id=l.order_id JOIN metal_process_batch b ON b.batch_id=o.batch_id AND b.item_id=q.item_id AND b.process_id=q.process_id WHERE s.item_id=? AND s.sequence_no=? AND s.output_stage='RAW' AND s.process_role IN ('ACID_WASH','PREPARATION') AND b.sequence_no>s.sequence_no AND b.processing_policy_version>=2 AND b.process_role='SMELTING' AND b.status='SETTLED' AND o.type='PRODUCTION_OUT' AND o.status='POSTED' AND l.category='RAW' AND l.net_weight>COALESCE((SELECT SUM(r.net_weight) FROM metal_warehouse_order_line r JOIN metal_warehouse_order returned ON returned.order_id=r.order_id WHERE r.source_line_id=l.line_id AND returned.type='RAW_RETURN' AND returned.status='POSTED'),0)",Long.class,item,sequence)>0;
