@@ -20,19 +20,38 @@
 import {computed,reactive,ref,watch,onMounted,onBeforeUnmount} from 'vue'
 import {ElMessage} from 'element-plus'
 import {useActionPermission} from '@/composables/useActionPermission'
+import useUserStore from '@/store/modules/user'
+import {getToken} from '@/utils/auth'
 import request from '@/utils/request'
-import {productDimensions,productTypes,processTypes,materialTypes} from '@/views/metal/master-config'
+import {productDimensions,productTypes,materialTypes} from '@/views/metal/master-config'
 import {orderTypeNames} from '@/api/metal/warehouse'
 type SuggestionCallback=(rows:{value:string}[])=>void
 type Option={id:string;name:string};type Field={key:string;label:string;remote?:string;options?:Option[]}
 const props=defineProps<{kind:string;allowExport?:boolean;exporting?:boolean;orderKind?:string;processTypeOptions?:Option[]}>()
-const emit=defineEmits<{apply:[Record<string,string>];export:[Record<string,string>]}>()
+const emit=defineEmits<{apply:[Record<string,string>];export:[Record<string,string>];factory:[string]}>()
 const metalOptions=ref<Option[]>([])
-const permission=useActionPermission()
-let metalEpoch=0,disposed=false
-async function loadMetals(){if(!['product','material'].includes(props.kind))return;const current=++metalEpoch;try{const r:any=await request({url:'/metal/metal-types',isContextCurrent:()=>!disposed&&current===metalEpoch});if(!disposed&&current===metalEpoch)metalOptions.value=r.data}catch{}}
-onMounted(loadMetals)
-permission.onChange(()=>{metalEpoch++;metalOptions.value=[];void loadMetals()})
+const user=useUserStore(),permission=useActionPermission()
+let metalEpoch=0,factoryEpoch=0,disposed=false
+const identity=()=>JSON.stringify([user.sessionReady,user.token,String(user.id),[...user.permissions].sort()])
+const session=()=>!disposed&&user.sessionReady&&!!user.token&&user.token===getToken()
+async function loadMetals(){
+ if(!['product','material'].includes(props.kind)||!draft.factoryId||!session())return
+ const ticket=++metalEpoch,account=identity(),factory=draft.factoryId,current=()=>session()&&ticket===metalEpoch&&account===identity()&&factory===draft.factoryId
+ try{const r:any=await request({url:'/metal/metal-types',params:{factoryId:factory},isContextCurrent:current});if(current())metalOptions.value=r.data}catch{}
+}
+async function initializeFactory(){
+ if(!['product','material','process'].includes(props.kind)||permission.isAdmin.value||!session())return
+ const ticket=++factoryEpoch,account=identity(),current=()=>session()&&ticket===factoryEpoch&&account===identity()
+ try{const r:any=await request({url:'/metal/options/factories',isContextCurrent:current});if(!current())return;draft.factoryId=r.data[0]?.id??'';factoryChanged();applied.value=values();emit('apply',{...applied.value})}catch{}
+}
+function resetContext(){
+ factoryEpoch++;metalEpoch++;metalOptions.value=[];cancelSuggestions()
+ for(const key of Object.keys(epochs)){epochs[key]++;busy[key]=false;choices[key]=[];more[key]=false}
+ for(const key of Object.keys(draft))delete draft[key]
+ range.value=[];applied.value={};emit('factory','');emit('apply',{});void initializeFactory()
+}
+onMounted(()=>{void initializeFactory();void loadMetals()})
+permission.onChange(resetContext)
 const draft=reactive<Record<string,string>>({}),range=ref<string[]|null>([]),applied=ref<Record<string,string>>({})
 const choices=reactive<Record<string,Option[]>>({}),busy=reactive<Record<string,boolean>>({}),more=reactive<Record<string,boolean>>({}),keywords=reactive<Record<string,string>>({}),pages=reactive<Record<string,number>>({}),epochs:Record<string,number>={}
 const text=(key:string,label:string):Field=>({key,label}),remote=(key:string,label:string,source:string):Field=>({key,label,remote:source}),select=(key:string,label:string,values:string[]):Field=>({key,label,options:values.map(v=>({id:v,name:v}))})
@@ -41,9 +60,9 @@ const fields=computed<Field[]>(()=>{
  case 'inventory':return [...(props.orderKind==='RAW'?[text('code','物料编码'),select('materialType','物料类型',['粉料','金属料','未处理料']),text('specification','规格型号'),text('companyName','客户公司 / 工厂自有')]:[text('name','产品名称'),select('productType','产品类型',productTypes),text('metalTypeName','金属类型'),...(props.orderKind==='SEMI'?[text('sourceProcessName','来源工序')]:[text('specification','规格型号')]),text('companyName','客户公司名称')]),remote('warehouseId','仓库','warehouses'),...(permission.isAdmin.value?[remote('factoryId','工厂','factories')]:[])]
  case 'customer':return [text('name','客户名称'),text('companyName','客户公司名称'),text('contactName','联络人名称'),text('contactPhone','联络人电话'),...(permission.isAdmin.value?[remote('factoryId','所属工厂','factories')]:[])]
  case 'factory':return [text('name','工厂名称'),text('address','详细地址')]
- case 'product':return [text('code','产品编号'),text('name','产品名称'),{key:'metalTypeId',label:'金属类型',options:metalOptions.value},{key:'productType',label:'产品类型',options:[...productTypes.map(id=>({id,name:id})),...['坩埚弧底','坩埚平底','坩埚梯形','杆实心','杆空心'].map(id=>({id,name:id+'（旧版）'}))]}]
- case 'material':return [text('code','物料编码'),select('materialType','物料类型',materialTypes),text('specification','规格型号'),{key:'metalTypeId',label:'金属类型',options:metalOptions.value}]
- case 'process':return [text('name','工序名称'),{key:'processType',label:'工序类型',options:props.processTypeOptions??processTypes.map((name,i)=>({id:String(i+1),name}))}]
+ case 'product':return [...(permission.isAdmin.value?[remote('factoryId','所属工厂','factories')]:[]),text('code','产品编号'),text('name','产品名称'),{key:'metalTypeId',label:'金属类型',options:metalOptions.value},{key:'productType',label:'产品类型',options:[...productTypes.map(id=>({id,name:id})),...['坩埚弧底','坩埚平底','坩埚梯形','杆实心','杆空心'].map(id=>({id,name:id+'（旧版）'}))]}]
+ case 'material':return [...(permission.isAdmin.value?[remote('factoryId','所属工厂','factories')]:[]),text('code','物料编码'),select('materialType','物料类型',materialTypes),text('specification','规格型号'),{key:'metalTypeId',label:'金属类型',options:metalOptions.value}]
+ case 'process':return [...(permission.isAdmin.value?[remote('factoryId','所属工厂','factories')]:[]),text('name','工序名称'),{key:'processType',label:'工序类型',options:props.processTypeOptions??[]}]
  case 'line':return [text('code','产线编号'),text('name','产线名称'),remote('factoryId','所属工厂','factories'),remote('productId','关联产品','products')]
  case 'staff':return [remote('roleId','角色','roles'),remote('factoryId','所属工厂','factories')]
  case 'role':return [text('name','角色名称'),remote('factoryId','所属工厂','factories')]
@@ -60,13 +79,13 @@ async function suggest(field:Field,keyword:string,callback:SuggestionCallback){
 }
 function textEnter(event:KeyboardEvent){const input=event.target as HTMLInputElement;if(input.getAttribute('aria-activedescendant'))return;apply()}
 watch(()=>draft.factoryId,()=>cancelSuggestions())
-onBeforeUnmount(()=>{disposed=true;metalEpoch++;cancelSuggestions()})
+onBeforeUnmount(()=>{disposed=true;metalEpoch++;factoryEpoch++;cancelSuggestions()})
 function values(){const result=Object.fromEntries(Object.entries(draft).filter(([,v])=>v!=null&&String(v).trim()!=='').map(([k,v])=>[k,String(v).trim()]));if(range.value?.length===2){result.startDate=range.value[0];result.endDate=range.value[1]}return result}
 const canonical=(v:Record<string,string>)=>JSON.stringify(Object.entries(v).sort(([a],[b])=>a.localeCompare(b)))
 function apply(){const next=values();for(const field of fields.value){const value=next[field.key],max=['orderNo','workOrderNo'].includes(field.key)?64:500;if(value&&value.length>max){ElMessage.warning(field.label+'最多'+max+'个字符');return}}if(next.startDate&&next.endDate&&next.startDate>next.endDate){ElMessage.warning('开始日期不能晚于结束日期');return}applied.value={...next};emit('apply',{...next})}
-function reset(){Object.keys(draft).forEach(k=>delete draft[k]);range.value=[];applied.value={};factoryChanged();emit('apply',{})}
+function reset(){const own=!permission.isAdmin.value?draft.factoryId:undefined;Object.keys(draft).forEach(k=>delete draft[k]);if(own)draft.factoryId=own;range.value=[];factoryChanged();applied.value=values();emit('apply',{...applied.value})}
 function exportCurrent(){if(canonical(values())!==canonical(applied.value)){ElMessage.warning('筛选条件已修改，请先点击查询');return}emit('export',{...applied.value})}
-function factoryChanged(){for(const field of fields.value.filter(f=>['roles','warehouses','people'].includes(f.remote??''))){delete draft[field.key];choices[field.key]=[];more[field.key]=false;epochs[field.key]=(epochs[field.key]??0)+1}}
+function factoryChanged(){emit('factory',draft.factoryId??'');metalEpoch++;metalOptions.value=[];delete draft.metalTypeId;delete draft.processType;delete draft.productId;void loadMetals();for(const field of fields.value.filter(f=>['roles','warehouses','people','products'].includes(f.remote??''))){delete draft[field.key];choices[field.key]=[];more[field.key]=false;epochs[field.key]=(epochs[field.key]??0)+1}}
 async function search(field:Field,keyword:string,append=false){if(!field.remote)return;const key=field.key,current=epochs[key]=(epochs[key]??0)+1;busy[key]=true;const pageNum=append?(pages[key]??1)+1:1;keywords[key]=keyword;try{const response=await request({url:'/metal/filter-options/'+field.remote,params:{module:props.kind,keyword,pageNum,factoryId:draft.factoryId}}) as unknown as {rows:Option[];hasMore:boolean};if(current!==epochs[key])return;const selected=choices[key]?.find(o=>o.id===draft[key]);const merged=append?[...(choices[key]??[]),...response.rows]:response.rows;if(selected&&!merged.some(o=>o.id===selected.id))merged.unshift(selected);choices[key]=merged;more[key]=response.hasMore;pages[key]=pageNum}catch{}finally{if(current===epochs[key])busy[key]=false}}
 watch(()=>props.orderKind,()=>{delete draft.type;delete applied.value.type;emit('apply',{...applied.value})})
 defineExpose({reset})

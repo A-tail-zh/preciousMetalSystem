@@ -8,7 +8,7 @@ import com.ruoyi.metal.catalog.WarehouseRequests.Line;
 
 class ProcessingOutputOriginTest {
  Line line(String origin){return new Line(null,null,"RAW",1L,null,BigDecimal.ONE,0L,null,null,null,null,null,null,null,null,null,null,null,null,null,"FACTORY",origin);}
- Map<String,Object> material(String type){return Map.of("material_type",type,"metal_type_id",1L);}
+ Map<String,Object> material(String type){return Map.of("material_type",type,"metal_type_id",71L,"metal_type_name","铱");}
  Map<String,Object> batch(String role){return Map.of("processing_policy_version",2,"process_role",role,"batch_id",4L);}
  @Test void nativeReceiptMustBeExplicitAndDoesNotMergeWithRecycled(){
   var j=mock(JdbcTemplate.class);

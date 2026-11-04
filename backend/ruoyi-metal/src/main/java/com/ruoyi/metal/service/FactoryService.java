@@ -65,6 +65,7 @@ public class FactoryService {
         form.setArea(BusinessDecimal.positive(form.getArea(),"占地面积"));
         checkArea(form);
         mapper.insert(form, actor);
+        jdbc.update("INSERT INTO metal_factory_volume_rule(factory_id,pi_value,curved_bottom_factor,update_by) SELECT ?,pi_value,curved_bottom_factor,? FROM metal_volume_rule WHERE rule_id=1",form.getFactoryId(),actor);
         return form.getFactoryId().toString();
     }
 
@@ -100,6 +101,10 @@ public class FactoryService {
         for (Factory f : factories) {
             Long id=Long.valueOf(f.getFactoryId());
             WorkOrderReferences.factory(jdbc,id);WarehouseReferences.factory(jdbc,id);
+            for(String table:List.of("metal_product","metal_material","metal_process","metal_process_type","metal_type")){
+                String active=Set.of("metal_product","metal_material","metal_process").contains(table)?" AND del_flag='0'":"";
+                if(jdbc.queryForObject("SELECT COUNT(*) FROM "+table+" WHERE factory_id=?"+active,Integer.class,id)>0)throw new ServiceException("工厂下存在基础目录，请先核对："+f.getFactoryName());
+            }
             if (jdbc.queryForObject("SELECT COUNT(*) FROM metal_customer WHERE factory_id=? AND del_flag='0'",Integer.class,id)>0)
                 throw new ServiceException("工厂下存在客户，请先删除客户：" + f.getFactoryName());
             if (mapper.countLines(id) > 0 || jdbc.queryForObject("SELECT (SELECT COUNT(*) FROM sys_user WHERE factory_id=? AND del_flag='0') + (SELECT COUNT(*) FROM sys_role WHERE factory_id=? AND del_flag='0')",Integer.class,id,id)>0) blocked.add(f.getFactoryName());

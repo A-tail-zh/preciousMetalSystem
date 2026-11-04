@@ -44,7 +44,7 @@ export const masterConfigs = {
         endpoint: '/metal/production-line',
         permission: 'metal:production-line',
         width: 708,
-        columns: cols([['code', '产线编号', 72], ['name', '产线名称', 72], ['productNames', '产品名称', 128], ['createBy', '创建人', 72], ['createTime', '创建时间', 128]])
+        columns: cols([['code', '产线编号', 72], ['name', '产线名称', 72], ['factoryName','工厂名称',140], ['productNames', '产品名称', 128], ['createBy', '创建人', 72], ['createTime', '创建时间', 128]])
     },
     product: {
         title: '产品管理',
@@ -65,14 +65,14 @@ export const masterConfigs = {
         endpoint: '/metal/process',
         permission: 'metal:process',
         width: 990,
-        columns: cols([['id', '工序ID', 98], ['name', '工序名称', 130], ['description', '工序描述', 250], ['createBy', '创建人', 130], ['updateTime', '更新时间', 146]])
+        columns: cols([['id', '工序ID', 98], ['name', '工序名称', 130], ['processTypeName','工序类型',120], ['description', '工序描述', 250], ['createBy', '创建人', 130], ['updateTime', '更新时间', 146]])
     },
     staff: {
         title: '人员管理',
         endpoint: '/system/user',
         permission: 'system:user',
         width: 1032,
-        columns: cols([['phonenumber', '手机号', 146], ['nickName', '姓名', 100], ['factoryName', '工厂名称', 160], ['roleNames', '角色', 180], ['status', '状态', 66], ['createTime', '创建时间', 144]])
+        columns: cols([['phonenumber', '手机号', 146], ['nickName', '姓名', 100], ['factoryName', '工厂名称', 160], ['roleNames', '角色', 180], ['creatorName','创建人',110], ['status', '状态', 66], ['createTime', '创建时间', 144]])
     },
     role: {
         title: '角色管理',

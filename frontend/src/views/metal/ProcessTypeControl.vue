@@ -16,32 +16,31 @@ import {getToken} from '@/utils/auth'
 import {textRules} from '@/utils/input-validation'
 import {useActionPermission} from '@/composables/useActionPermission'
 import useUserStore from '@/store/modules/user'
-import {processTypes} from './master-config'
 import type {Option} from '@/api/metal/master'
+const props=defineProps<{factoryId?:string|null}>()
 const emit=defineEmits<{loaded:[Option[]]}>(),user=useUserStore(),permission=useActionPermission()
 const opened=ref(false),saving=ref(false),formRef=ref<FormInstance>(),form=reactive({name:''})
 const rules={name:textRules('工序类型名称',100,true)}
-const builtins=()=>processTypes.map((name,index)=>({id:String(index+1),name}))
-let options:Option[]=builtins(),readEpoch=0,editEpoch=0,disposed=false,scheduled=false
-const identity=()=>JSON.stringify([user.sessionReady,user.token,String(user.id),[...user.permissions].sort()])
+let options:Option[]=[],readEpoch=0,editEpoch=0,disposed=false,scheduled=false
+const identity=()=>JSON.stringify([props.factoryId,user.sessionReady,user.token,String(user.id),[...user.permissions].sort()])
 const session=()=>!disposed&&user.sessionReady&&!!user.token&&user.token===getToken()
 const allowed=(p:string)=>session()&&permission.has(p)
 watch(opened,value=>{if(!value){++editEpoch;saving.value=false;form.name=''}},{flush:'sync'})
-function invalidate(){++readEpoch;++editEpoch;opened.value=false;saving.value=false;options=builtins();emit('loaded',options)}
+function invalidate(){++readEpoch;++editEpoch;opened.value=false;saving.value=false;options=[];emit('loaded',options)}
 function scheduleLoad(){if(scheduled||disposed)return;scheduled=true;queueMicrotask(()=>{scheduled=false;void load()})}
 async function load(){
- if(!session()||!permission.hasAny(['metal:process:list','metal:process:add','metal:process:edit']))return
+ if(!props.factoryId||!session()||!permission.hasAny(['metal:process:list','metal:process:add','metal:process:edit']))return
  const current=++readEpoch,account=identity(),valid=()=>session()&&current===readEpoch&&account===identity()
- try{const result=await request({url:'/metal/process/types',isContextCurrent:valid}) as unknown as {data:Option[]};if(!valid())return;options=result.data?.length?result.data:builtins();emit('loaded',options)}catch{}
+ try{const result=await request({url:'/metal/process/types',params:{factoryId:props.factoryId},isContextCurrent:valid}) as unknown as {data:Option[]};if(!valid())return;options=result.data??[];emit('loaded',options)}catch{}
 }
-async function open(){if(!allowed('metal:process:add')||saving.value)return;++editEpoch;form.name='';opened.value=true;await nextTick();formRef.value?.clearValidate()}
+async function open(){if(!props.factoryId||!allowed('metal:process:add')||saving.value)return;++editEpoch;form.name='';opened.value=true;await nextTick();formRef.value?.clearValidate()}
 async function save(){
  if(!allowed('metal:process:add')||saving.value||!opened.value)return
  const current=editEpoch,account=identity(),valid=()=>allowed('metal:process:add')&&opened.value&&current===editEpoch&&account===identity()
  saving.value=true
  try{
   if(!await formRef.value?.validate().catch(()=>false)||!valid())return
-  const result=await request({url:'/metal/process/types',method:'post',data:{name:form.name.trim()},isContextCurrent:valid}) as unknown as {data:Option}
+  const result=await request({url:'/metal/process/types',method:'post',data:{name:form.name.trim(),factoryId:props.factoryId},isContextCurrent:valid}) as unknown as {data:Option}
   if(!valid())return
   ++readEpoch // Invalidate pre-creation reads before publishing the new option.
   options=[...options.filter(o=>o.id!==result.data.id),result.data].sort((a,b)=>Number(a.id)-Number(b.id));emit('loaded',options)
@@ -50,6 +49,7 @@ async function save(){
 }
 function checkSession(){if(!session())invalidate()}
 permission.onChange(()=>{invalidate();scheduleLoad()})
+watch(()=>props.factoryId,()=>{invalidate();scheduleLoad()})
 onMounted(()=>{emit('loaded',options);scheduleLoad();window.addEventListener('focus',checkSession);window.addEventListener('storage',checkSession);document.addEventListener('visibilitychange',checkSession)})
 onBeforeUnmount(()=>{disposed=true;invalidate();window.removeEventListener('focus',checkSession);window.removeEventListener('storage',checkSession);document.removeEventListener('visibilitychange',checkSession)})
 </script>

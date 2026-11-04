@@ -74,7 +74,7 @@ async function refresh(){if(busy.value||uncertain.value||!target)return;const ti
 function add(){lines.value.push({type:'RAW_RETURN',choice:'',warehouseId:'',quantity:0,referenceQuantity:null,measurementMode:'PIECE',netWeight:'',grossWeight:'',impurity:''})}
 function nextStep(){if(busy.value||!info.value?.nextProcess)return;const next={factoryId:info.value.factoryId,workOrderId:info.value.workOrderId,itemId:info.value.itemId,processId:info.value.nextProcess.processId};close();emit('next-step',next)}
 function resetLine(row:Row){quantityInputs.delete(row);returnForm.value?.clearValidate();Object.assign(row,{choice:'',sourceLineId:null,referenceId:null,warehouseId:'',quantity:0,referenceQuantity:null,measurementMode:'PIECE',netWeight:'',grossWeight:'',impurity:''})}
-function choices(row:Row){return row.type==='PROCESS_RAW_RETURN'?materials.value.filter(m=>m.metalTypeId==='1'):(info.value?.sources??[]).filter((s:Row)=>s.category===(row.type==='SEMI_RETURN'?'SEMI':'RAW'))}
+function choices(row:Row){return row.type==='PROCESS_RAW_RETURN'?materials.value.filter(m=>m.metalTypeName==='铱'):(info.value?.sources??[]).filter((s:Row)=>s.category===(row.type==='SEMI_RETURN'?'SEMI':'RAW'))}
 function choiceLabel(o:Row,type:string){
  if(type==='PROCESS_RAW_RETURN')return `${o.code} / ${o.name} / ${o.specification||'未填写规格'}`;
  const prefix=String(o.orderNo??'')+' / ',name=String(o.name??''),display=name.startsWith(prefix)?name.slice(prefix.length):name;

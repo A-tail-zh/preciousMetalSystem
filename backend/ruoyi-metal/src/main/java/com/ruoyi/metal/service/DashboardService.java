@@ -115,7 +115,7 @@ public class DashboardService {
         List<Map<String,Object>> items=new ArrayList<>();BigDecimal total=new BigDecimal("0.00");
         for(int index=0;index<input.items().size();index++){
             Map<String,Object> item;
-            try{item=new LinkedHashMap<>(quotes.calculate(input.items().get(index)));if(!Boolean.TRUE.equals(item.get("pricingEnabled")))throw new ServiceException("请选择加工类型");}
+            try{item=new LinkedHashMap<>(quotes.calculate(input.items().get(index),input.factoryId()));if(!Boolean.TRUE.equals(item.get("pricingEnabled")))throw new ServiceException("请选择加工类型");}
             catch(ServiceException e){throw new ServiceException("第"+(index+1)+"项商品："+e.getMessage());}
             item.put("dimensionFields",ProductGeometry.FIELDS.get(item.get("productType").toString()).stream().map(key->Map.of("key",key,"label",ProductGeometry.label(item.get("productType").toString(),key),"unit","angle".equals(key)?"°":"cm")).toList());
             item.put("diagramVersion",QuotationDiagram.VERSION);

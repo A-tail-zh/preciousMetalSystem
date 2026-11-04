@@ -2,7 +2,7 @@
  <div class="process-consumption" data-testid="process-consumption">
   <div class="consumption-heading"><strong>工序消耗明细</strong><el-button size="small" :loading="loading" @click="load">{{batchScope==='SETTLED'?'刷新':'刷新全部'}}</el-button></div>
   <p class="product-context">{{productLabel}}</p><p v-if="processMeta">当前工序：第{{processMeta.sequenceNo}}道·{{processMeta.processName}}</p><p v-if="batchScope==='SETTLED'" class="consumption-note">仅统计已结算批次</p>
-  <p class="consumption-note">实际投入＝领料－原料还库－半成品还库－加工余料还库；损耗＝实际投入－产出。<template v-if="batchScope!=='SETTLED'">未结算差额仅供暂算，</template>各工序投入不能相加作为整单消耗。</p>
+  <p class="consumption-note">实际投入＝领料－原料还库－半成品还库－加工余料还库；损耗＝实际投入－产出。<template v-if="batchScope!=='SETTLED'">未结算差额仅供暂算，</template>新业务损耗率＝损耗÷本工序有效出库总净重×100%；历史批次保留原口径。各工序投入不能相加作为整单消耗。</p>
   <div v-if="batchScope!=='SETTLED'" class="consumption-options"><el-switch v-model="includeVoided" aria-label="包含已冲销批次" active-text="包含已冲销批次（不计入汇总）"/></div>
   <p v-if="loading" role="status">正在加载工序消耗…</p>
   <div v-if="failed" role="alert">工序消耗加载失败 <el-button link type="primary" @click="load">重试</el-button></div>
@@ -13,7 +13,7 @@
    <el-table-column prop="processName" label="工序" min-width="130"/>
    <el-table-column v-for="c in columns" :key="c.key" :prop="c.key" :label="c.label" :min-width="135" align="right"><template #default="{row}">{{businessValue(row[c.key],c.key)}}</template></el-table-column>
    <el-table-column label="损耗(g)" min-width="190" align="right"><template #default="{row}"><div>已结算：{{decimalText(row.settledLossWeight??'—')}}</div><div v-if="batchScope!=='SETTLED'&&row.openBatchCount">暂算差额：{{decimalText(row.provisionalDifferenceWeight??'—')}}</div></template></el-table-column>
-   <el-table-column label="实际损耗率（%）" min-width="150" align="right"><template #default="{row}">{{lossRateText(row.lossRatePercent)}}<p v-if="row.lossRateWarning">{{row.lossRateWarning}}</p></template></el-table-column>
+   <el-table-column label="实际损耗率（%）" min-width="150" align="right"><template #default="{row}">{{lossRateText(row.lossRatePercent)}}<LossRateBasis :basis="row.lossRateBasis" :weight="row.lossRateDenominatorWeight" :groups="row.lossRateGroups"/><p v-if="row.lossRateWarning">{{row.lossRateWarning}}</p></template></el-table-column>
    <el-table-column v-if="!raw&&!rows.every(r=>r.outputStage==='RAW')" prop="settledCompletedQuantity" label="结算完成(件)" min-width="115" align="right"><template #default="{row}">{{row.settledCompletedQuantity??'—'}}</template></el-table-column>
    <el-table-column prop="batchCount" label="有效批次" width="90" align="right"/>
    <el-table-column label="状态" min-width="155"><template #default="{row}"><el-tag :type="row.state==='REVIEW'?'warning':row.state==='SETTLED'?'success':'info'">{{consumptionStates[row.state]||row.state}}</el-tag><el-tag v-if="row.reportStatus" :type="row.reportStatus==='ABNORMAL'?'danger':'success'">{{row.reportStatus==='ABNORMAL'?'已结算批次含异常':'已结算批次正常'}}</el-tag><p v-for="w in row.warnings" :key="w">{{w}}</p></template></el-table-column>
@@ -22,6 +22,7 @@
  </div>
 </template>
 <script setup lang="ts">
+import LossRateBasis from '../warehouse-common/LossRateBasis.vue'
 import {decimalText,decimalColumn,businessValue} from '@/utils/business-decimal'
 
 import {lossRateText} from '@/utils/report-metrics'
@@ -36,7 +37,7 @@ import ConsumptionDocuments from './ConsumptionDocuments.vue'
 const props=withDefaults(defineProps<{raw?:boolean;workOrderId:string;itemId:string;productLabel:string;processId?:string;batchScope?:'ALL'|'SETTLED'}>(),{batchScope:'ALL'}),emit=defineEmits<{report:[processId:string,name:string,batchId?:string]}>(),user=useUserStore()
 const canDrill=computed(()=>actionPermission.hasAny(['metal:work-order:query','metal:work-report:query']))
 const processMeta=ref<Row>();const table=ref<any>();const rows=ref<Row[]>([]),warnings=ref<string[]>([]),readAt=ref(''),loading=ref(false),failed=ref(false),includeVoided=ref(false),expanded=ref<string[]>([]),generation=ref(0)
-const columns=[{key:'rawIssuedWeight',label:'原料领用(g)'},{key:'semiIssuedWeight',label:'半成品领用(g)'},{key:'issuedWeight',label:'领料合计(g)'},{key:'rawReturnedWeight',label:'原料还库(g)'},{key:'semiReturnedWeight',label:'半成品还库(g)'},{key:'processRawReturnedWeight',label:'加工余料还库(g)'},{key:'outputWeight',label:'加工称产出(g)'},{key:'handoverDifference',label:'交接差额(g)'},{key:'netInputWeight',label:'实际投入(g)'}]
+const columns=[{key:'rawIssuedWeight',label:'原料领用(g)'},{key:'semiIssuedWeight',label:'半成品领用(g)'},{key:'issuedWeight',label:'出库总净重(g)'},{key:'rawReturnedWeight',label:'原料还库(g)'},{key:'semiReturnedWeight',label:'半成品还库(g)'},{key:'processRawReturnedWeight',label:'加工余料还库(g)'},{key:'outputWeight',label:'加工称产出(g)'},{key:'handoverDifference',label:'交接差额(g)'},{key:'netInputWeight',label:'实际投入(g)'}]
 let ticket=0,disposed=false
 const signature=()=>JSON.stringify([props.workOrderId,props.itemId,props.processId,props.batchScope])
 const canRead=()=>actionPermission.hasAny(['metal:work-order:query','metal:work-report:list'])&&(props.batchScope!=='SETTLED'||actionPermission.has('metal:work-report:query'))&&!!user.token&&user.token===getToken()

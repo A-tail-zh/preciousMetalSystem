@@ -25,7 +25,7 @@ public class ProductController extends BaseController {
 
  @PostMapping("/calculation-preview")
  @PreAuthorize("@ss.hasAnyPermi('metal:product:query,metal:product:add,metal:product:edit')")
- public AjaxResult calculationPreview(@Valid @RequestBody com.ruoyi.metal.catalog.ProductCalculationRequest input){return success(service.preview(input));}
+ public AjaxResult calculationPreview(@Valid @RequestBody com.ruoyi.metal.catalog.ProductCalculationRequest input,@RequestParam(required=false) Long factoryId){return success(service.preview(input,factoryId));}
 
  /**
   * 查询列表并补充关联资料。

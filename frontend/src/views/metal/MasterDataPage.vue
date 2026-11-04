@@ -1,11 +1,11 @@
 <template>
  <section class="master-page" :class="{'material-page':kind==='material','line-page':kind==='line'}">
   <div class="master-toolbar">
-<BusinessFilters :kind="kind" :process-type-options="typeOptions" :allow-export="kind==='staff'&&can('system:user:export')" :exporting="exporting" @apply="applyFilters" @export="exportRows"><template #actions>
+<BusinessFilters :kind="kind" :process-type-options="typeOptions" :allow-export="kind==='staff'&&can('system:user:export')" :exporting="exporting" @factory="listFactory=$event" @apply="applyFilters" @export="exportRows"><template #actions>
 <el-button v-if="actionPermission.hasAny([`${config.permission}:add`])"  class="add-button list-action list-action--create" @click="openAdd">添加</el-button>
    <el-button v-if="actionPermission.hasAny([`${config.permission}:edit`])"  class="edit-button list-action list-action--edit" :disabled="selected.length!==1" @click="openRecord(selected[0])">编辑</el-button>
    <el-button v-if="actionPermission.hasAny([`${config.permission}:remove`])"  class="delete-button list-action list-action--delete" :disabled="!selected.length||deleting" @click="remove(selected)">删除</el-button>
-</template><template v-if="kind==='process'" #trailing-actions><ProcessTypeControl @loaded="typeOptions=$event"/></template></BusinessFilters>
+</template><template v-if="kind==='process'" #trailing-actions><ProcessTypeControl :factory-id="listFactory" @loaded="typeOptions=$event"/></template></BusinessFilters>
     </div>
   <div v-if="editLoading" role="status">正在加载编辑资料… <el-button link @click="cancelEdit">取消加载</el-button></div>
   <div v-if="editError" role="alert">编辑资料加载失败 <el-button link @click="retryEdit()">重试</el-button></div>
@@ -35,24 +35,25 @@
   <div v-if="loadFailed||refreshFailed" class="load-error">列表更新失败，当前显示可能过期 <el-button link type="primary" @click="load">重试</el-button></div>
   <div class="master-pagination"><el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :total="total" :page-sizes="[16,32,64]" layout="total, sizes, prev, pager, next, jumper" @size-change="sizeChanged" @current-change="load"/></div>
   <el-dialog :class="{'base-info-form-dialog':['product','line','material','process'].includes(kind)}" v-model="dialogOpen" :title="`${readonly?'查看':form.id?'编辑':'添加'}${config.title.replace('管理','')}`" :width="['product','line'].includes(kind)?'min(900px,94vw)':'700px'" :top="kind==='line'?'5vh':undefined" :close-on-click-modal="false" :close-on-press-escape="!saving&&!uncertain" :show-close="!saving&&!uncertain" >
+   <el-alert v-if="['product','material','process'].includes(kind)" title="仅使用本厂目录；首次切换后请先维护本厂金属、工序类型和工序。" type="info" :closable="false"/>
    <el-form ref="formRef" :model="form" :rules="rules" scroll-to-error label-width="160px" :disabled="readonly||saving||rolesLoading||uncertain||needsReload">
     <template v-if="['line','product','material'].includes(kind)">
      <el-form-item :label="kind==='line'?'产线编号':kind==='product'?'产品编号':'物料编码'" prop="code"><el-input v-model="form.code" maxlength="64"/></el-form-item>
     </template>
     <el-form-item v-if="['line','product','process'].includes(kind)" :label="kind==='line'?'产线名称':kind==='product'?'产品名称':'工序名称'" prop="name"><el-input v-model="form.name" maxlength="100"/></el-form-item>
-    <el-form-item v-if="['line','staff','role'].includes(kind)" label="所属工厂" prop="factoryId"><el-select :class="{'line-factory-select':kind==='line'}" @visible-change="resetSelectScroll" fit-input-width :teleported="false" v-model="form.factoryId" :clearable="isAdmin" placeholder="请选择所属工厂" :disabled="!isAdmin||(['staff','role'].includes(kind)&&form.id==='1')" @change="factoryChanged" style="width:100%"><el-option v-for="o in factories" :key="o.id" :value="o.id" :label="o.name"/></el-select></el-form-item>
+    <el-form-item v-if="['line','staff','role','product','material','process'].includes(kind)" label="所属工厂" prop="factoryId"><el-select :class="{'line-factory-select':kind==='line'}" @visible-change="resetSelectScroll" fit-input-width :teleported="false" v-model="form.factoryId" :clearable="isAdmin" placeholder="请选择所属工厂" :disabled="saving||uncertain||!isAdmin||(['product','material','process'].includes(kind)&&!!form.id)||(['staff','role'].includes(kind)&&form.id==='1')" @change="factoryChanged" style="width:100%"><el-option v-for="o in factories" :key="o.id" :value="o.id" :label="o.name"/></el-select></el-form-item>
     <el-form-item v-if="kind==='line'" label="关联产品"><el-select class="line-product-select" @visible-change="resetSelectScroll" fit-input-width :teleported="false" v-model="form.productIds" multiple filterable style="width:100%"><el-option v-for="o in products" :key="o.id" :value="o.id" :label="o.name"/></el-select></el-form-item>
     <el-form-item v-if="kind==='material'" label="物料类型" prop="materialType"><el-select @visible-change="resetSelectScroll" fit-input-width :teleported="false" v-model="form.materialType" :disabled="form.classificationLocked" style="width:100%"><el-option v-for="value in materialTypes" :key="value" :value="value"/></el-select></el-form-item>
     <template v-if="kind==='process'">
-     <el-form-item label="工序类型" prop="processType"><el-select @visible-change="resetSelectScroll" fit-input-width :teleported="false" v-model="form.processType" style="width:100%"><el-option v-for="option in typeOptions" :key="option.id" :label="option.name" :value="Number(option.id)"/></el-select></el-form-item>
+     <el-form-item label="工序类型" prop="processType"><el-select @visible-change="resetSelectScroll" fit-input-width :teleported="false" v-model="form.processType" style="width:100%"><el-option v-for="option in editTypeOptions" :key="option.id" :label="option.name" :value="Number(option.id)"/></el-select></el-form-item>
      <el-form-item label="工序描述"><el-input v-model="form.description" type="textarea" :rows="4" maxlength="2000"/></el-form-item>
     </template>
     <el-form-item v-if="kind==='material'" label="规格型号"><el-input v-model="form.specification" maxlength="200"/></el-form-item>
-    <el-form-item v-if="kind==='material'" label="金属类型" prop="metalTypeId" :rules="[requiredRule('金属类型',true,true)]"><MetalTypeSelect v-if="dialogOpen" :key="editEpoch" v-model="form.metalTypeId" :disabled="readonly||saving||form.classificationLocked"/></el-form-item>
+    <el-form-item v-if="kind==='material'" label="金属类型" prop="metalTypeId" :rules="[requiredRule('金属类型',true,true)]"><MetalTypeSelect v-if="dialogOpen" :key="editEpoch" v-model="form.metalTypeId" :factory-id="form.factoryId" :disabled="readonly||saving||form.classificationLocked"/></el-form-item>
     <p v-if="kind==='material'&&form.classificationLocked&&!readonly" class="process-hint">物料已有库存或仓储引用，不能修改物料类型或金属类型；需要其他分类请另建物料。</p>
     <template v-if="kind==='product'">
      <el-form-item v-if="readonly" label="规格型号"><el-input class="product-specification-input" :model-value="form.specification??automaticSpecification" type="textarea" :autosize="{minRows:1}" readonly/></el-form-item>
-     <el-form-item label="金属类型" prop="metalTypeId" :rules="[requiredRule('金属类型',true,true)]"><MetalTypeSelect v-if="dialogOpen" :key="editEpoch" v-model="form.metalTypeId" :disabled="readonly||saving||legacyProduct" @loaded="metalOptions=$event"/></el-form-item>
+     <el-form-item label="金属类型" prop="metalTypeId" :rules="[requiredRule('金属类型',true,true)]"><MetalTypeSelect v-if="dialogOpen" :key="editEpoch" v-model="form.metalTypeId" :factory-id="form.factoryId" :disabled="readonly||saving||legacyProduct" @loaded="metalOptions=$event"/></el-form-item>
      <el-form-item label="产品类型" prop="productType" :rules="[requiredRule('产品类型',true,true)]"><el-select v-model="productTypeChoice" style="width:100%" @change="categoryChanged"><el-option v-if="legacyProduct" :value="'legacy:'+form.productType" :label="form.productType+'（旧版）'" disabled/><el-option v-for="type in productTypes" :key="type" :value="type"/></el-select></el-form-item>
      <p v-if="legacyProduct" class="process-hint">旧版产品保留原字段及计算值。修改几何信息请明确选择新版产品类型并补齐字段；有业务引用时仍受保护。</p>
      <el-form-item :rules="[requiredRule(`${dimension.label}（${dimension.unit??'cm'}）`,true,false),{validator:positiveDecimal,trigger:'blur'}]" v-for="dimension in dimensionFields" :key="dimension.key" :label="`${dimension.label}（${dimension.unit??'cm'}）`" :prop="`dimensions.${dimension.key}`"><BusinessDecimalInput v-model="form.dimensions![dimension.key]" :disabled="legacyProduct" inputmode="decimal"/></el-form-item>
@@ -112,7 +113,7 @@ import type {MasterKind} from './master-config'
 import MetalTypeSelect from './MetalTypeSelect.vue'
 import {businessValue,decimalText} from '@/utils/business-decimal'
 import ProcessTypeControl from './ProcessTypeControl.vue'
-const typeOptions=ref<Option[]>(processTypes.map((name,index)=>({id:String(index+1),name})))
+const typeOptions=ref<Option[]>([]),editTypeOptions=ref<Option[]>([]),listFactory=ref('')
 const props=defineProps<{kind:MasterKind}>(),kind=props.kind,config=masterConfigs[kind]
 const fullWidthTable=['line','product','material','process','staff','role'].includes(kind)
 const user=useUserStore(),isAdmin=computed(()=>String(user.id)==='1')
@@ -138,21 +139,21 @@ const legacyProduct=computed(()=>kind==='product'&&Boolean(form.id)&&(form.calcu
 const productTypeChoice=computed({get:()=>legacyProduct.value?'legacy:'+form.productType:form.productType,set:(value:string)=>{form.calculationVersion=2;form.productType=value}})
 const sameGeometry=computed(()=>{
  const old=originalProduct.value
- return Boolean(form.id&&old&&form.calculationVersion===old.calculationVersion&&form.metalTypeId===old.metalTypeId&&form.productType===old.productType&&dimensionFields.value.every(d=>form.dimensions?.[d.key]===old.dimensions?.[d.key]))
+ return Boolean(form.id&&old&&form.factoryId===old.factoryId&&form.calculationVersion===old.calculationVersion&&form.metalTypeId===old.metalTypeId&&form.productType===old.productType&&dimensionFields.value.every(d=>form.dimensions?.[d.key]===old.dimensions?.[d.key]))
 })
 const calculationPreview=ref<{volume:string|null;weight:string|null}>({volume:null,weight:null}),previewBusy=ref(false),previewError=ref('')
 const automaticVolume=computed(()=>legacyProduct.value||sameGeometry.value&&originalProduct.value?.volume!=null?originalProduct.value?.volume??null:calculationPreview.value.volume)
 const automaticWeight=computed(()=>legacyProduct.value?originalProduct.value?.weight??null:sameGeometry.value&&originalProduct.value?.volume!=null?productWeight(automaticVolume.value,String(metalRules.value.find(r=>String(r.metalTypeId)===String(form.metalTypeId))?.density??'')):calculationPreview.value.weight)
 let previewEpoch=0,previewTimer:ReturnType<typeof setTimeout>|undefined
 function cancelPreview(){++previewEpoch;clearTimeout(previewTimer);previewBusy.value=false}
-watch(()=>[dialogOpen.value,readonly.value,form.metalTypeId,form.productType,form.calculationVersion,JSON.stringify(form.dimensions)],()=>{
+watch(()=>[dialogOpen.value,readonly.value,form.factoryId,form.metalTypeId,form.productType,form.calculationVersion,JSON.stringify(form.dimensions)],()=>{
  cancelPreview();calculationPreview.value={volume:null,weight:null};previewError.value=''
- if(kind!=='product'||!dialogOpen.value||readonly.value||legacyProduct.value||sameGeometry.value&&originalProduct.value?.volume!=null||!form.metalTypeId||!form.productType||!dimensionFields.value.length)return
+ if(kind!=='product'||!dialogOpen.value||readonly.value||legacyProduct.value||sameGeometry.value&&originalProduct.value?.volume!=null||!form.factoryId||!form.metalTypeId||!form.productType||!dimensionFields.value.length)return
  if(dimensionFields.value.some(d=>decimalError(form.dimensions?.[d.key],d.label,{positive:!d.allowZero})))return
  const round=previewEpoch,edit=editEpoch;previewBusy.value=true
  previewTimer=setTimeout(async()=>{
   const current=()=>!disposed&&round===previewEpoch&&edit===editEpoch&&dialogOpen.value&&!readonly.value&&sessionCurrent()&&can(`${config.permission}:${form.id?'edit':'add'}`)
-  try{const r:any=await request({url:'/metal/product/calculation-preview',method:'post',headers:{repeatSubmit:false},isContextCurrent:current,data:{metalTypeId:form.metalTypeId,productType:form.productType,dimensions:{...form.dimensions}}});if(current())calculationPreview.value=r.data}
+  try{const r:any=await request({url:'/metal/product/calculation-preview',method:'post',params:{factoryId:form.factoryId},headers:{repeatSubmit:false},isContextCurrent:current,data:{metalTypeId:form.metalTypeId,productType:form.productType,dimensions:{...form.dimensions}}});if(current())calculationPreview.value=r.data}
   catch(error:any){if(current())previewError.value=error.message||'计算失败，请核对尺寸及公共参数'}
   finally{if(current())previewBusy.value=false}
  },250)
@@ -190,16 +191,20 @@ let editEpoch=0,roleEpoch=0,disposed=false,retryEdit:()=>void=()=>{},openedId=''
 const needsReload=ref(false),uncertain=ref(false)
 function resetAccess(){++sequence;++operationEpoch;++editEpoch;++roleEpoch;manualPending=false;loading.value=false;loadFailed.value=false;rows.value=[];selected.value=[];total.value=0;tableRef.value?.clearSelection();editLoading.value=false;rolesLoading.value=false;editError.value=false;dialogOpen.value=false;passwordOpen.value=false;passwordRow.value=undefined;newPassword.value='';saving.value=false;deleting.value=false;statusBusy.value='';exporting.value=false;needsReload.value=false;uncertain.value=false;reset()}
 async function editorOptions(draft:Partial<MasterRow>,view:boolean,current:()=>boolean,background=false){
- const opts={factories:[] as Option[],products:[] as Option[],processes:[] as Option[],roles:[] as Option[],menus:[] as Option[],rules:[] as Record<string,any>[],metals:[] as Option[]}
+ const opts={factories:[] as Option[],products:[] as Option[],processes:[] as Option[],roles:[] as Option[],menus:[] as Option[],rules:[] as Record<string,any>[],metals:[] as Option[],types:[] as Option[]}
  if(!view){
-  if(['line','staff','role'].includes(kind))opts.factories=(await masterOptions('factories',undefined,current,background)).data
-  if(kind==='line')opts.products=(await masterOptions('products',undefined,current,background)).data
-  if(kind==='product'){opts.processes=(await masterOptions('processes',undefined,current,background)).data;opts.rules=(await request({url:'/metal/product/calculation-rule',isContextCurrent:current,quiet:background})).data}
+  if(['line','staff','role','product','material','process'].includes(kind))opts.factories=(await masterOptions('factories',undefined,current,background)).data
   if(kind==='role')opts.menus=(await masterOptions('menus',undefined,current,background)).data
   const factory=draft.factoryId||(!isAdmin.value?opts.factories[0]?.id:undefined)
+  if(!draft.id&&factory)draft.factoryId=factory
+  const params=factory?{factoryId:factory}:undefined
+  if(factory&&kind==='line')opts.products=(await masterOptions('products',params,current,background)).data
+  if(factory&&kind==='product'){opts.processes=(await masterOptions('processes',params,current,background)).data;opts.rules=(await request({url:'/metal/product/calculation-rule',params,isContextCurrent:current,quiet:background})).data}
+  if(factory&&kind==='process')opts.types=(await request({url:'/metal/process/types',params,isContextCurrent:current,quiet:background})).data
   if(kind==='staff'&&factory)opts.roles=(await masterOptions('roles',{factoryId:factory},current,background)).data
-  if(['product','material'].includes(kind))opts.metals=(await request({url:'/metal/metal-types',isContextCurrent:current,quiet:background})).data
+  if(factory&&['product','material'].includes(kind))opts.metals=(await request({url:'/metal/metal-types',params,isContextCurrent:current,quiet:background})).data
  }
+ if(view&&draft.factoryId)opts.factories=[{id:draft.factoryId,name:draft.factoryName??'历史工厂'}]
  if(view&&kind==='product')opts.processes=(draft.processes??[]).map(s=>({id:s.processId,name:s.processName??s.processId}))
  if(kind==='staff'&&draft.id==='1')opts.roles=[{id:'1',name:'超级管理员'}]
  return opts
@@ -220,7 +225,11 @@ watch(()=>[readonly.value,JSON.stringify(form.processes?.map(step=>step.processI
 },{flush:'sync'})
 watch(dialogOpen,open=>{if(!open&&!saving.value){++editEpoch;++roleEpoch;editLoading.value=false;rolesLoading.value=false}}, {flush:'sync'})
 onBeforeUnmount(()=>{disposed=true;++editEpoch;++roleEpoch;++sequence;++operationEpoch})
-async function factoryChanged(){if(kind!=='staff')return;const epoch=editEpoch,ticket=++roleEpoch,factory=form.factoryId,account=identity(),current=()=>!disposed&&epoch===editEpoch&&ticket===roleEpoch&&account===identity()&&sessionCurrent()&&factory===form.factoryId;form.roleIds=[];roles.value=[];rolesLoading.value=true;try{const result=factory?(await masterOptions('roles',{factoryId:factory},current)).data:[];if(current()){roles.value=result;openedOptions.roles=JSON.parse(JSON.stringify(result))}}finally{if(current())rolesLoading.value=false}}
+async function factoryChanged(){if(saving.value||uncertain.value)return;if(kind!=='staff'){
+ const epoch=editEpoch,ticket=++roleEpoch,factory=form.factoryId,account=identity(),current=()=>!disposed&&epoch===editEpoch&&ticket===roleEpoch&&account===identity()&&factory===form.factoryId
+ form.productIds=[];form.metalTypeId=undefined;form.processType=undefined;form.processes=[];products.value=[];processes.value=[];metalRules.value=[];metalOptions.value=[];editTypeOptions.value=[];cancelPreview();rolesLoading.value=true
+ try{const opts=await editorOptions(form,false,current);if(current()){products.value=opts.products;processes.value=opts.processes;metalRules.value=opts.rules;editTypeOptions.value=opts.types;openedOptions=JSON.parse(JSON.stringify(opts))}}finally{if(current())rolesLoading.value=false}return}
+const epoch=editEpoch,ticket=++roleEpoch,factory=form.factoryId,account=identity(),current=()=>!disposed&&epoch===editEpoch&&ticket===roleEpoch&&account===identity()&&sessionCurrent()&&factory===form.factoryId;form.roleIds=[];roles.value=[];rolesLoading.value=true;try{const result=factory?(await masterOptions('roles',{factoryId:factory},current)).data:[];if(current()){roles.value=result;openedOptions.roles=JSON.parse(JSON.stringify(result))}}finally{if(current())rolesLoading.value=false}}
 async function openEditor(row?:MasterRow,view=false){
  if(saving.value||uncertain.value||disposed||!can(`${config.permission}:${row?(view?'query':'edit'):'add'}`))return;dialogOpen.value=false;const epoch=++editEpoch,account=identity();++roleEpoch;rolesLoading.value=false;editLoading.value=true;editError.value=false;needsReload.value=false;retryEdit=()=>{void openEditor(row,view)}
  const valid=()=>!disposed&&epoch===editEpoch&&account===identity()&&can(`${config.permission}:${row?(view?'query':'edit'):'add'}`)
@@ -230,9 +239,9 @@ async function openEditor(row?:MasterRow,view=false){
   if(!row&&kind==='staff')draft.password='12345678'
   for(const field of ['productIds','roleIds','menuIds'] as const)if(draft[field])draft[field]=draft[field]!.map(String)
   const opts=await editorOptions(draft,view,valid)
-  if(!view&&['line','staff','role'].includes(kind)&&!isAdmin.value)draft.factoryId=opts.factories[0]?.id
+  if(!view&&['line','staff','role','product','material','process'].includes(kind)&&!isAdmin.value)draft.factoryId=opts.factories[0]?.id
   if(!valid())return
-  readonly.value=view;reset();Object.assign(form,draft);originalDimensions.value={...(draft.dimensions??{})};originalProduct.value={...draft,dimensions:{...(draft.dimensions??{})}};factories.value=opts.factories;products.value=opts.products;processes.value=opts.processes;roles.value=opts.roles;menus.value=opts.menus;metalRules.value=opts.rules??[]
+  readonly.value=view;reset();Object.assign(form,draft);originalDimensions.value={...(draft.dimensions??{})};originalProduct.value={...draft,dimensions:{...(draft.dimensions??{})}};factories.value=opts.factories;products.value=opts.products;processes.value=opts.processes;roles.value=opts.roles;menus.value=opts.menus;metalRules.value=opts.rules??[];editTypeOptions.value=opts.types
   openedId=draft.id??'';openedVersion=draft.version;openedOptions=JSON.parse(JSON.stringify(opts));dialogOpen.value=true;await nextTick();if(valid()){treeRef.value?.setCheckedKeys(form.menuIds??[]);formRef.value?.clearValidate()}
  }catch{if(valid()){reset();editError.value=true}}finally{if(valid())editLoading.value=false}
 }

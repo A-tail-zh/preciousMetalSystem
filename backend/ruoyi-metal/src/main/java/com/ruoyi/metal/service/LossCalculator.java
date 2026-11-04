@@ -19,10 +19,16 @@ public final class LossCalculator {
   * 以0.01g采用最大余数法分摊；调用方按类别、资料ID排序以稳定处理相同余数。
   */
  public record PercentageResult(BigDecimal loss,BigDecimal rate,BigDecimal threshold,boolean abnormal){}
- public static PercentageResult percentage(BigDecimal issued,BigDecimal returns,BigDecimal output,BigDecimal theoretical){
-  BigDecimal net=issued.subtract(returns),loss=net.subtract(output);
+ public static BigDecimal denominator(String basis,BigDecimal issued,BigDecimal returns){
+  return switch(basis){case "OUTBOUND_TOTAL"->issued;case "NET_INPUT"->issued.subtract(returns);default->throw new ServiceException("损耗率口径无效");};
+ }
+ public static PercentageResult percentage(BigDecimal issued,BigDecimal returns,BigDecimal output,BigDecimal theoretical,String basis){
+  BigDecimal net=issued.subtract(returns),loss=net.subtract(output),denominator=denominator(basis,issued,returns);
   if(issued.signum()<=0||returns.signum()<0||output.signum()<0||net.signum()<=0||loss.signum()<0||theoretical.signum()<0||theoretical.compareTo(BigDecimal.valueOf(100))>0)throw new ServiceException("百分比结算须有正数实际投入，产出及还料不能超过领料，理论损耗率须为0至100%");
-  return new PercentageResult(loss,loss.multiply(BigDecimal.valueOf(100)).divide(net,2,RoundingMode.HALF_UP),theoretical,loss.multiply(BigDecimal.valueOf(100)).compareTo(net.multiply(theoretical))>0);
+  return new PercentageResult(loss,loss.multiply(BigDecimal.valueOf(100)).divide(denominator,2,RoundingMode.HALF_UP),theoretical,loss.multiply(BigDecimal.valueOf(100)).compareTo(denominator.multiply(theoretical))>0);
+ }
+ public static PercentageResult percentage(BigDecimal issued,BigDecimal returns,BigDecimal output,BigDecimal theoretical){
+  return percentage(issued,returns,output,theoretical,"NET_INPUT");
  }
  public static List<BigDecimal> allocate(BigDecimal loss,List<BigDecimal> weights){
   BigDecimal total=weights.stream().reduce(BigDecimal.ZERO,BigDecimal::add);

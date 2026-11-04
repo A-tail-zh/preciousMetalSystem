@@ -57,27 +57,27 @@ class WorkOrderExecutionTimeTest {
         }
     }
 
-    @Test @EnabledIfEnvironmentVariable(named="METAL_FLOW_ISOLATED_JDBC_URL",matches="jdbc:mysql://(?:127\\.0\\.0\\.1|localhost):3321/heavy_metal_flow(?:\\?.*)?")
+    @Test @EnabledIfEnvironmentVariable(named="METAL_FLOW_ISOLATED_JDBC_URL",matches="jdbc:mysql://(?:127\\.0\\.0\\.1|localhost):3321/(?:heavy_metal_flow|heavy_metal_factory_20261104)(?:\\?.*)?")
     void directHistoricalPostingUsesCreationTime()throws Exception {
         withIssue("INSERT INTO metal_warehouse_order VALUES(5,4,'POSTED','PRODUCTION_OUT','2026-11-03 09:00:00',NULL,NULL)","2026-11-03 09:00:00");
     }
 
-    @Test @EnabledIfEnvironmentVariable(named="METAL_FLOW_ISOLATED_JDBC_URL",matches="jdbc:mysql://(?:127\\.0\\.0\\.1|localhost):3321/heavy_metal_flow(?:\\?.*)?")
+    @Test @EnabledIfEnvironmentVariable(named="METAL_FLOW_ISOLATED_JDBC_URL",matches="jdbc:mysql://(?:127\\.0\\.0\\.1|localhost):3321/(?:heavy_metal_flow|heavy_metal_factory_20261104)(?:\\?.*)?")
     void multiWarehouseStartsAtFinalPostingNotCreationOrFirstConfirmation()throws Exception {
         withIssue("INSERT INTO metal_warehouse_flow VALUES(6,'POSTED','2026-11-03 11:00:00');INSERT INTO metal_warehouse_order VALUES(5,4,'POSTED','PRODUCTION_OUT','2026-11-03 08:00:00','2026-11-03 10:00:00',6),(7,4,'POSTED','PRODUCTION_OUT','2026-11-03 09:00:00','2026-11-03 11:00:00',6)","2026-11-03 11:00:00");
     }
 
-    @Test @EnabledIfEnvironmentVariable(named="METAL_FLOW_ISOLATED_JDBC_URL",matches="jdbc:mysql://(?:127\\.0\\.0\\.1|localhost):3321/heavy_metal_flow(?:\\?.*)?")
+    @Test @EnabledIfEnvironmentVariable(named="METAL_FLOW_ISOLATED_JDBC_URL",matches="jdbc:mysql://(?:127\\.0\\.0\\.1|localhost):3321/(?:heavy_metal_flow|heavy_metal_factory_20261104)(?:\\?.*)?")
     void comparesEffectiveTimesAcrossHistoricalAndWorkflowIssues()throws Exception {
         withIssue("INSERT INTO metal_warehouse_flow VALUES(6,'POSTED','2026-11-03 11:00:00');INSERT INTO metal_warehouse_order VALUES(5,4,'POSTED','PRODUCTION_OUT','2026-11-03 08:00:00','2026-11-03 11:00:00',6),(7,4,'POSTED','PRODUCTION_OUT','2026-11-03 10:00:00',NULL,NULL)","2026-11-03 10:00:00");
     }
 
-    @Test @EnabledIfEnvironmentVariable(named="METAL_FLOW_ISOLATED_JDBC_URL",matches="jdbc:mysql://(?:127\\.0\\.0\\.1|localhost):3321/heavy_metal_flow(?:\\?.*)?")
+    @Test @EnabledIfEnvironmentVariable(named="METAL_FLOW_ISOLATED_JDBC_URL",matches="jdbc:mysql://(?:127\\.0\\.0\\.1|localhost):3321/(?:heavy_metal_flow|heavy_metal_factory_20261104)(?:\\?.*)?")
     void workflowWithoutPostingEvidenceDoesNotFallBackToCreation()throws Exception {
         withIssue("INSERT INTO metal_warehouse_flow VALUES(6,'POSTED',NULL);INSERT INTO metal_warehouse_order VALUES(5,4,'POSTED','PRODUCTION_OUT','2026-11-03 08:00:00','2026-11-03 10:00:00',6)",null);
     }
 
-    @Test @EnabledIfEnvironmentVariable(named="METAL_FLOW_ISOLATED_JDBC_URL",matches="jdbc:mysql://(?:127\\.0\\.0\\.1|localhost):3321/heavy_metal_flow(?:\\?.*)?")
+    @Test @EnabledIfEnvironmentVariable(named="METAL_FLOW_ISOLATED_JDBC_URL",matches="jdbc:mysql://(?:127\\.0\\.0\\.1|localhost):3321/(?:heavy_metal_flow|heavy_metal_factory_20261104)(?:\\?.*)?")
     void pendingAndVoidedIssuesCannotKeepLegacyTimes()throws Exception {
         withIssue("INSERT INTO metal_warehouse_order VALUES(5,4,'WAITING_OUT','PRODUCTION_OUT','2026-11-03 08:00:00',NULL,NULL),(7,4,'VOID','PRODUCTION_OUT','2026-11-03 09:00:00',NULL,NULL)",null);
     }

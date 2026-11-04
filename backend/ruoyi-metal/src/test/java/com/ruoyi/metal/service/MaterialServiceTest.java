@@ -22,20 +22,20 @@ class MaterialServiceTest {
         jdbc = mock(JdbcTemplate.class);
         when(jdbc.queryForList(contains("FROM metal_type WHERE"), any(Object[].class)))
                 .thenReturn(List.of(Map.of("metal_type_id", 1L)));
-        service = new MaterialService(mock(MaterialMapper.class), mock(FactoryScope.class), jdbc);
+        service = new MaterialService(mock(MaterialMapper.class), FactoryCatalogTestFixtures.scope(), jdbc);
     }
 
     MaterialRecord material(String type, Long metal) {
         var row = new MaterialRecord();
+        row.setFactoryId(7L);
         row.setId(10L); row.setMaterialType(type); row.setMetalTypeId(metal);
         return row;
     }
 
     @ParameterizedTest @CsvSource({"铱粉,粉料", "铱块,块料", "旧铱杆,旧料", "旧铱坩埚,旧料"})
-    void legacyTypesMapToIridium(String legacy, String type) {
+    void legacyTypesCannotCreateNewBusiness(String legacy, String type) {
         var row = material(legacy, null);
-        service.prepare(row, null);
-        assertEquals(type, row.getMaterialType()); assertEquals(1L, row.getMetalTypeId());
+        assertThrows(ServiceException.class,()->service.prepare(row,null));
     }
 
     @Test void legacyTypeCannotDescribeAnotherMetal() {

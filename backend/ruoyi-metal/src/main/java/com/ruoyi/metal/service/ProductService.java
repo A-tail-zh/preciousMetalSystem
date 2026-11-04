@@ -14,7 +14,7 @@ import com.ruoyi.common.exception.ServiceException;
  * 产品业务服务，负责业务校验、数据处理和相关持久化操作。
  */
 @Service
-public class ProductService extends MasterService<ProductRecord> {
+public class ProductService extends FactoryCatalogService<ProductRecord> {
     private final JdbcTemplate jdbc;
     private final QuoteRuleService quoteRules;
     public static final Map<String, List<String>> DIMENSIONS = Map.of(
@@ -35,6 +35,7 @@ public class ProductService extends MasterService<ProductRecord> {
      */
     @Override
     protected void prepare(ProductRecord row, ProductRecord old) {
+        super.prepare(row,old);
         int priorVersion=old==null?2:version(old);
         int currentVersion=old==null?2:row.getCalculationVersion()==null?priorVersion:row.getCalculationVersion();
         if(currentVersion<1||currentVersion>2||priorVersion==2&&currentVersion!=2)throw new ServiceException("不能退回旧版产品计算规则");
@@ -48,6 +49,7 @@ public class ProductService extends MasterService<ProductRecord> {
             ProductTypes.require(row.getProductType());
         }
         String metalName=quoteRules.metalName(row.getMetalTypeId());
+        scope.requireCatalog("metal",row.getMetalTypeId(),row.getFactoryId());
         String category=metalName+row.getProductType();
         if(row.getCategory()!=null&&!row.getCategory().equals(category))throw new ServiceException("金属、产品类型和原类别不一致");
         row.setMetalTypeName(metalName);row.setCategory(category);
@@ -68,7 +70,7 @@ public class ProductService extends MasterService<ProductRecord> {
         }else{
             row.setDimensions(ProductGeometry.normalize(row.getProductType(),row.getDimensions()));
             boolean sameDimensions=sameIdentity&&Objects.equals(old.getDimensions(),row.getDimensions());
-            var rule=quoteRules.volumeRule();
+            var rule=quoteRules.volumeRuleForMetal(row.getMetalTypeId());
             row.setVolume(sameDimensions&&old.getVolume()!=null?old.getVolume():ProductGeometry.volume(row.getProductType(),row.getDimensions(),ProductGeometry.parameter(rule,"piValue"),ProductGeometry.parameter(rule,"curvedBottomFactor")));
             row.setWeight(ProductGeometry.weight(row.getVolume(),quoteRules.rule(row.getMetalTypeId()).get("density")));
         }
@@ -100,6 +102,7 @@ public class ProductService extends MasterService<ProductRecord> {
         List<Long> ids = row.getProcesses().stream().map(ProductStep::getProcessId).toList();
         if (new HashSet<>(ids).size() != ids.size()) throw new ServiceException("同一工序不能重复选择");
         for (Long id : ids.stream().sorted().toList()) {
+            scope.requireCatalog("process",id,row.getFactoryId());
             if (jdbc.queryForList("SELECT process_id FROM metal_process WHERE process_id=? AND del_flag='0' FOR UPDATE", id).isEmpty())
                 throw new ServiceException("工序不存在或已删除");
         }
@@ -119,10 +122,15 @@ public class ProductService extends MasterService<ProductRecord> {
      */
     public static int version(ProductRecord row){return row.getCalculationVersion()==null?1:row.getCalculationVersion();}
 
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public Map<String,Object> preview(ProductCalculationRequest input,Long factory){
+        scope.requireCatalog("metal",input.metalTypeId(),scope.resolveFactory(factory));return preview(input);
+    }
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public Map<String,Object> preview(ProductCalculationRequest input){
         quoteRules.metalName(input.metalTypeId());
         var dimensions=ProductGeometry.normalize(input.productType(),input.dimensions());
-        var rule=quoteRules.volumeRule();
+        var rule=quoteRules.volumeRuleForMetal(input.metalTypeId());
         var volume=ProductGeometry.volume(input.productType(),dimensions,ProductGeometry.parameter(rule,"piValue"),ProductGeometry.parameter(rule,"curvedBottomFactor"));
         var weight=ProductGeometry.weight(volume,quoteRules.rule(input.metalTypeId()).get("density"));
         Map<String,Object> result=new LinkedHashMap<>();

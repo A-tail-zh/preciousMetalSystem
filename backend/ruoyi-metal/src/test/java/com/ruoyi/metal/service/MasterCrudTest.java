@@ -32,7 +32,7 @@ class MasterCrudTest {
     @AfterEach void logout() { security.close(); }
 
     void setup(Kind kind) {
-        scope = mock(FactoryScope.class);
+        scope = FactoryCatalogTestFixtures.scope();
         when(scope.isAdmin()).thenReturn(true);
         when(scope.currentFactory()).thenReturn(null);
         jdbc = mock(JdbcTemplate.class);
@@ -40,9 +40,9 @@ class MasterCrudTest {
         switch (kind) {
             case PRODUCT -> {
                 ProductMapper m = mock(ProductMapper.class); mapper = m;
-                QuoteRuleService quoteRules=mock(QuoteRuleService.class);QuoteRule rule=new QuoteRule();rule.setPiValue(new java.math.BigDecimal("3.141592653589793"));when(quoteRules.get()).thenReturn(rule);when(quoteRules.metalName(any())).thenReturn("铱");when(quoteRules.pi(any())).thenReturn(rule.getPiValue());when(quoteRules.volumeRule()).thenReturn(Map.of("piValue","3.14","curvedBottomFactor","1.03"));
+                QuoteRuleService quoteRules=mock(QuoteRuleService.class);QuoteRule rule=new QuoteRule();rule.setPiValue(new java.math.BigDecimal("3.141592653589793"));when(quoteRules.get()).thenReturn(rule);when(quoteRules.metalName(any())).thenReturn("铱");when(quoteRules.pi(any())).thenReturn(rule.getPiValue());when(quoteRules.volumeRuleForMetal(any())).thenReturn(Map.of("piValue","3.14","curvedBottomFactor","1.03"));
                 service = new ProductService(m, scope, jdbc,quoteRules);
-                ProductRecord p = new ProductRecord(); p.setName("Product"); p.setCode("P");
+                ProductRecord p = new ProductRecord();p.setFactoryId(7L); p.setName("Product"); p.setCode("P");
                 p.setCategory("铱环");p.setMetalTypeId(1L);p.setProductType("环");p.setCalculationVersion(2);
                 p.setDimensions(Map.of("outerDiameter", "12", "innerDiameter", "10", "thickness", "2")); form = p;
             }
@@ -55,13 +55,13 @@ class MasterCrudTest {
                 when(jdbc.queryForList(contains("FROM metal_type WHERE"), any(Object[].class))).thenReturn(List.of(Map.of("metal_type_id", 1L)));
                 MaterialMapper m = mock(MaterialMapper.class); mapper = m;
                 service = new MaterialService(m, scope, jdbc);
-                MaterialRecord r = new MaterialRecord(); r.setCode("M"); r.setMaterialType("铱粉"); form = r;
+                MaterialRecord r = new MaterialRecord();r.setFactoryId(7L); r.setCode("M"); r.setMaterialType("粉料");r.setMetalTypeId(1L); form = r;
             }
             case PROCESS -> {
                 when(jdbc.queryForObject(contains("metal_process_type"), eq(Integer.class), eq(1))).thenReturn(1);
                 ProcessMapper m = mock(ProcessMapper.class); mapper = m;
                 service = new ProcessService(m, scope, jdbc);
-                ProcessRecord p = new ProcessRecord(); p.setName("Process"); p.setProcessType(1); form = p;
+                ProcessRecord p = new ProcessRecord();p.setFactoryId(7L); p.setName("Process"); p.setProcessType(1); form = p;
             }
         }
     }

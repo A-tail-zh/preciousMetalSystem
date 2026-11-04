@@ -18,10 +18,11 @@ import com.ruoyi.common.utils.SecurityUtils;
 @Service
 public class QuoteRuleService {
     private final JdbcTemplate jdbc;
+    private final com.ruoyi.metal.security.FactoryScope scope;
 
-    public QuoteRuleService(JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
-    }
+    public QuoteRuleService(JdbcTemplate jdbc) { this(jdbc,new com.ruoyi.metal.security.FactoryScope(jdbc,null)); }
+    @org.springframework.beans.factory.annotation.Autowired
+    public QuoteRuleService(JdbcTemplate jdbc,com.ruoyi.metal.security.FactoryScope scope) { this.jdbc=jdbc;this.scope=scope; }
 
     /**
      * 读取当前报价规则。
@@ -44,28 +45,43 @@ public class QuoteRuleService {
         throw new ServiceException("请按金属类型保存密度及加工单价配置");
     }
 
-    public List<Map<String,Object>> metals() {
-        return jdbc.queryForList("SELECT CAST(metal_type_id AS CHAR) id,name FROM metal_type ORDER BY metal_type_id");
+    public List<Map<String,Object>> metals(){return metals(null);}
+    public List<Map<String,Object>> metals(Long requested){
+        Long factory=scope.resolveFactory(requested);
+        return jdbc.queryForList("SELECT CAST(metal_type_id AS CHAR) id,name,CAST(factory_id AS CHAR) factoryId FROM metal_type WHERE factory_id=? ORDER BY metal_type_id",factory);
     }
     public String metalName(Long id) {
+        scope.catalogFactory("metal",id);
         var rows=jdbc.queryForList("SELECT name FROM metal_type WHERE metal_type_id=?",id);
         if(rows.size()!=1) throw new ServiceException("请选择有效金属类型");
         return rows.get(0).get("name").toString();
     }
     @Transactional
-    public String addMetal(String name) {
+    public String addMetal(String name){return addMetal(name,null);}
+    @Transactional
+    public String addMetal(String name,Long requested) {
+        Long factory=scope.resolveFactory(requested);scope.lockFactories(List.of(factory));
         if(!SecurityUtils.isAdmin(SecurityUtils.getUserId()) && !SecurityUtils.hasPermi("metal:material:add") && !SecurityUtils.hasPermi("metal:material:edit") && !SecurityUtils.hasPermi("metal:product:add") && !SecurityUtils.hasPermi("metal:product:edit") && !SecurityUtils.hasPermi("metal:quote-rule:edit")) throw new ServiceException("没有新增金属类型权限",403);
         if(name==null || name.isBlank() || name.strip().length()>100) throw new ServiceException("金属类型名称须为1至100个字符");
         String clean=name.strip();
-        try { jdbc.update("INSERT INTO metal_type(name,create_by) VALUES(?,?)",clean,SecurityUtils.getUsername()); }
+        try { jdbc.update("INSERT INTO metal_type(factory_id,name,create_by) VALUES(?,?,?)",factory,clean,SecurityUtils.getUsername()); }
         catch(org.springframework.dao.DuplicateKeyException e){throw new ServiceException("金属类型已存在，请直接选择",409);}
-        return jdbc.queryForObject("SELECT CAST(metal_type_id AS CHAR) FROM metal_type WHERE name=?",String.class,clean);
+        return jdbc.queryForObject("SELECT CAST(metal_type_id AS CHAR) FROM metal_type WHERE factory_id=? AND name=?",String.class,factory,clean);
     }
-    public List<Map<String,Object>> rules(Long metalTypeId) {
-        return jdbc.queryForList("SELECT CAST(m.metal_type_id AS CHAR) metalTypeId,m.name metalTypeName,CASE WHEN r.del_flag='0' THEN CAST(r.density AS CHAR) END density,CAST(g.pi_value AS CHAR) piValue,g.version piVersion,CASE WHEN r.del_flag='0' THEN CAST(r.powder_price AS CHAR) END powderPrice,CASE WHEN r.del_flag='0' THEN CAST(r.non_powder_price AS CHAR) END nonPowderPrice,CASE WHEN r.del_flag='0' THEN CAST(r.shortage_price AS CHAR) END shortagePrice,CASE WHEN r.del_flag='0' THEN CAST(r.loss_price AS CHAR) END lossPrice,COALESCE(r.version,0) version,CASE WHEN r.del_flag='0' THEN 1 ELSE 0 END configured,r.update_time updateTime FROM metal_type m LEFT JOIN metal_type_quote_rule r ON r.metal_type_id=m.metal_type_id CROSS JOIN metal_volume_rule g"+(metalTypeId==null?"":" WHERE m.metal_type_id=?")+" ORDER BY m.metal_type_id",metalTypeId==null?new Object[]{}:new Object[]{metalTypeId});
+    private Long ruleFactory(Long metalTypeId,Long requested){
+        Long factory=metalTypeId==null?scope.resolveFactory(requested):scope.catalogFactory("metal",metalTypeId);
+        if(requested!=null&&!requested.equals(factory))throw new ServiceException("金属不属于当前工厂",403);
+        return factory;
     }
-    public List<Map<String,Object>> productRules(Long metalTypeId) {
-        return jdbc.queryForList("SELECT CAST(m.metal_type_id AS CHAR) metalTypeId,m.name metalTypeName,CASE WHEN r.del_flag='0' THEN CAST(r.density AS CHAR) END density,COALESCE(r.version,0) version FROM metal_type m LEFT JOIN metal_type_quote_rule r ON r.metal_type_id=m.metal_type_id"+(metalTypeId==null?"":" WHERE m.metal_type_id=?")+" ORDER BY m.metal_type_id",metalTypeId==null?new Object[]{}:new Object[]{metalTypeId});
+    public List<Map<String,Object>> rules(Long metalTypeId){return rules(metalTypeId,null);}
+    public List<Map<String,Object>> rules(Long metalTypeId,Long requested){
+        Long factory=ruleFactory(metalTypeId,requested);
+        return jdbc.queryForList("SELECT CAST(m.metal_type_id AS CHAR) metalTypeId,m.name metalTypeName,CAST(m.factory_id AS CHAR) factoryId,CASE WHEN r.del_flag='0' THEN CAST(r.density AS CHAR) END density,CAST(g.pi_value AS CHAR) piValue,g.version piVersion,CASE WHEN r.del_flag='0' THEN CAST(r.powder_price AS CHAR) END powderPrice,CASE WHEN r.del_flag='0' THEN CAST(r.non_powder_price AS CHAR) END nonPowderPrice,CASE WHEN r.del_flag='0' THEN CAST(r.shortage_price AS CHAR) END shortagePrice,CASE WHEN r.del_flag='0' THEN CAST(r.loss_price AS CHAR) END lossPrice,COALESCE(r.version,0) version,CASE WHEN r.del_flag='0' THEN 1 ELSE 0 END configured,r.update_time updateTime FROM metal_type m LEFT JOIN metal_type_quote_rule r ON r.metal_type_id=m.metal_type_id JOIN metal_factory_volume_rule g ON g.factory_id=m.factory_id WHERE m.factory_id=?"+(metalTypeId==null?"":" AND m.metal_type_id=?")+" ORDER BY m.metal_type_id",metalTypeId==null?new Object[]{factory}:new Object[]{factory,metalTypeId});
+    }
+    public List<Map<String,Object>> productRules(Long metalTypeId){return productRules(metalTypeId,null);}
+    public List<Map<String,Object>> productRules(Long metalTypeId,Long requested){
+        Long factory=ruleFactory(metalTypeId,requested);
+        return jdbc.queryForList("SELECT CAST(m.metal_type_id AS CHAR) metalTypeId,m.name metalTypeName,CAST(m.factory_id AS CHAR) factoryId,CASE WHEN r.del_flag='0' THEN CAST(r.density AS CHAR) END density,COALESCE(r.version,0) version FROM metal_type m LEFT JOIN metal_type_quote_rule r ON r.metal_type_id=m.metal_type_id WHERE m.factory_id=?"+(metalTypeId==null?"":" AND m.metal_type_id=?")+" ORDER BY m.metal_type_id",metalTypeId==null?new Object[]{factory}:new Object[]{factory,metalTypeId});
     }
     public Map<String,Object> productRule(Long id) {
         if(id==null||id<=0)throw new ServiceException("请选择有效金属类型");
@@ -78,20 +94,26 @@ public class QuoteRuleService {
         return rules(id).get(0);
     }
     public java.math.BigDecimal pi(Long id) {
-        return new java.math.BigDecimal(volumeRule().get("piValue").toString());
+        return new java.math.BigDecimal(volumeRuleForMetal(id).get("piValue").toString());
     }
-    public Map<String,Object> volumeRule() {
-        return jdbc.queryForMap("SELECT CAST(pi_value AS CHAR) piValue,CAST(curved_bottom_factor AS CHAR) curvedBottomFactor,version,update_time updateTime FROM metal_volume_rule WHERE rule_id=1");
+    public Map<String,Object> volumeRule(){return volumeRule(null);}
+    public Map<String,Object> volumeRuleForMetal(Long id){return volumeRule(scope.catalogFactory("metal",id));}
+    public Map<String,Object> volumeRule(Long requested){
+        Long factory=scope.resolveFactory(requested);
+        return jdbc.queryForMap("SELECT CAST(factory_id AS CHAR) factoryId,CAST(pi_value AS CHAR) piValue,CAST(curved_bottom_factor AS CHAR) curvedBottomFactor,version,update_time updateTime FROM metal_factory_volume_rule WHERE factory_id=?",factory);
     }
     @Transactional(rollbackFor=Exception.class)
-    public void updateVolumeRule(com.ruoyi.metal.catalog.VolumeRule value) {
+    public void updateVolumeRule(com.ruoyi.metal.catalog.VolumeRule value){updateVolumeRule(value,null);}
+    @Transactional(rollbackFor=Exception.class)
+    public void updateVolumeRule(com.ruoyi.metal.catalog.VolumeRule value,Long requested) {
         if(!SecurityUtils.isAdmin(SecurityUtils.getUserId())&&!SecurityUtils.hasPermi("metal:quote-rule:edit"))throw new ServiceException("没有报价规则修改权限",403);
-        var old=jdbc.queryForMap("SELECT version,curved_bottom_factor FROM metal_volume_rule WHERE rule_id=1 FOR UPDATE");
+        Long factory=scope.resolveFactory(requested);scope.lockFactories(List.of(factory));
+        var old=jdbc.queryForMap("SELECT version,curved_bottom_factor FROM metal_factory_volume_rule WHERE factory_id=? FOR UPDATE",factory);
         if(((Number)old.get("version")).intValue()!=value.version())throw new ServiceException("公共体积参数已被修改，请刷新后重试",409);
         var pi=BusinessDecimal.positive(value.piValue(),"π值");
         if(pi.precision()-pi.scale()>5)throw new ServiceException("π值四舍五入后超过5位整数范围");
         var factor=BusinessDecimal.positive(value.curvedBottomFactor()==null?(java.math.BigDecimal)old.get("curved_bottom_factor"):value.curvedBottomFactor(),"弧底系数");
-        jdbc.update("UPDATE metal_volume_rule SET pi_value=?,curved_bottom_factor=?,version=version+1,update_by=?,update_time=NOW() WHERE rule_id=1",pi,factor,SecurityUtils.getUsername());
+        jdbc.update("UPDATE metal_factory_volume_rule SET pi_value=?,curved_bottom_factor=?,version=version+1,update_by=?,update_time=NOW() WHERE factory_id=?",pi,factor,SecurityUtils.getUsername(),factory);
     }
     @Transactional(rollbackFor=Exception.class)
     public void update(com.ruoyi.metal.catalog.MetalQuoteRule value) {
@@ -121,6 +143,11 @@ public class QuoteRuleService {
      * 使用当前报价规则计算产品体积并返回结果。
      */
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+    public Map<String,Object> calculate(com.ruoyi.metal.catalog.CalculationRequest input,Long factory){
+        scope.requireCatalog("metal",input.metalTypeId(),scope.resolveFactory(factory));
+        return calculate(input);
+    }
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public Map<String, Object> calculate(com.ruoyi.metal.catalog.CalculationRequest input) {
         if(input.quantity()==null||input.quantity()<1||input.quantity()>1000000)throw new ServiceException("商品数量须为1～1000000的整数");
         if(input.processingType()==null&&(input.powderWeight()!=null||input.nonPowderWeight()!=null||input.lossWeight()!=null))throw new ServiceException("请选择加工类型");
@@ -129,7 +156,7 @@ public class QuoteRuleService {
         String shape=ProductTypes.require(input.productType());
         String name=metalName(input.metalTypeId());
         if(input.category()!=null&&!input.category().equals(name+shape))throw new ServiceException("金属、产品类型和原类别不一致");
-        var rule=rule(input.metalTypeId());var geometryRule=volumeRule();
+        var rule=rule(input.metalTypeId());var geometryRule=volumeRuleForMetal(input.metalTypeId());
         var dimensions=ProductGeometry.normalize(shape,input.dimensions());
         var volume=ProductGeometry.volume(shape,dimensions,ProductGeometry.parameter(geometryRule,"piValue"),ProductGeometry.parameter(geometryRule,"curvedBottomFactor"));
         if(volume==null||rule.get("density")==null)throw new ServiceException("请先配置金属密度及该类型所需的公共计算参数");
@@ -180,9 +207,12 @@ public class QuoteRuleService {
     /**
      * 获取报价所需的基础资料和规则上下文。
      */
-    public Map<String, Object> context() {
-        List<Map<String, Object>> products = jdbc.queryForList("SELECT CAST(product_id AS CHAR) id,product_name name,product_category category,CAST(metal_type_id AS CHAR) metalTypeId,product_type productType,calculation_version calculationVersion,specification,dimensions FROM metal_product WHERE del_flag='0' ORDER BY product_id");
+    public Map<String,Object> context(){return context(null);}
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+    public Map<String, Object> context(Long requested) {
+        Long factory=scope.resolveFactory(requested);
+        List<Map<String, Object>> products = jdbc.queryForList("SELECT CAST(product_id AS CHAR) id,product_name name,product_category category,CAST(metal_type_id AS CHAR) metalTypeId,product_type productType,calculation_version calculationVersion,specification,dimensions FROM metal_product WHERE del_flag='0' AND factory_id=? ORDER BY product_id",factory);
         products.forEach(p -> p.put("dimensions", JSON.parseObject(p.get("dimensions").toString())));
-        return Map.of("metalTypes",metals(),"rules",rules(null),"productTypes",ProductTypes.ALL,"products",products,"calculationEnabled",true,"pricingEnabled",true,"volumeRule",volumeRule(),"processingTypes",List.of("MATERIAL_CUSTOM","DIRECT_CUSTOM","SHORTAGE_CUSTOM").stream().map(type->Map.of("value",type,"label",processingName(type))).toList());
+        return Map.of("metalTypes",metals(factory),"rules",rules(null,factory),"productTypes",ProductTypes.ALL,"products",products,"calculationEnabled",true,"pricingEnabled",true,"volumeRule",volumeRule(factory),"processingTypes",List.of("MATERIAL_CUSTOM","DIRECT_CUSTOM","SHORTAGE_CUSTOM").stream().map(type->Map.of("value",type,"label",processingName(type))).toList());
     }
 }

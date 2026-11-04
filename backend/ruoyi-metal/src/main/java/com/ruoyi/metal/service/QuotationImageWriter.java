@@ -5,7 +5,7 @@ import org.apache.poi.ss.usermodel.*;
 public final class QuotationImageWriter {
  private QuotationImageWriter() {}
  public static void embed(Workbook book,Sheet sheet,Map<?,?> item,int row,ProductDimensionImage images){
-  if(!ProductDimensionImage.supports(item.get("category")))return;
+  if("2".equals(String.valueOf(item.get("calculationVersion")))||!ProductDimensionImage.supports(item.get("category")))return;
   byte[] png=images.render(String.valueOf(item.get("category")),item.get("dimensions") instanceof Map<?,?> dims?dims:null);
   sheet.getRow(row).setHeightInPoints(240);
   var anchor=book.getCreationHelper().createClientAnchor();

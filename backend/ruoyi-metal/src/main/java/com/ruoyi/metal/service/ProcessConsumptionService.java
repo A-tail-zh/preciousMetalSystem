@@ -41,13 +41,13 @@ public class ProcessConsumptionService {
     // Aggregate lines before joining batches and the UNIQUE(batch_id) report, so neither join multiplies weights.
     private static final String BATCH_SQL="""
         SELECT b.batch_id batchId,b.batch_no batchNo,b.item_id itemId,b.process_id processId,b.sequence_no sequenceNo,
-        b.measurement_mode measurementMode,b.status,b.version batchVersion,b.planned_quantity plannedQuantity,b.completed_quantity batchCompletedQuantity,
+        b.measurement_mode measurementMode,b.loss_rate_basis lossRateBasis,b.status,b.version batchVersion,b.planned_quantity plannedQuantity,b.completed_quantity batchCompletedQuantity,
         COALESCE(x.rawIssuedWeight,0) rawIssuedWeight,COALESCE(x.semiIssuedWeight,0) semiIssuedWeight,
         COALESCE(x.rawReturnedWeight,0) rawReturnedWeight,COALESCE(x.semiReturnedWeight,0) semiReturnedWeight,COALESCE(x.processRawReturnedWeight,0) processRawReturnedWeight,COALESCE(x.outputWeight,0) outputWeight,
         COALESCE(x.outputQuantity,0) outputQuantity,COALESCE(x.documentCount,0) documentCount,
         r.handover_difference handoverDifference,r.processor_output_weight processorOutputWeight,r.processor_returned_weight processorReturnedWeight,r.keeper_received_weight keeperReceivedWeight,r.report_id reportId,r.issued_weight reportIssuedWeight,r.returned_weight reportReturnedWeight,
         r.loss_weight reportLossWeight,r.numeric_policy_version reportPrecisionVersion,r.average_loss reportAverageLoss,r.completed_quantity reportCompletedQuantity,
-        r.status reportStatus,r.voided reportVoided,r.create_time settledTime,r.threshold_value reportThresholdValue,r.loss_unit lossUnit,r.theoretical_loss reportTheoreticalLoss,r.net_input_weight reportNetInputWeight,r.loss_rate_percent reportLossRatePercent
+        r.loss_rate_basis reportLossRateBasis,r.loss_rate_denominator_weight reportLossRateDenominatorWeight,r.status reportStatus,r.voided reportVoided,r.create_time settledTime,r.threshold_value reportThresholdValue,r.loss_unit lossUnit,r.theoretical_loss reportTheoreticalLoss,r.net_input_weight reportNetInputWeight,r.loss_rate_percent reportLossRatePercent
         FROM metal_process_batch b LEFT JOIN (
           SELECT o.batch_id,
           SUM(CASE WHEN o.type='PRODUCTION_OUT' AND l.category='RAW' THEN COALESCE(l.processor_net_weight,l.net_weight) ELSE 0 END) rawIssuedWeight,
@@ -129,10 +129,14 @@ public class ProcessConsumptionService {
         }
         if(!"VOID".equals(state)&&(difference.signum()<0||net.signum()<0)){state="REVIEW";warnings.add("历史重量异常，请人工核对");}
         if("SETTLED".equals(b.get("status"))&&count(b.get("documentCount"))==0){state="REVIEW";warnings.add("缺少有效单据依据");}
-        String rate="SETTLED".equals(b.get("status"))?ReportMetrics.percentage(b.get("reportLossWeight")==null?null:dec(b.get("reportLossWeight")),net,"SETTLED".equals(state)):null;
+        String basis=Objects.toString(b.get("lossRateBasis"),"NET_INPUT");
+        BigDecimal denominator=LossCalculator.denominator(basis,issued,returned);
+        b.put("lossRateBasis",basis);b.put("lossRateDenominatorWeight",weight(denominator));
+        String rate="SETTLED".equals(b.get("status"))?ReportMetrics.percentage(b.get("reportLossWeight")==null?null:dec(b.get("reportLossWeight")),denominator,"SETTLED".equals(state)):null;
         if("PERCENT".equals(b.get("lossUnit"))&&"SETTLED".equals(b.get("status"))&&(!Objects.equals(rate,b.get("reportLossRatePercent")==null?null:dec(b.get("reportLossRatePercent")).setScale(2,RoundingMode.HALF_UP).toPlainString())||b.get("reportNetInputWeight")==null||dec(b.get("reportNetInputWeight")).compareTo(net)!=0)){
             state="REVIEW";rate=null;warnings.add("百分比报工快照与当前重量依据不一致，请人工核对");
         }
+        if("SETTLED".equals(b.get("status"))&&(!basis.equals(Objects.toString(b.get("reportLossRateBasis"),"NET_INPUT"))||"OUTBOUND_TOTAL".equals(basis)&&(b.get("reportLossRateDenominatorWeight")==null||dec(b.get("reportLossRateDenominatorWeight")).compareTo(denominator)!=0))){state="REVIEW";rate=null;warnings.add("损耗率口径或分母快照不一致，请核对");}
         b.put("lossRatePercent",rate);b.put("lossRateWarning","SETTLED".equals(b.get("status"))&&rate==null?"实际损耗率依据不足或重量异常，请核对":null);
         b.put("state",state);b.put("warnings",warnings);if("WEIGHT".equals(b.get("measurementMode"))){b.put("averageLoss",null);b.put("settledCompletedQuantity",null);b.put("outputQuantity",null);if(!"PERCENT".equals(b.get("lossUnit")))b.put("thresholdWarning","按重量管理，件均预警不适用");}return b;
     }
@@ -152,10 +156,14 @@ public class ProcessConsumptionService {
         out.put("averageLoss",!missing&&completed>0?loss.divide(BigDecimal.valueOf(completed),6,RoundingMode.HALF_UP).toPlainString():null);
         out.put("state",active.stream().anyMatch(b->"REVIEW".equals(b.get("state")))?"REVIEW":active.isEmpty()?(batches.isEmpty()?"NOT_STARTED":"NO_ACTIVE"):open>0?(settled>0?"PARTIAL":"OPEN"):"SETTLED");
         var settledRows=active.stream().filter(b->"SETTLED".equals(b.get("status"))).toList();
+        var bases=settledRows.stream().map(b->Objects.toString(b.get("lossRateBasis"),"NET_INPUT")).distinct().toList();
+        BigDecimal denominator=settledRows.stream().map(b->dec(b.getOrDefault("lossRateDenominatorWeight",b.get("netInputWeight")))).reduce(BigDecimal.ZERO,BigDecimal::add);
         BigDecimal settledNet=settledRows.stream().map(b->dec(b.get("netInputWeight"))).reduce(BigDecimal.ZERO,BigDecimal::add);
         boolean reliable=!settledRows.isEmpty()&&settledRows.stream().allMatch(b->"SETTLED".equals(b.get("state"))&&b.get("settledLossWeight")!=null&&b.get("netInputWeight")!=null&&dec(b.get("netInputWeight")).signum()>0);
-        out.put("settledNetInputWeight",weight(settledNet));out.put("lossRatePercent",ReportMetrics.percentage(loss,settledNet,reliable));
+        out.put("settledNetInputWeight",weight(settledNet));out.put("lossRateBasis",bases.size()==1?bases.get(0):null);out.put("lossRateDenominatorWeight",bases.size()==1?weight(denominator):null);out.put("lossRatePercent",bases.size()==1?ReportMetrics.percentage(loss,denominator,reliable):null);
+        out.put("lossRateGroups",bases.stream().map(basis->{var rows=settledRows.stream().filter(b->basis.equals(Objects.toString(b.get("lossRateBasis"),"NET_INPUT"))).toList();BigDecimal total=rows.stream().map(b->dec(b.getOrDefault("lossRateDenominatorWeight",b.get("netInputWeight")))).reduce(BigDecimal.ZERO,BigDecimal::add),totalLoss=rows.stream().map(b->dec(b.get("settledLossWeight"))).reduce(BigDecimal.ZERO,BigDecimal::add);var group=new LinkedHashMap<String,Object>();group.put("lossRateBasis",basis);group.put("lossRateDenominatorWeight",weight(total));group.put("lossWeight",weight(totalLoss));group.put("lossRatePercent",ReportMetrics.percentage(totalLoss,total,rows.stream().allMatch(b->"SETTLED".equals(b.get("state")))));return group;}).toList());
         out.put("lossRateWarning",!settledRows.isEmpty()&&out.get("lossRatePercent")==null?"实际损耗率依据不足或重量异常，请核对":null);
+        if(bases.size()>1)out.put("lossRateWarning","损耗率口径不同，已分别展示，请按口径或批次查看");
         var units=settledRows.stream().map(b->Objects.toString(b.get("lossUnit"),"G_PER_PIECE")).distinct().toList();
         out.put("lossUnit",units.size()==1?units.get(0):null);
         out.putAll(ReportMetrics.thresholds(settledRows.stream().map(b->b.get("reportThresholdValue")).toList()));

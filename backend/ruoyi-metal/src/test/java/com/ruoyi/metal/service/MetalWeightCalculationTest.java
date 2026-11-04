@@ -3,8 +3,8 @@ import java.math.BigDecimal;import java.util.*;
 import org.junit.jupiter.api.Test;import com.ruoyi.metal.catalog.CalculationRequest;
 import static org.junit.jupiter.api.Assertions.*;
 class MetalWeightCalculationTest {
- private QuoteRuleService service(String metal,String density){return new QuoteRuleService(null){
-  @Override public Map<String,Object> volumeRule(){return Map.of("piValue","3.14","curvedBottomFactor","1.03","version",0);}
+ private QuoteRuleService service(String metal,String density){return new QuoteRuleService(null,FactoryCatalogTestFixtures.scope()){
+  @Override public Map<String,Object> volumeRuleForMetal(Long id){return Map.of("piValue","3.14","curvedBottomFactor","1.03","version",0);}
   @Override public String metalName(Long id){return metal;}
   @Override public Map<String,Object> rule(Long id){var m=new LinkedHashMap<String,Object>();m.put("piValue","3.14");m.put("density",density);return m;}
  };}

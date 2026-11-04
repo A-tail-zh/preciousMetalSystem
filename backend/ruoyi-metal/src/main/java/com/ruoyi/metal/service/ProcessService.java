@@ -11,7 +11,7 @@ import com.ruoyi.common.exception.ServiceException;
  * 工序业务服务，负责业务校验、数据处理和相关持久化操作。
  */
 @Service
-public class ProcessService extends MasterService<ProcessRecord> {
+public class ProcessService extends FactoryCatalogService<ProcessRecord> {
     private final JdbcTemplate jdbc;
 
     public ProcessService(ProcessMapper mapper, FactoryScope scope, JdbcTemplate jdbc) {
@@ -21,13 +21,15 @@ public class ProcessService extends MasterService<ProcessRecord> {
 
     @Override
     protected void prepare(ProcessRecord form, ProcessRecord previous) {
+        super.prepare(form,previous);
+        scope.requireCatalog("process-type",form.getProcessType()==null?null:form.getProcessType().longValue(),form.getFactoryId());
         ProcessTypeService.requireType(jdbc, form.getProcessType());
     }
 
     @Override
     public java.util.List<ProcessRecord> list(ListQuery query) {
         query.validate();
-        if (query.getProcessType() != null) ProcessTypeService.requireType(jdbc, query.getProcessType());
+        if (query.getProcessType() != null) scope.requireCatalog("process-type",query.getProcessType().longValue(),scope.resolveFactory(query.getFactoryId()));
         return super.list(query);
     }
 

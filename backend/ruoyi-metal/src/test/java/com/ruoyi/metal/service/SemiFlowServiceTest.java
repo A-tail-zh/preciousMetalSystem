@@ -2,7 +2,7 @@ package com.ruoyi.metal.service;
 import java.util.*;import java.math.BigDecimal;import org.junit.jupiter.api.Test;import org.springframework.jdbc.core.JdbcTemplate;import static org.junit.jupiter.api.Assertions.*;import static org.mockito.Mockito.*;import static org.mockito.ArgumentMatchers.*;
 class SemiFlowServiceTest {
  private static class Fixture {
-  JdbcTemplate jdbc=mock(JdbcTemplate.class);SemiFlowService service=new SemiFlowService(jdbc,null);
+  JdbcTemplate jdbc=mock(JdbcTemplate.class);SemiFlowService service=new SemiFlowService(jdbc,FactoryCatalogTestFixtures.scope());
   Map<String,Object> stock=new HashMap<>(Map.of("inventory_id",1L,"category","SEMI","reference_id",7L,"factory_id",1L,"origin_batch_id",100L,"ownership_status","NORMAL","organization","客户","specification","10cm"));
   Map<String,Object> source=new HashMap<>(Map.of("batch_id",100L,"item_id",10L,"sequence_no",1L,"status","SETTLED","work_order_id",1L,"factory_id",1L,"product_id",7L,"product_snapshot","{\"specification\":\"10cm\"}","customer","客户"));
   Map<String,Object> target=new HashMap<>(Map.of("item_id",10L,"sequence_no",2L,"work_order_id",1L));

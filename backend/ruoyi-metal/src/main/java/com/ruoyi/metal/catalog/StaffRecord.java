@@ -15,6 +15,8 @@ public class StaffRecord extends MasterRecord {
   @tools.jackson.databind.annotation.JsonSerialize(contentUsing=tools.jackson.databind.ser.std.ToStringSerializer.class) @NotNull private List<@NotNull @Positive Long> roleIds=new ArrayList<>();
   private List<String> roleNames=new ArrayList<>();
   private String factoryName;
+  @JsonProperty(access=JsonProperty.Access.READ_ONLY) private String creatorName;
+  public String getCreatorName(){return creatorName;} public void setCreatorName(String v){creatorName=v;}
  public String getPhonenumber(){return phonenumber;} public void setPhonenumber(String v){phonenumber=v==null?null:v.strip();}
  public String getNickName(){return nickName;} public void setNickName(String v){nickName=v==null?null:v.strip();}
  public Long getFactoryId(){return factoryId;} public void setFactoryId(Long v){factoryId=v;}
