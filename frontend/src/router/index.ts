@@ -59,16 +59,8 @@ export const constantRoutes = [
   },
   {
     path: '',
-    component: Layout,
     redirect: '/index',
-    children: [
-      {
-        path: '/index',
-        component: () => import('@/views/index.vue'),
-        name: 'Index',
-        meta: { title: '数据看板', icon: 'dashboard', affix: true }
-      }
-    ]
+    hidden: true
   },
   {
     path: '/lock',

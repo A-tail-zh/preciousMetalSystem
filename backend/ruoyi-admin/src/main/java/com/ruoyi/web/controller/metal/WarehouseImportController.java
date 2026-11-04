@@ -25,10 +25,10 @@ public class WarehouseImportController {
   */
  @com.ruoyi.common.annotation.Log(title="仓储模板下载",businessType=com.ruoyi.common.enums.BusinessType.EXPORT,isSaveResponseData=false)
  @GetMapping("/template") @PreAuthorize("@ss.hasPermi('metal:warehouse-order:import')")
- public void template(@RequestParam(required=false) String type,@RequestParam(defaultValue="false") boolean batchBound,@RequestParam(required=false) Long factoryId,HttpServletResponse response)throws Exception {
+ public void template(@RequestParam(required=false) String type,@RequestParam(defaultValue="false") boolean batchBound,@RequestParam(required=false) Long factoryId,@RequestParam(required=false) Long batchId,HttpServletResponse response)throws Exception {
   boolean raw=type!=null&&Set.of("RAW_IN","RAW_PROCESS_IN","RAW_RETURN","PROCESS_RAW_RETURN","EXCHANGE_OUT").contains(type);
   var customerReferences="RAW_IN".equals(type)?imports.customerReferences(factoryId):List.<Map<String,Object>>of();
-  var columns=raw?WarehouseTemplateLayout.raw(type):type==null?WarehouseTemplateLayout.production():WarehouseTemplateLayout.inbound(type,batchBound);
+  var columns=Set.of("RAW_PROCESS_IN","RAW_RETURN").contains(Objects.toString(type,""))&&batchId!=null?imports.templateColumns(type,factoryId,batchId):raw?WarehouseTemplateLayout.raw(type):type==null?WarehouseTemplateLayout.production():WarehouseTemplateLayout.inbound(type,batchBound);
   try(var book=new XSSFWorkbook()){
    var sheet=book.createSheet("物料清单");var row=sheet.createRow(0);var textStyle=book.createCellStyle();textStyle.setDataFormat(book.createDataFormat().getFormat("@"));
    for(int i=0;i<columns.size();i++){row.createCell(i).setCellValue(columns.get(i).label());sheet.setColumnWidth(i,4500);sheet.setDefaultColumnStyle(i,textStyle);}
@@ -54,6 +54,7 @@ public class WarehouseImportController {
    response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");response.setHeader("Content-Disposition","attachment; filename=warehouse-lines.xlsx");book.write(response.getOutputStream());
   }
  }
+ public void template(String type,boolean batchBound,Long factoryId,HttpServletResponse response)throws Exception {template(type,batchBound,factoryId,null,response);}
  @com.ruoyi.common.annotation.Log(title="仓储模板导入",businessType=com.ruoyi.common.enums.BusinessType.IMPORT)
  @PostMapping("/import") @PreAuthorize("@ss.hasPermi('metal:warehouse-order:import')")
  public AjaxResult parse(@RequestParam MultipartFile file,@RequestParam Long factoryId,@RequestParam Long warehouseId,@RequestParam String type,@RequestParam(required=false) Long workOrderId,@RequestParam(required=false) Long itemId,@RequestParam(required=false) Long processId,@RequestParam(required=false) Long batchId,@RequestParam(required=false) String existingLines,@RequestParam(required=false) String submissionDraft)throws Exception{
@@ -80,6 +81,7 @@ public class WarehouseImportController {
    if(drafts==null||drafts.size()>1000)throw new ServiceException("已有明细超过限制");
    existingCount=drafts.size();var combined=new ArrayList<Line>(drafts);combined.addAll(result);result=combined;
   }
+  boolean newBatch=false;
   if(submissionDraft!=null&&!submissionDraft.isBlank()){
    if(!"PRODUCTION_OUT".equals(type)||submissionDraft.length()>1048576)throw new ServiceException("多仓草稿仅支持生产出库，且不能超过1MB");
    com.ruoyi.metal.catalog.OutboundSubmissionRequests.Preview draft;
@@ -96,10 +98,11 @@ public class WarehouseImportController {
     else groups.add(new com.ruoyi.metal.catalog.OutboundSubmissionRequests.Group(group.warehouseId(),null,group.lines()));
    }
    if(!found)throw new ServiceException("导入仓库不在本次提交中");
-   try{outboundDrafts.requireValid(outboundDrafts.previewImport(new com.ruoyi.metal.catalog.OutboundSubmissionRequests.Preview(factoryId,workOrderId,itemId,processId,batchId,draft.batchVersion(),groups)));}
+   newBatch="NEW".equals(draft.batchAction());
+   try{outboundDrafts.requireValid(outboundDrafts.previewImport(new com.ruoyi.metal.catalog.OutboundSubmissionRequests.Preview(factoryId,workOrderId,itemId,processId,batchId,draft.batchVersion(),groups,draft.batchAction(),draft.plannedQuantity())));}
    catch(com.ruoyi.metal.service.OutboundFieldException e){var response=AjaxResult.error(e.getMessage());response.put("fieldErrors",e.fields());return response;}
   }
-  var preview=imports.preview(new com.ruoyi.metal.service.WarehouseImportService.Input(factoryId,warehouseId,type,workOrderId,itemId,processId,result,Map.of("name",file.getOriginalFilename()==null?"":file.getOriginalFilename(),"bytes",file.getSize(),"sha256",HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(file.getBytes()))),batchId));return AjaxResult.success(preview.subList(existingCount,preview.size()));
+  var input=new com.ruoyi.metal.service.WarehouseImportService.Input(factoryId,warehouseId,type,workOrderId,itemId,processId,result,Map.of("name",file.getOriginalFilename()==null?"":file.getOriginalFilename(),"bytes",file.getSize(),"sha256",HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(file.getBytes()))),batchId);var preview=newBatch?imports.previewNewBatch(input):imports.preview(input);return AjaxResult.success(preview.subList(existingCount,preview.size()));
  }
  private static String value(Row row,int index){if(row==null)return "";var cell=row.getCell(index);if(cell==null)return "";if(cell.getCellType()==CellType.FORMULA)throw new ServiceException("模板不支持公式单元格");return new DataFormatter().formatCellValue(cell).trim();}
  private static Long id(String value){return value.isEmpty()?null:Long.valueOf(value);}

@@ -214,6 +214,19 @@ public class SemiFlowService {
         return n == null ? 0 : n;
     }
 
+    public static long netIssued(JdbcTemplate jdbc, Map<String, ?> batch) {
+        if (!MeasurementPolicy.configurable(jdbc,batch)) return netIssued(jdbc,num(batch.get("batch_id")));
+        long quantity=0;
+        for(var line:measurementInputs(jdbc,batch))
+            if(!InventoryMeasurement.weight(line)) quantity+=("PRODUCTION_OUT".equals(line.get("type"))?1:-1)*num(line.get("quantity"));
+        return quantity;
+    }
+
+    static List<Map<String,Object>> measurementInputs(JdbcTemplate jdbc, Map<String, ?> batch) {
+        var lines=jdbc.queryForList("SELECT l.*,o.type FROM metal_warehouse_order o JOIN metal_warehouse_order_line l ON l.order_id=o.order_id WHERE o.batch_id=? AND o.status='POSTED' AND o.type IN ('PRODUCTION_OUT','RAW_RETURN','SEMI_RETURN') AND l.category IN ('RAW','SEMI')",batch.get("batch_id"));
+        return InventoryMeasurement.enrich(jdbc,lines);
+    }
+
     public long credit(long item, long sequence) {
         long n = policy.skipCredit(item, sequence);
         var uses = jdbc.queryForList(USES + " AND o.batch_id IN (SELECT batch_id FROM metal_process_batch WHERE item_id=? AND sequence_no>? AND status<>'VOID')", item, sequence);
@@ -303,13 +316,16 @@ public class SemiFlowService {
         var out = new ArrayList<Map<String, Object>>();
         String candidateSql="SELECT i.*,m.material_type,COALESCE(i.metal_type_id_snapshot,m.metal_type_id) metal_type_id,EXISTS(SELECT 1 FROM metal_process_batch b JOIN metal_warehouse_order o ON o.batch_id=b.batch_id WHERE b.batch_id=i.origin_batch_id AND b.work_order_id=? AND o.type='RAW_PROCESS_IN' AND o.status='POSTED') same_work_raw_output FROM metal_inventory i LEFT JOIN metal_material m ON i.category='RAW' AND m.material_id=i.reference_id WHERE i.factory_id=? AND i.warehouse_id=? AND i.del_flag='0' AND i.ownership_status='NORMAL' AND i.net_weight>0 AND i.category IN ('RAW','SEMI') AND ((i.category='RAW' AND EXISTS(SELECT 1 FROM metal_material c JOIN metal_type mt ON mt.metal_type_id=c.metal_type_id AND mt.factory_id=c.factory_id WHERE c.material_id=i.reference_id AND c.factory_id=i.factory_id AND c.del_flag='0')) OR (i.category='SEMI' AND EXISTS(SELECT 1 FROM metal_product c JOIN metal_type mt ON mt.metal_type_id=c.metal_type_id AND mt.factory_id=c.factory_id WHERE c.product_id=i.reference_id AND c.factory_id=i.factory_id AND c.del_flag='0')))";
         if(!ProcessingPolicy.v2(target))candidateSql+=" AND (i.category<>'RAW' OR m.del_flag='0' AND m.metal_type_id=1)";
-        for (var stock : jdbc.queryForList(candidateSql+" ORDER BY CASE i.category WHEN 'RAW' THEN 0 ELSE 1 END,i.inventory_id",work,factory,warehouse)) {
+        var candidateStocks=jdbc.queryForList(candidateSql+" ORDER BY CASE i.category WHEN 'RAW' THEN 0 ELSE 1 END,i.inventory_id",work,factory,warehouse);
+        InventoryMeasurement.enrich(jdbc,candidateStocks);
+        for (var stock : candidateStocks) {
             if ("RAW".equals(stock.get("category"))) {
                 try {
-                    ProcessingInputService.require(jdbc,stock,target);
+                    ProcessingInputService.requireResolved(jdbc,stock,target);
                     new ProcessRawReturnService(jdbc, scope).guardProduction(num(stock.get("inventory_id")), w);
                     MaterialOwnership.production(stock,w);
                     var candidate = stockCandidate(stock, null);
+                    if(dec(candidate.get("available_weight")).signum()<=0||!InventoryMeasurement.weight(candidate)&&num(candidate.get("available_quantity"))<=0)continue;
                     candidate.putAll(new ProcessRawReturnService(jdbc, scope).provenance(num(stock.get("inventory_id"))));
                     out.add(candidate);
                 } catch (ServiceException ignored) {
@@ -378,9 +394,11 @@ public class SemiFlowService {
     private Map<String, Object> stockCandidate(Map<String, Object> stock, Map<String, Object> release) {
         var pending=WarehouseReservations.stock(jdbc,num(stock.get("inventory_id")));
         var r = new LinkedHashMap<>(stock);r.put("reserved_weight",pending.get("weight"));r.put("reserved_quantity",pending.get("quantity"));
+        r.put("effective_measurement_mode",InventoryMeasurement.mode(stock));
         r.put("id", text(stock.get("inventory_id")));
         r.put("choice_key", text(stock.get("inventory_id")) + (release == null ? "" : ":" + release.get("release_id")));
         r.put("available_quantity", release == null ? Math.max(0,num(stock.get("quantity"))-num(pending.get("quantity"))) : Math.max(0,Math.min(num(stock.get("quantity"))-num(pending.get("quantity")), num(release.get("available_quantity")))));
+        if(InventoryMeasurement.weight(stock))r.put("available_quantity",0L);
         r.put("available_weight", release == null ? dec(stock.get("net_weight")).subtract(dec(pending.get("weight"))).max(BigDecimal.ZERO) : dec(stock.get("net_weight")).subtract(dec(pending.get("weight"))).min(dec(release.get("available_weight"))).max(BigDecimal.ZERO));
         if (release != null) {
             r.put("release_id", release.get("release_id"));
@@ -401,13 +419,16 @@ public class SemiFlowService {
         var w = work(workId);
         boolean raw=ProcessingPolicy.v2(w)&&"RAW_PROCESSING".equals(w.get("task_type"));
         var items = jdbc.queryForList("SELECT i.item_id,i.quantity planned_quantity,i.product_snapshot,i.material_snapshot,i.planned_input_weight,COALESCE((SELECT SUM(b.completed_quantity) FROM metal_process_batch b WHERE b.item_id=i.item_id AND b.status='SETTLED' AND b.sequence_no=(SELECT MAX(sequence_no) FROM metal_work_order_step WHERE item_id=i.item_id)),0) completed_quantity FROM metal_work_order_item i WHERE i.work_order_id=? ORDER BY i.sequence_no", workId);
+        var configurableItems=new HashSet<Long>();
         for (var i : items) {
+            if(MeasurementPolicy.configurable(jdbc,i))configurableItems.add(num(i.get("item_id")));
             if(raw){
                 i.put("planned_quantity",null);i.put("completed_quantity",null);i.put("cancelled_quantity",null);
                 i.put("committed_input_weight",RawPlanService.committedInput(jdbc,num(i.get("item_id"))));
             }else i.put("cancelled_quantity", SemiFlowRules.cancelled(num(i.get("planned_quantity")), num(i.get("completed_quantity"))));
         }
         var stocks = jdbc.queryForList("SELECT i.*,b.item_id,s.process_name,b.sequence_no origin_process_sequence FROM metal_inventory i JOIN metal_process_batch b ON b.batch_id=i.origin_batch_id JOIN metal_work_order_step s ON s.item_id=b.item_id AND s.process_id=b.process_id WHERE b.work_order_id=? AND b.status='SETTLED' AND i.category IN ('RAW','SEMI') AND i.del_flag='0' ORDER BY i.inventory_id", workId);
+        InventoryMeasurement.enrich(jdbc,stocks);
         for (var stock : stocks) {
             long held = 0;
             BigDecimal weight = BigDecimal.ZERO;
@@ -439,7 +460,7 @@ public class SemiFlowService {
             s.put("skipped_quantity", skipped);
             s.put("external_quantity", credit(num(s.get("item_id")), num(s.get("sequence_no"))) - skipped);
             s.put("covered_quantity", local + num(s.get("external_quantity")) + skipped);
-            if(raw)for(String field:List.of("local_quantity","skipped_quantity","external_quantity","covered_quantity"))s.put(field,null);
+            if(raw||configurableItems.contains(num(s.get("item_id")))&&SemiMeasurementRules.weight(s))for(String field:List.of("local_quantity","skipped_quantity","external_quantity","covered_quantity"))s.put(field,null);
             progress.add(s);
         }
         var uses = jdbc.queryForList("SELECT u.use_id,u.release_id,l.line_id,l.quantity,l.net_weight,o.order_no,o.work_order_id target_work_order_id,w.order_no target_work_order_no,o.status,u.route_snapshot FROM metal_semi_release_use u JOIN metal_semi_release r ON r.release_id=u.release_id JOIN metal_warehouse_order_line l ON l.line_id=u.line_id JOIN metal_warehouse_order o ON o.order_id=l.order_id JOIN metal_work_order w ON w.work_order_id=o.work_order_id WHERE r.work_order_id=? OR o.work_order_id=? ORDER BY u.use_id", workId, workId);

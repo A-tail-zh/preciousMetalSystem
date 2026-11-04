@@ -5,7 +5,7 @@ spring:
   datasource:
     druid:
       master:
-        url: ${MYSQL_URL:jdbc:mysql://localhost:3306/heavy_metal?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+        url: ${MYSQL_URL:jdbc:mysql://localhost:3308/heavy_metal?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
         username: ${MYSQL_USER:heavy_metal}
         password: ${MYSQL_PASSWORD}
       statViewServlet:

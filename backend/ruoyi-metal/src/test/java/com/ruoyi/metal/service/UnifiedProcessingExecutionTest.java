@@ -24,6 +24,8 @@ class UnifiedProcessingExecutionTest {
   Inputs(){
    when(jdbc.queryForList(anyString(),any(Object[].class))).thenAnswer(call->{
     String sql=call.getArgument(0);
+    if(sql.startsWith("SELECT inventory_id,origin_batch_id FROM metal_inventory")){var row=new HashMap<String,Object>();row.put("inventory_id",stock.get("inventory_id"));row.put("origin_batch_id",stock.get("origin_batch_id"));return List.of(row);}
+    if(sql.startsWith("SELECT b.batch_id,b.measurement_mode,CAST(i.product_snapshot"))return List.of(Map.of("batch_id",stock.get("origin_batch_id"),"measurement_mode","WEIGHT","product_snapshot","{\"measurementPolicyVersion\":2}"));
     if(sql.startsWith("SELECT m.material_type"))return List.of(Map.of("material_type","块料","metal_type_id",1L));
     if(sql.contains("FROM metal_work_order_step"))return ((Number)call.getArgument(1)).longValue()==((Number)source.get("item_id")).longValue()?sourceRoute:targetRoute;
     throw new AssertionError(sql);

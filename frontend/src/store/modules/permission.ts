@@ -1,3 +1,5 @@
+import useUserStore from '@/store/modules/user'
+import {businessNavigation} from '@/utils/business-navigation'
 import {getToken} from '@/utils/auth'
 import auth from '@/plugins/auth'
 import router, { constantRoutes, dynamicRoutes } from '@/router'
@@ -19,6 +21,13 @@ const usePermissionStore = defineStore(
       topbarRouters: [] as any[],
       sidebarRouters: [] as any[]
     }),
+    getters: {
+      managementPath: state => {
+        const paths=menuPaths([...state.addRoutes,...filterDynamicRoutes(dynamicRoutes)])
+        return businessNavigation(useUserStore()).flatMap(group=>[...group.items,...(group.entry?[group.entry]:[])])
+          .find(item=>paths.includes(item.to)&&router.resolve(item.to).matched.some(route=>route.path===item.to))?.to || '/401'
+      }
+    },
     actions: {
       setRoutes(routes: any[]) {
         this.addRoutes = routes
@@ -110,6 +119,14 @@ export function filterDynamicRoutes(routes: any[]): any[] {
     }
   })
   return res
+}
+
+function menuPaths(routes: any[], parent = ''): string[] {
+  return routes.flatMap(route => {
+    if (/^https?:\/\//.test(route.path)) return []
+    const path = route.path.startsWith('/') ? route.path : `${parent}/${route.path}`.replace(/\/{2,}/g, '/')
+    return [path, ...menuPaths(route.children || [], path)]
+  })
 }
 
 export const loadView = (view: string): any => {

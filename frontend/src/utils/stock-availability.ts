@@ -1,6 +1,7 @@
 import {roundDecimal} from './business-decimal'
+import {managesPieces} from './inventory-measurement'
 type StockLine={inventoryId?:string;netWeight?:string|number;quantity?:string|number;category?:string;measurementMode?:string;referenceQuantity?:string|number|null}
-type StockBalance={netWeight:string|number;quantity:string|number;category:string;measurementMode?:string;reservedWeight?:string|number;reservedQuantity?:string|number}
+type StockBalance={netWeight:string|number;quantity:string|number;category:string;measurementMode?:string;effectiveMeasurementMode?:string;reservedWeight?:string|number;reservedQuantity?:string|number}
 function micro(value:string|number){const [integer,fraction='']=String(value).split('.');return BigInt(integer)*1000000n+BigInt(fraction.padEnd(6,'0'))}
 function weight(value:bigint){const nonnegative=value<0n?0n:value;return roundDecimal((nonnegative/1000000n)+'.'+(nonnegative%1000000n).toString().padStart(6,'0'))}
 /** Subtract submitted reservations before sharing the remaining stock among this draft's rows. */
@@ -9,7 +10,7 @@ export function stockAvailabilityError(stock:StockBalance,line:StockLine,lines:S
  const reservedWeight=others.reduce((sum,row)=>sum+micro(row.netWeight??'0'),0n),requestedWeight=micro(line.netWeight??'0'),availableWeight=micro(stock.netWeight)-micro(stock.reservedWeight??0)
  const errors:string[]=[]
  if(reservedWeight+requestedWeight>availableWeight)errors.push(`净重最多可用 ${weight(availableWeight-reservedWeight)}g，本次填写 ${weight(requestedWeight)}g（清单已占用 ${weight(reservedWeight)}g）`)
- if(stock.category!=='RAW'&&stock.measurementMode!=='WEIGHT'){
+ if(managesPieces(stock)){
   const reserved=others.reduce((sum,row)=>sum+BigInt(row.quantity??0),0n),requested=BigInt(line.quantity??0),available=BigInt(stock.quantity)-BigInt(stock.reservedQuantity??0)
   if(reserved+requested>available)errors.push(`数量最多可用 ${available>reserved?available-reserved:0n}件，本次填写 ${requested}件（清单已占用 ${reserved}件）`)
  }

@@ -62,7 +62,7 @@ public class WorkOrderController extends BaseController {
     public AjaxResult businessError(com.ruoyi.common.exception.ServiceException error){
         String message=error.getMessage();
         var result=AjaxResult.error(error.getCode()==null?500:error.getCode(),message);
-        String field=message.contains("客户")?"customerId":message.contains("加工类型")?"processingType":null;
+        String field=message.contains("更正原因")?"incomingWeightChangeReason":message.contains("来料净重")?"customerIncomingWeight":message.contains("客户")?"customerId":message.contains("加工类型")?"processingType":null;
         return field==null?result:result.put("fieldErrors",java.util.List.of(java.util.Map.of("field",field,"code","Invalid","message",message)));
     }
 
@@ -105,6 +105,13 @@ public class WorkOrderController extends BaseController {
     @Log(title="原料投入计划变更",businessType=BusinessType.UPDATE)
     public AjaxResult rawPlan(@PathVariable @Positive Long id,@Valid @RequestBody RawPlanService.Change input){
         rawPlans.change(id,input);return success();
+    }
+
+    @PutMapping("/{id}/customer-incoming-weight")
+    @PreAuthorize("@ss.hasPermi('metal:work-order:edit')")
+    @Log(title="工单客户来料重量更正",businessType=BusinessType.UPDATE)
+    public AjaxResult incomingWeight(@PathVariable @Positive Long id,@Valid @RequestBody WorkOrderRequest.IncomingWeightChange input){
+        service.changeIncomingWeight(id,input);return success();
     }
 
     @GetMapping("/options/materials")

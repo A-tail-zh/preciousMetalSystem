@@ -20,8 +20,13 @@ public record WorkOrderRequest(
         @NotNull @Size(min = 1, max = 100) List<@NotNull @Valid Item> items,
         @Positive Long customerId, @Min(0) Integer customerVersion,
         @Pattern(regexp="MATERIAL|DIRECT|SHORTAGE",message="请选择有效加工类型") String processingType,
-        @Pattern(regexp="PRODUCTION|RAW_PROCESSING",message="请选择有效任务类型") String taskType
+        @Pattern(regexp="PRODUCTION|RAW_PROCESSING",message="请选择有效任务类型") String taskType,
+        @DecimalMin(value="0",message="客户来料净重不能为负数") @Digits(integer=14,fraction=6,message="客户来料净重最多14位整数、6位小数") BigDecimal customerIncomingWeight,
+        @Size(max=300,message="来料更正原因最多300字") String incomingWeightChangeReason
 ) {
+    public WorkOrderRequest(Long id,Integer version,String requestId,String customer,Long factoryId,Long productionLineId,Long ownerId,LocalDate orderDate,List<Item> items,Long customerId,Integer customerVersion,String processingType,String taskType){
+        this(id,version,requestId,customer,factoryId,productionLineId,ownerId,orderDate,items,customerId,customerVersion,processingType,taskType,null,null);
+    }
     public WorkOrderRequest(Long id,Integer version,String requestId,String customer,Long factoryId,Long productionLineId,Long ownerId,LocalDate orderDate,List<Item> items){
         this(id,version,requestId,customer,factoryId,productionLineId,ownerId,orderDate,items,null,null,null,null);
     }
@@ -29,10 +34,16 @@ public record WorkOrderRequest(
         this(id,version,requestId,customer,factoryId,productionLineId,ownerId,orderDate,items,customerId,customerVersion,processingType,null);
     }
     public String fingerprintInput(){
-        String value=toString();
-        if(taskType==null)value=value.substring(0,value.lastIndexOf(", taskType="))+"]";
-        return customerId==null&&customerVersion==null&&processingType==null&&taskType==null?value.substring(0,value.lastIndexOf(", customerId="))+"]":value;
+        String value="WorkOrderRequest[id="+id+", version="+version+", requestId="+requestId+", customer="+customer+", factoryId="+factoryId+", productionLineId="+productionLineId+", ownerId="+ownerId+", orderDate="+orderDate+", items="+items;
+        if(customerId!=null||customerVersion!=null||processingType!=null||taskType!=null)value+=", customerId="+customerId+", customerVersion="+customerVersion+", processingType="+processingType;
+        if(taskType!=null)value+=", taskType="+taskType;
+        if(customerIncomingWeight!=null||incomingWeightChangeReason!=null)value+=", customerIncomingWeight="+customerIncomingWeight+", incomingWeightChangeReason="+incomingWeightChangeReason;
+        return value+"]";
     }
+
+    public record IncomingWeightChange(@NotNull @Min(0) Integer version,
+            @DecimalMin(value="0",message="客户来料净重不能为负数") @Digits(integer=14,fraction=6,message="客户来料净重最多14位整数、6位小数") BigDecimal customerIncomingWeight,
+            @NotBlank(message="请填写来料更正原因") @Size(max=300,message="来料更正原因最多300字") String reason) {}
     public record Item(@Positive Long id, @Positive Long productId,
                        @Min(0) @Max(1000000) Integer quantity,
                        @NotNull @Size(min = 1, max = 100) List<@NotNull @Valid Plan> plans,

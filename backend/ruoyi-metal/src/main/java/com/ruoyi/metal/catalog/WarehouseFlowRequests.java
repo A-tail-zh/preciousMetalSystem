@@ -3,6 +3,9 @@ package com.ruoyi.metal.catalog;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.Collections;
+import java.util.TreeMap;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import com.fasterxml.jackson.annotation.JsonFormat;
@@ -33,5 +36,12 @@ public final class WarehouseFlowRequests {
                            @NotBlank String mode,@NotNull @Positive Long keeperId,
                            @Positive Long offsetWorkOrderId,
                            @NotNull @DecimalMin("0") @Digits(integer=14,fraction=6) BigDecimal weight,
-                           @NotBlank @Size(max=500) String reason) {}
+                           @NotBlank @Size(max=500) String reason,
+                           @Size(max=1000) Map<@NotNull @Positive Long,@NotNull @Positive @Max(1000000) Long> pieceQuantities) {
+        public Closeout { if(pieceQuantities!=null)pieceQuantities=Collections.unmodifiableMap(new TreeMap<>(pieceQuantities)); }
+        public Closeout(String requestId,Integer version,String mode,Long keeperId,Long offsetWorkOrderId,
+                        BigDecimal weight,String reason) {
+            this(requestId,version,mode,keeperId,offsetWorkOrderId,weight,reason,null);
+        }
+    }
 }

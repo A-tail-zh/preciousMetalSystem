@@ -4,7 +4,7 @@ try{
  f=await warehouseFixture();fs.writeFileSync(root+'/fixture.json',JSON.stringify({prefix:f.prefix,factoryA:f.factoryA,factoryB:f.factoryB,made:f.made}));
  const create=async(path,b,group)=>{const id=String(ok(await api(path,f.admin,'POST',b)).id);f.made[group].push(id);return id};
  const c=await create('/metal/process',{name:f.prefix+'精加工',processType:3},'processes'),d=await create('/metal/process',{name:f.prefix+'成品检验',processType:3},'processes'),steps=[f.processA,f.processB,c,d];
- const product=await create('/metal/product',{code:'EXT_'+f.suffix,name:f.prefix+'四工序产品',category:'铱杆实心',dimensions:{diameter:'10',length:'20'},weight:'1',processes:steps.map(processId=>({processId,loss:'0.1'}))},'products');
+ const product=await create('/metal/product',{code:'EXT_'+f.suffix,name:f.prefix+'四工序产品',metalTypeId:'1',productType:'杆',dimensions:{innerDiameter:'0',outerDiameter:'10',length:'20'},weight:'1',processes:steps.map(processId=>({processId,loss:'0.1'}))},'products');
  const line=await detail('/metal/production-line',f.lineA,f.admin);ok(await api('/metal/production-line',f.admin,'PUT',{...line,productIds:[f.productA,f.productB,f.noProcess,product]}));
  const wb=f.body();wb.items=[{productId:product,quantity:10,plans:steps.map((processId,n)=>({processId,startTime:`2026-10-22 ${String(8+n).padStart(2,'0')}:00:00`,endTime:`2026-10-22 ${String(9+n).padStart(2,'0')}:00:00`}))}];const work=await f.createOrder(wb),wd=await detail('/metal/work-order',work,f.admin),item=wd.items[0].id;
  const batch=async(processId,quantity)=>String(ok(await api('/metal/process-batch',f.admin,'POST',{requestId:randomUUID(),workOrderId:work,itemId:item,processId,plannedQuantity:quantity})).id);

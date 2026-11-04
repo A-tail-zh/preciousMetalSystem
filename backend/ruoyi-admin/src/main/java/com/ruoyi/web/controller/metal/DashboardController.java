@@ -22,8 +22,8 @@ public class DashboardController extends BaseController {
  /**
   * 获取当前用户可访问的首页概览数据。
   */
- @GetMapping("/dashboard") @PreAuthorize("isAuthenticated()") public AjaxResult dashboard(@RequestParam(required=false) Long factoryId){return success(service.dashboard(factoryId));}
- @GetMapping("/dashboard/factories") @PreAuthorize("isAuthenticated()") public AjaxResult dashboardFactories(){return success(service.dashboardFactories());}
+ @GetMapping("/dashboard") @PreAuthorize("@ss.hasPermi('metal:dashboard:list')") public AjaxResult dashboard(@RequestParam(required=false) Long factoryId){return success(service.dashboard(factoryId));}
+ @GetMapping("/dashboard/factories") @PreAuthorize("@ss.hasPermi('metal:dashboard:list')") public AjaxResult dashboardFactories(){return success(service.dashboardFactories());}
  /**
   * 获取当前用户可访问的工厂选项。
   */
@@ -64,13 +64,14 @@ public class DashboardController extends BaseController {
    int factoryTextWidth=factoryHeader.codePoints().map(c->c>255?2:1).sum();
    header.setHeightInPoints(Math.max(34,((factoryTextWidth+79)/80)*18+12));
    boolean hasImages=((List<?>)quote.get("items")).stream().anyMatch(o->o instanceof Map<?,?> item && com.ruoyi.metal.service.ProductDimensionImage.supports(item.get("category")));
-   write(sheet.createRow(4),heading,"序号","商品类型","数量","规格尺寸（cm）","产品体积（cm³）","单件报价（元）","金额（元）","基础单价（元）","π值");
+   write(sheet.createRow(4),heading,"序号","商品类型","数量","规格尺寸（cm）","","单件报价（元）","金额（元）","","");
    var labels=Map.of("innerDiameter","内径","outerDiameter","外径","diameter","直径","innerHeight","内高","height","高度","length","长度","wallThickness","壁厚","bottomThickness","底厚","rHeight","R高度");
    if(!(quote.get("items") instanceof List<?> items))throw new ServiceException("报价明细格式异常");int n=5;
-   for(Object obj:items){if(!(obj instanceof Map<?,?> item))throw new ServiceException("报价明细格式异常");StringJoiner specs=new StringJoiner("；");if(item.get("dimensions") instanceof Map<?,?> dims)for(var entry:dims.entrySet())specs.add(labels.getOrDefault(String.valueOf(entry.getKey()),String.valueOf(entry.getKey()))+"："+entry.getValue());Map<?,?> rule=item.get("rule") instanceof Map<?,?> map?map:Map.of();write(sheet.createRow(n),style,n-4,item.get("category"),item.get("quantity"),specs.toString(),decimal(item.get("volume")),decimal(item.get("unitPrice")),decimal(item.get("totalPrice")),decimal(rule.get("basePrice")),decimal(rule.get("piValue")));
+   for(Object obj:items){if(!(obj instanceof Map<?,?> item))throw new ServiceException("报价明细格式异常");StringJoiner specs=new StringJoiner("；");if(item.get("dimensions") instanceof Map<?,?> dims)for(var entry:dims.entrySet())specs.add(labels.getOrDefault(String.valueOf(entry.getKey()),String.valueOf(entry.getKey()))+"："+entry.getValue());write(sheet.createRow(n),style,n-4,item.get("category"),item.get("quantity"),specs.toString(),"",decimal(item.get("unitPrice")),decimal(item.get("totalPrice")),"","");
     com.ruoyi.metal.service.QuotationImageWriter.embed(book,sheet,item,n,images);
     n++;}
    write(sheet.createRow(n+1),heading,"总报价（元）",decimal(quote.get("totalPrice")));sheet.createFreezePane(0,5);for(int i=0;i<9;i++)sheet.setColumnWidth(i,(i==3?48:i==0?8:22)*256);
+   for(int column:new int[]{4,7,8})sheet.setColumnHidden(column,true);
    if(hasImages){var imageHeading=sheet.getRow(4).createCell(9);imageHeading.setCellValue("产品图片");imageHeading.setCellStyle(heading);sheet.setColumnWidth(9,68*256);}
    response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");response.setHeader("Content-Disposition","attachment; filename="+quote.get("quoteNo")+".xlsx");book.write(response.getOutputStream());
   }

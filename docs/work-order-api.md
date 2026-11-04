@@ -8,6 +8,7 @@
 | GET | /{id} | 快照、明细、计划、审核历史 |
 | POST | 根路径 | 创建，UUID请求幂等 |
 | PUT | 根路径 | 编辑待审核或驳回工单 |
+| PUT | /{id}/customer-incoming-weight | 单独更正客户来料登记，含已领料和已完工工单 |
 | DELETE | /{ids} | 最多100张，原子逻辑删除 |
 | POST | /{id}/approve | 通过并等待领料 |
 | POST | /{id}/reject | 驳回，reason必填 |
@@ -19,6 +20,8 @@
 | GET | /options/products/{id}/processes?lineId=… | 产品工艺 |
 
 创建和编辑JSON字段：requestId（新建UUID）、id（编辑）、version、customer、factoryId、productionLineId、ownerId、orderDate、items。每项包含id（原明细）、productId、quantity、plans；每道计划包含processId、startTime、endTime。完整样例和字段约束见详细设计。审核操作提交version，驳回另提交reason。
+
+客户来料登记（2026-11-04）：新增、编辑可传 `customerIncomingWeight`，列表和详情以十进制字符串返回；空值表示未登记，0表示本次无来料。允许非负数、最多14位整数及6位输入小数，按现有规则四舍五入保存两位小数；工厂自有的独立原料任务不能登记。普通编辑改变该值时须传 `incomingWeightChangeReason`（非空、最多300字）。单独更正接口接收 `{version, customerIncomingWeight, reason}`，重量可为null；要求 `metal:work-order:edit` 和本厂访问权限，版本冲突须刷新核对。两种更正均在操作记录中保存前后重量、原因及操作人。此字段不参与领料、库存或额度计算。
 
 状态PENDING、REJECTED、APPROVED、IN_PROGRESS；本期不提供进入IN_PROGRESS接口。普通编辑不能设置状态、编号、审计、快照或实际时间。编号WOyyyyMMddNNNNNN在成功创建时分配。审核通过后禁止修改删除；版本冲突保留前端输入。
 

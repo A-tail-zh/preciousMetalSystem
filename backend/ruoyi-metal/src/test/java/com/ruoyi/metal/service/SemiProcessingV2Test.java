@@ -147,6 +147,8 @@ class SemiProcessingV2Test {
             if(sql.startsWith("SELECT b.*"))return List.of(Map.of("batch_id",100L,"work_order_id",2L,"item_id",20L,"process_id",10L,"sequence_no",1L,"status","SETTLED"));
             if(sql.startsWith("SELECT order_no"))return List.of(Map.of("order_no","WORK-2"));
             if(sql.startsWith("SELECT process_name"))return List.of(Map.of("process_name","前处理"));
+            if(sql.startsWith("SELECT inventory_id,origin_batch_id FROM metal_inventory"))return List.of();
+
             throw new AssertionError(sql);
         });
         when(jdbc.queryForMap(anyString(),any(Object[].class))).thenAnswer(call->call.<String>getArgument(0).startsWith("SELECT item_id")?Map.of("item_id",20L,"sequence_no",1L,"status","SETTLED"):new HashMap<String,Object>());

@@ -12,10 +12,12 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestBodyAdviceAd
 /** Read-only lexical validation: original request bytes reach the existing converter unchanged. */
 @ControllerAdvice(basePackages="com.ruoyi.web.controller")
 public class InputPayloadAdvice extends RequestBodyAdviceAdapter {
+ private static final int MAX_JSON_BYTES=10*1024*1024;
  public static class InvalidFields extends RuntimeException {final List<Map<String,String>> fields;InvalidFields(List<Map<String,String>> fields){super("输入内容不合法");this.fields=fields;}}
  @Override public boolean supports(MethodParameter parameter,Type target,Class<? extends HttpMessageConverter<?>> converter){return converter.getName().contains("Jackson")||converter.getName().contains("FastJson");}
  @Override public HttpInputMessage beforeBodyRead(HttpInputMessage input,MethodParameter parameter,Type target,Class<? extends HttpMessageConverter<?>> converter)throws IOException {
-  byte[] bytes=input.getBody().readAllBytes();
+  byte[] bytes=input.getBody().readNBytes(MAX_JSON_BYTES+1);
+  if(bytes.length>MAX_JSON_BYTES)throw new InvalidFields(List.of(InputValidationErrors.field("","PayloadSize","请求内容不能超过10MB，请减少本次明细数量")));
   if(bytes.length>0){try{var fields=InputPayloadValidation.check(InputPayloadValidation.parse(bytes),target);if(!fields.isEmpty())throw new InvalidFields(fields);}catch(com.fasterxml.jackson.core.JsonProcessingException e){throw new InvalidFields(List.of(InputValidationErrors.field("","JsonFormat","请求内容格式不正确，请检查输入")));}}
   return new HttpInputMessage(){public HttpHeaders getHeaders(){return input.getHeaders();}public InputStream getBody(){return new ByteArrayInputStream(bytes);}};
  }

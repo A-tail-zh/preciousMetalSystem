@@ -1,11 +1,11 @@
 <template>
  <section class="master-page" :class="{'material-page':kind==='material','line-page':kind==='line'}">
   <div class="master-toolbar">
-<BusinessFilters :kind="kind" :process-type-options="typeOptions" :allow-export="kind==='staff'&&can('system:user:export')" :exporting="exporting" @factory="listFactory=$event" @apply="applyFilters" @export="exportRows"><template #actions>
+<BusinessFilters ref="filtersRef" :kind="kind" :process-type-options="typeOptions" :allow-export="kind==='staff'&&can('system:user:export')" :exporting="exporting" @factory="listFactory=$event" @apply="applyFilters" @export="exportRows"><template #actions>
 <el-button v-if="actionPermission.hasAny([`${config.permission}:add`])"  class="add-button list-action list-action--create" @click="openAdd">添加</el-button>
    <el-button v-if="actionPermission.hasAny([`${config.permission}:edit`])"  class="edit-button list-action list-action--edit" :disabled="selected.length!==1" @click="openRecord(selected[0])">编辑</el-button>
    <el-button v-if="actionPermission.hasAny([`${config.permission}:remove`])"  class="delete-button list-action list-action--delete" :disabled="!selected.length||deleting" @click="remove(selected)">删除</el-button>
-</template><template v-if="kind==='process'" #trailing-actions><ProcessTypeControl :factory-id="listFactory" @loaded="typeOptions=$event"/></template></BusinessFilters>
+</template><template v-if="kind==='process'" #trailing-actions><ProcessTypeControl :factory-id="listFactory" @loaded="typeOptions=$event" @removed="processTypeRemoved"/></template></BusinessFilters>
     </div>
   <div v-if="editLoading" role="status">正在加载编辑资料… <el-button link @click="cancelEdit">取消加载</el-button></div>
   <div v-if="editError" role="alert">编辑资料加载失败 <el-button link @click="retryEdit()">重试</el-button></div>
@@ -35,7 +35,6 @@
   <div v-if="loadFailed||refreshFailed" class="load-error">列表更新失败，当前显示可能过期 <el-button link type="primary" @click="load">重试</el-button></div>
   <div class="master-pagination"><el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :total="total" :page-sizes="[16,32,64]" layout="total, sizes, prev, pager, next, jumper" @size-change="sizeChanged" @current-change="load"/></div>
   <el-dialog :class="{'base-info-form-dialog':['product','line','material','process'].includes(kind)}" v-model="dialogOpen" :title="`${readonly?'查看':form.id?'编辑':'添加'}${config.title.replace('管理','')}`" :width="['product','line'].includes(kind)?'min(900px,94vw)':'700px'" :top="kind==='line'?'5vh':undefined" :close-on-click-modal="false" :close-on-press-escape="!saving&&!uncertain" :show-close="!saving&&!uncertain" >
-   <el-alert v-if="['product','material','process'].includes(kind)" title="仅使用本厂目录；首次切换后请先维护本厂金属、工序类型和工序。" type="info" :closable="false"/>
    <el-form ref="formRef" :model="form" :rules="rules" scroll-to-error label-width="160px" :disabled="readonly||saving||rolesLoading||uncertain||needsReload">
     <template v-if="['line','product','material'].includes(kind)">
      <el-form-item :label="kind==='line'?'产线编号':kind==='product'?'产品编号':'物料编码'" prop="code"><el-input v-model="form.code" maxlength="64"/></el-form-item>
@@ -49,11 +48,11 @@
      <el-form-item label="工序描述"><el-input v-model="form.description" type="textarea" :rows="4" maxlength="2000"/></el-form-item>
     </template>
     <el-form-item v-if="kind==='material'" label="规格型号"><el-input v-model="form.specification" maxlength="200"/></el-form-item>
-    <el-form-item v-if="kind==='material'" label="金属类型" prop="metalTypeId" :rules="[requiredRule('金属类型',true,true)]"><MetalTypeSelect v-if="dialogOpen" :key="editEpoch" v-model="form.metalTypeId" :factory-id="form.factoryId" :disabled="readonly||saving||form.classificationLocked"/></el-form-item>
+    <el-form-item v-if="kind==='material'" label="金属类型" prop="metalTypeId" :rules="[requiredRule('金属类型',true,true)]"><MetalTypeSelect v-if="dialogOpen" :key="editEpoch" v-model="form.metalTypeId" :factory-id="form.factoryId" :disabled="readonly||saving||form.classificationLocked" @changed="metalChanged" @mutating="metalMutation=$event"/></el-form-item>
     <p v-if="kind==='material'&&form.classificationLocked&&!readonly" class="process-hint">物料已有库存或仓储引用，不能修改物料类型或金属类型；需要其他分类请另建物料。</p>
     <template v-if="kind==='product'">
      <el-form-item v-if="readonly" label="规格型号"><el-input class="product-specification-input" :model-value="form.specification??automaticSpecification" type="textarea" :autosize="{minRows:1}" readonly/></el-form-item>
-     <el-form-item label="金属类型" prop="metalTypeId" :rules="[requiredRule('金属类型',true,true)]"><MetalTypeSelect v-if="dialogOpen" :key="editEpoch" v-model="form.metalTypeId" :factory-id="form.factoryId" :disabled="readonly||saving||legacyProduct" @loaded="metalOptions=$event"/></el-form-item>
+     <el-form-item label="金属类型" prop="metalTypeId" :rules="[requiredRule('金属类型',true,true)]"><MetalTypeSelect v-if="dialogOpen" :key="editEpoch" v-model="form.metalTypeId" :factory-id="form.factoryId" :disabled="readonly||saving||legacyProduct" @loaded="metalOptions=$event" @changed="metalChanged" @mutating="metalMutation=$event"/></el-form-item>
      <el-form-item label="产品类型" prop="productType" :rules="[requiredRule('产品类型',true,true)]"><el-select v-model="productTypeChoice" style="width:100%" @change="categoryChanged"><el-option v-if="legacyProduct" :value="'legacy:'+form.productType" :label="form.productType+'（旧版）'" disabled/><el-option v-for="type in productTypes" :key="type" :value="type"/></el-select></el-form-item>
      <p v-if="legacyProduct" class="process-hint">旧版产品保留原字段及计算值。修改几何信息请明确选择新版产品类型并补齐字段；有业务引用时仍受保护。</p>
      <el-form-item :rules="[requiredRule(`${dimension.label}（${dimension.unit??'cm'}）`,true,false),{validator:positiveDecimal,trigger:'blur'}]" v-for="dimension in dimensionFields" :key="dimension.key" :label="`${dimension.label}（${dimension.unit??'cm'}）`" :prop="`dimensions.${dimension.key}`"><BusinessDecimalInput v-model="form.dimensions![dimension.key]" :disabled="legacyProduct" inputmode="decimal"/></el-form-item>
@@ -65,7 +64,7 @@
      <div v-for="(step,index) in form.processes" :key="index" class="process-step">
       <span>{{index+1}}</span><div class="process-choice"><label><span class="process-required" aria-hidden="true">* </span>加工工序</label><el-form-item class="process-selection" label-width="0" :prop="`processes.${index}.processId`" :rules="[{required:true,message:'请选择加工工序',trigger:'change'}]"><el-select @visible-change="resetSelectScroll" fit-input-width :teleported="false" v-model="step.processId" filterable placeholder="请选择加工工序"><el-option v-for="o in processes" :key="o.id" :label="o.name" :value="o.id"/></el-select></el-form-item></div>
       <el-form-item class="loss-field" :rules="[requiredRule('理论损耗',true,false),{validator:(r,v,cb)=>lossDecimal(step,v,cb),trigger:['blur','change']}]" :label="step.lossUnit==='G_PER_PIECE'?'历史理论损耗（g/件）':'理论损耗（%）'" label-position="top" label-width="auto" :prop="`processes.${index}.loss`"><BusinessDecimalInput v-model="step.loss" :readonly="step.lossUnit==='G_PER_PIECE'" :max="step.lossUnit==='G_PER_PIECE'?undefined:100" placeholder="请输入0至100的百分比" inputmode="decimal" :aria-label="`第${index+1}道工序理论损耗（%）`"/><el-button v-if="step.lossUnit==='G_PER_PIECE'&&!readonly" link type="primary" @click="step.loss='';step.lossUnit='PERCENT'">重新配置百分比</el-button></el-form-item>
-      <el-form-item label="产出计量方式" label-position="top" label-width="auto" class="mode-field"><el-input :model-value="step.measurementMode==='WEIGHT'?'按重量管理（g）':'按件管理（件）'" :aria-label="`第${index+1}道产出计量方式`" readonly/></el-form-item><div class="process-step-actions"><el-button :disabled="readonly||saving||index===0" class="step-order-button" @click="moveStep(index,-1)">上移</el-button><el-button :disabled="readonly||saving||index===(form.processes?.length??0)-1" class="step-order-button" @click="moveStep(index,1)">下移</el-button><el-button type="danger" @click="form.processes?.splice(index,1)">移除</el-button></div>
+      <el-form-item label="产出计量方式" label-position="top" label-width="auto" class="mode-field" :prop="`processes.${index}.measurementMode`" :rules="[fieldRule(v=>measurementModeError(v,index),['blur','change'])]"><el-select v-model="step.measurementMode" :aria-label="`第${index+1}道产出计量方式`"><el-option value="PIECE" label="按件管理（件）"/><el-option value="WEIGHT" label="按重量管理（g）"/></el-select></el-form-item><div class="process-step-actions"><el-button :disabled="readonly||saving||index===0" class="step-order-button" @click="moveStep(index,-1)">上移</el-button><el-button :disabled="readonly||saving||index===(form.processes?.length??0)-1" class="step-order-button" @click="moveStep(index,1)">下移</el-button><el-button type="danger" @click="form.processes?.splice(index,1)">移除</el-button></div>
      </div>
      <el-button v-if="!readonly" @click="form.processes?.push({processId:'',loss:'0',lossUnit:'PERCENT',measurementMode:'PIECE'})">添加工序</el-button>
     </template>
@@ -123,6 +122,12 @@ const canRead=()=>can(config.permission+':list')
 const identity=()=>JSON.stringify([user.sessionReady,user.token,String(user.id),[...user.permissions].sort()])
 const showActions=computed(()=>can(config.permission+':edit')||can(config.permission+':remove')||(['product','material'].includes(kind)&&can(config.permission+':query'))||(kind==='staff'&&can('system:user:resetPwd')))
 const appliedFilters=ref<Record<string,string>>({}),exporting=ref(false)
+const filtersRef=ref<InstanceType<typeof BusinessFilters>>()
+function processTypeRemoved(id:string){
+ filtersRef.value?.removeProcessType(id)
+ editTypeOptions.value=editTypeOptions.value.filter(o=>o.id!==id)
+ if(String(form.processType)===id)form.processType=undefined
+}
 function applyFilters(filters:Record<string,string>){appliedFilters.value=filters;query.pageNum=1;selected.value=[];tableRef.value?.clearSelection();load()}
 async function exportRows(filters:Record<string,string>){if(exporting.value)return;const account=identity(),round=operationEpoch,current=()=>!disposed&&account===identity()&&round===operationEpoch&&can('system:user:export');if(!current())return;exporting.value=true;try{await download('/system/user/export',filters,'人员.xlsx',{timeout:0,isContextCurrent:current})}finally{if(current())exporting.value=false}}
 const rows=ref<MasterRow[]>([]),selected=ref<MasterRow[]>([]),total=ref(0),loading=ref(false),loadFailed=ref(false),saving=ref(false),deleting=ref(false),statusBusy=ref('')
@@ -171,6 +176,12 @@ const originalDimensions=ref<Record<string,string>>({})
 const positiveDecimal=(rule:any,v:unknown,cb:(e?:Error)=>void)=>{const key=String(rule.field??'').split('.').pop()!;const unchanged=legacyProduct.value&&originalDimensions.value[key]===v&&Number.isFinite(Number(v))&&Number(v)>0;const zero=dimensionFields.value.find(d=>d.key===key)?.allowZero;cb(decimalOk(v,!zero)||unchanged?undefined:new Error('尺寸须大于0，最多14位整数、6位小数，不支持科学计数法'))}
 const optionalDecimal=(_r:unknown,v:unknown,cb:(e?:Error)=>void)=>cb(v==null||v===''||decimalOk(v)?undefined:new Error('请输入非负数，最多6位小数'))
 const lossDecimal=(step:{lossUnit?:string},v:unknown,cb:(e?:Error)=>void)=>cb(decimalOk(v)&&(step.lossUnit==='G_PER_PIECE'||Number(v)<=100)?undefined:new Error('请输入0至100的理论损耗百分比，最多6位小数'))
+function measurementModeError(value:unknown,index:number){
+ if(value!=='PIECE'&&value!=='WEIGHT')return '请选择按件或按重量管理'
+ if(index===(form.processes?.length??0)-1&&value==='WEIGHT')return '最后一道工序产出成品，须按件管理'
+ if(value==='WEIGHT'&&form.processes?.[index]?.lossUnit==='G_PER_PIECE')return '按重量管理须先重新配置损耗百分比'
+ return ''
+}
 const required=(message:string)=>[{required:true,whitespace:true,message,trigger:'blur'}]
 const rules:FormRules={code:textRules('编号或编码',64,true),name:textRules('名称',100,true),factoryId:[{validator:(_r,v,cb)=>cb(form.id==='1'&&kind==='staff'||v?undefined:new Error('请选择所属工厂')),trigger:'change'}],category:required('请选择类别'),materialType:textRules('物料类型',100,true),processType:[{required:true,message:'请选择工序类型',trigger:'change'}],phonenumber:[{required:true,message:'请输入手机号',trigger:'blur'},{pattern:/^1[3-9]\d{9}$/,message:'请输入大陆11位手机号',trigger:'blur'}],nickName:textRules('姓名',100,true),roleName:textRules('角色名称',100,true),roleIds:[{type:'array',required:true,min:1,message:'请选择至少一个角色',trigger:'change'}],password:[fieldRule(v=>passwordError(v))],specification:textRules('规格型号',200),description:textRules('工序介绍',2000),volume:[{validator:optionalDecimal,trigger:'blur'}],weight:[{validator:optionalDecimal,trigger:'blur'}],purity:[{validator:(_r,v,cb)=>optionalDecimal(_r,v,e=>cb(e??(v!==null&&v!==''&&Number(v)>100?new Error('纯度不能超过100%'):undefined))),trigger:'blur'}]}
 let sequence=0,operationEpoch=0,manualPending=false
@@ -184,7 +195,7 @@ async function readList(background:boolean,refresh?:InventoryRefreshContext){
  catch{if(current())loadFailed.value=true;return false}
  finally{if(valid()){loading.value=false;if(manualPending){manualPending=false;void load()}}}
 }
-function reset(){treeRef.value?.setCheckedKeys([]);for(const key of Object.keys(form))delete(form as Record<string,unknown>)[key];Object.assign(form,blank());formRef.value?.clearValidate()}
+function reset(){metalMutation.value=false;treeRef.value?.setCheckedKeys([]);for(const key of Object.keys(form))delete(form as Record<string,unknown>)[key];Object.assign(form,blank());formRef.value?.clearValidate()}
 function categoryChanged(){form.calculationVersion=2;form.dimensions=Object.fromEntries(dimensionFields.value.map(d=>[d.key,'']));form.volume=null;form.weight=null}
 const editLoading=ref(false),editError=ref(false),rolesLoading=ref(false)
 let editEpoch=0,roleEpoch=0,disposed=false,retryEdit:()=>void=()=>{},openedId='',openedVersion:number|undefined,openedOptions:Record<string,any>={}
@@ -209,20 +220,20 @@ async function editorOptions(draft:Partial<MasterRow>,view:boolean,current:()=>b
  if(kind==='staff'&&draft.id==='1')opts.roles=[{id:'1',name:'超级管理员'}]
  return opts
 }
+const metalMutation=ref(false)
+function metalChanged(options:Option[]){
+ if(!dialogOpen.value)return
+ const previous=new Map((openedOptions.rules??[]).map((rule:Record<string,any>)=>[String(rule.metalTypeId),rule]))
+ openedOptions={...openedOptions,metals:JSON.parse(JSON.stringify(options)),...(kind==='product'?{rules:options.map(metal=>previous.get(String(metal.id))??{metalTypeId:String(metal.id),metalTypeName:metal.name,factoryId:form.factoryId,density:null,version:0})}:{})}
+}
 async function probeEditor(refresh:InventoryRefreshContext){
- const round=editEpoch,account=identity(),password=passwordOpen.value,id=password?passwordRow.value?.id:openedId,version=password?passwordRow.value?.version:openedVersion
- const current=()=>!disposed&&refresh.isCurrent()&&round===editEpoch&&account===identity()&&sessionCurrent()&&!saving.value&&!uncertain.value&&(password?passwordOpen.value:dialogOpen.value)
+ const optionsBaseline=openedOptions,round=editEpoch,account=identity(),password=passwordOpen.value,id=password?passwordRow.value?.id:openedId,version=password?passwordRow.value?.version:openedVersion
+ const current=()=>!disposed&&refresh.isCurrent()&&round===editEpoch&&account===identity()&&sessionCurrent()&&!saving.value&&!uncertain.value&&!metalMutation.value&&optionsBaseline===openedOptions&&(password?passwordOpen.value:dialogOpen.value)
  if(id){const response=await masterDetail(config.endpoint,id,!can(config.permission+':query'),current,true);if(current()&&response.data.version!==version)needsReload.value=true}
  if(!password&&current()){const options=await editorOptions(form,readonly.value,current,true);if(current()&&JSON.stringify(options)!==JSON.stringify(openedOptions))needsReload.value=true}
 }
-const {failed:refreshFailed}=useInventoryRefresh(refresh=>readList(true,refresh),computed(()=>dialogOpen.value||passwordOpen.value),{allowed:canRead,reset:resetAccess},{probe:probeEditor,paused:computed(()=>loading.value||saving.value||deleting.value||!!statusBusy.value||exporting.value||editLoading.value||rolesLoading.value||uncertain.value)})
+const {failed:refreshFailed}=useInventoryRefresh(refresh=>readList(true,refresh),computed(()=>dialogOpen.value||passwordOpen.value),{allowed:canRead,reset:resetAccess},{probe:probeEditor,paused:computed(()=>loading.value||saving.value||deleting.value||!!statusBusy.value||exporting.value||editLoading.value||rolesLoading.value||uncertain.value||metalMutation.value)})
 function cancelEdit(){if(saving.value||uncertain.value)return;++editEpoch;++roleEpoch;editLoading.value=false;rolesLoading.value=false;editError.value=false;dialogOpen.value=false}
-watch(()=>[readonly.value,JSON.stringify(form.processes?.map(step=>step.processId)),JSON.stringify(processes.value)],()=>{
- if(kind!=='product'||readonly.value)return
- const types=(form.processes??[]).map(step=>processes.value.find(option=>option.id===step.processId)?.processTypeName??'')
- const melting=types.indexOf('融定')
- form.processes?.forEach((step,index)=>{step.measurementMode=['酸洗','粉料','碎料','旧锅清理'].includes(types[index])&&(melting<0||index<melting)?'WEIGHT':'PIECE'})
-},{flush:'sync'})
 watch(dialogOpen,open=>{if(!open&&!saving.value){++editEpoch;++roleEpoch;editLoading.value=false;rolesLoading.value=false}}, {flush:'sync'})
 onBeforeUnmount(()=>{disposed=true;++editEpoch;++roleEpoch;++sequence;++operationEpoch})
 async function factoryChanged(){if(saving.value||uncertain.value)return;if(kind!=='staff'){
@@ -248,7 +259,7 @@ async function openEditor(row?:MasterRow,view=false){
 async function openAdd(){await openEditor()}
 async function openRecord(row:MasterRow,view=false){await openEditor(row,view)}
 function moveStep(index:number,direction:number){if(readonly.value||saving.value)return;const list=form.processes!;if(index+direction<0||index+direction>=list.length)return;[list[index],list[index+direction]]=[list[index+direction],list[index]]}
-async function submit(){if(needsReload.value||uncertain.value||saving.value||editLoading.value||rolesLoading.value||!dialogOpen.value||readonly.value||!can(`${config.permission}:${form.id?'edit':'add'}`))return;const epoch=editEpoch,account=identity(),current=()=>!disposed&&epoch===editEpoch&&account===identity()&&can(`${config.permission}:${openedId?'edit':'add'}`)&&dialogOpen.value;saving.value=true;try{if(!await formRef.value?.validate().catch(()=>false)||!current()||needsReload.value||String(form.id??'')!==openedId)return;if(kind==='product'){if(form.dimensions?.outerDiameter&&Number(form.dimensions.outerDiameter)<=Number(form.dimensions.innerDiameter)){ElMessage.error('外径必须大于内径');return}const steps=form.processes??[];if(steps.at(-1)?.measurementMode==='WEIGHT'){ElMessage.error('最后一道工序产出成品，须按件管理');return}if(steps.some(s=>!s.processId||!decimalOk(s.loss)||(s.lossUnit!=='G_PER_PIECE'&&Number(s.loss)>100))||new Set(steps.map(s=>s.processId)).size!==steps.length){ElMessage.error('请选择不重复工序并填写0至100的损耗百分比');return}}
+async function submit(){if(needsReload.value||uncertain.value||saving.value||editLoading.value||rolesLoading.value||!dialogOpen.value||readonly.value||!can(`${config.permission}:${form.id?'edit':'add'}`))return;const epoch=editEpoch,account=identity(),current=()=>!disposed&&epoch===editEpoch&&account===identity()&&can(`${config.permission}:${openedId?'edit':'add'}`)&&dialogOpen.value;saving.value=true;try{if(!await formRef.value?.validate().catch(()=>false)||!current()||needsReload.value||String(form.id??'')!==openedId)return;if(kind==='product'){if(form.dimensions?.outerDiameter&&Number(form.dimensions.outerDiameter)<=Number(form.dimensions.innerDiameter)){ElMessage.error('外径必须大于内径');return}const steps=form.processes??[];if(steps.some(s=>!s.processId||!decimalOk(s.loss)||(s.lossUnit!=='G_PER_PIECE'&&Number(s.loss)>100))||new Set(steps.map(s=>s.processId)).size!==steps.length){ElMessage.error('请选择不重复工序并填写0至100的损耗百分比');return}}
  const payload=JSON.parse(JSON.stringify(form)) as Partial<MasterRow>;delete payload.createBy;delete payload.createTime;delete payload.updateTime;delete payload.factoryName;delete payload.roleNames;delete payload.productNames;if(kind==='product'){delete payload.specification;delete payload.category;delete payload.volume;delete payload.weight}if(kind==='material')delete payload.name;if(kind==='line'&&!payload.factoryId)payload.factoryId=null;if(kind==='role')payload.menuIds=treeRef.value?.getCheckedKeys().map(String)??[];for(const key of ['volume','purity','weight'] as const)if(payload[key]==='')payload[key]=null;const added=!openedId;if(openedId)payload.version=openedVersion;await masterSave(config.endpoint,payload,current);if(!current())return;ElMessage.success(added?'添加成功':'修改成功');dialogOpen.value=false;if(added)query.pageNum=['process','material'].includes(kind)?Math.max(1,Math.ceil((total.value+1)/query.pageSize)):1;await load()}catch(error:any){if(current()){uncertain.value=!!error?.isAxiosError&&(!error.response||error.response.status>=500);if(/版本|重新加载|刷新/.test(error?.message??''))needsReload.value=true;applyFieldErrors(formRef.value,error)}}finally{if(!disposed&&epoch===editEpoch&&account===identity())saving.value=false}}
 function mutationCurrent(permission:string){const round=++operationEpoch,account=identity();return()=>!disposed&&round===operationEpoch&&account===identity()&&can(permission)}
 async function remove(targets:MasterRow[]){if(deleting.value||saving.value||statusBusy.value||uncertain.value||!targets.length||!can(`${config.permission}:remove`))return;const ids=targets.map(r=>r.id),current=mutationCurrent(`${config.permission}:remove`);deleting.value=true;try{await ElMessageBox.confirm(`确认删除选中的${ids.length}条记录？`,'删除确认',{type:'warning',confirmButtonText:'确定',cancelButtonText:'取消'});if(!current())return;await masterRemove(config.endpoint,ids,current);if(!current())return;ElMessage.success('删除成功');query.pageNum=Math.min(query.pageNum,Math.max(1,Math.ceil((total.value-ids.length)/query.pageSize)));await load()}catch{}finally{if(current())deleting.value=false}}

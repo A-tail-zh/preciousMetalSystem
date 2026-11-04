@@ -17,14 +17,29 @@ public final class WarehouseTemplateLayout {
   if(!Set.of("RAW_IN","PROCESS_RAW_RETURN","RAW_PROCESS_IN").contains(type)){columns.add(c("quantity","数量(件)"));columns.add(c("referenceQuantity","参考件数（选填）"));columns.add(c("purity","纯度(%)"));}
   if("RAW_IN".equals(type)){columns.add(c("materialOwnership","材料归属（客户料/厂料）"));columns.add(c("customerId","客户ID"));columns.add(c("powderOrigin","铱粉来源（原生/回收再生）"));}else columns.add(c("organization","单位名称"));if(!Set.of("RAW_IN","PROCESS_RAW_RETURN","RAW_PROCESS_IN").contains(type))columns.add(c("receivingOrganization","收货单位"));columns.addAll(List.of(c("purpose","用途"),c("remark","备注")));return List.copyOf(columns);
  }
+ public static List<Column> inbound(String type,boolean batchBound,String effectiveMode,boolean configurableProduct){
+  var columns=new ArrayList<>(inbound(type,batchBound));
+  if("RAW_PROCESS_IN".equals(type)&&configurableProduct){
+   int position=0;while(!columns.get(position).key().equals("netWeight"))position++;
+   columns.add(position+1,"PIECE".equals(effectiveMode)?c("quantity","数量(件)"):c("referenceQuantity","参考件数（选填）"));
+  }
+  return List.copyOf(columns);
+ }
  public static List<Column> raw(String type){
   if(Set.of("RAW_IN","PROCESS_RAW_RETURN","RAW_PROCESS_IN").contains(type))return inbound(type,false);
   return List.of(c("RAW_RETURN".equals(type)?"sourceLineId":"inventoryId","RAW_RETURN".equals(type)?"原出库明细ID":"库存ID"),c("netWeight","实测净重(g)"),c("grossWeight","毛重(g)"),c("impurity","杂质(g)"),c("purpose","用途"),c("remark","备注"));
+ }
+ public static List<Column> raw(String type,boolean pieceSource){
+  var columns=new ArrayList<>(raw(type));
+  if("RAW_RETURN".equals(type)&&pieceSource)columns.add(2,c("quantity","数量(件)"));
+  return List.copyOf(columns);
  }
  public static Map<String,Integer> identify(List<String> headers,String type){
   if(headers.isEmpty()||new HashSet<>(headers).size()!=headers.size())throw new ServiceException("模板表头为空或重复，请重新下载模板");
   if("RAW_IN".equals(type)&&(!headers.contains("客户ID")||!headers.contains("铱粉来源（原生/回收再生）")))throw new ServiceException("旧原料模板缺少客户ID或铱粉来源，请重新下载原材料入库模板");
   var candidates=new ArrayList<List<Column>>();if(Set.of("RAW_RETURN","EXCHANGE_OUT").contains(type))candidates.add(raw(type));candidates.add(legacy());candidates.add(production());candidates.add(production().stream().filter(c->!c.key().startsWith("skipPermit")).toList());if(Set.of("RAW_IN","RAW_PROCESS_IN","FINISHED_IN","SEMI_IN","PROCESS_RAW_RETURN").contains(type)){for(boolean bound:List.of(false,true)){var current=inbound(type,bound);candidates.add(current);candidates.add(current.stream().filter(c->!c.key().equals("receivingOrganization")).toList());}}
+  if("RAW_PROCESS_IN".equals(type))for(String mode:List.of("PIECE","WEIGHT"))candidates.add(inbound(type,true,mode,true));
+  if("RAW_RETURN".equals(type))candidates.add(raw(type,true));
   for(var current:new ArrayList<>(candidates))candidates.add(current.stream().filter(c->!c.key().equals("referenceQuantity")).toList());
   for(var current:new ArrayList<>(candidates))candidates.add(current.stream().filter(c->!c.key().equals("materialOwnership")).toList());
   for(var columns:candidates){if(headers.size()==columns.size()&&new HashSet<>(headers).equals(new HashSet<>(columns.stream().map(Column::label).toList()))){var positions=new LinkedHashMap<String,Integer>();for(var column:columns)positions.put(column.key(),headers.indexOf(column.label()));return positions;}}

@@ -16,10 +16,14 @@ final class WarehouseReservations {
     }
     static void balance(JdbcTemplate jdbc,Map<String,Object> stock,BigDecimal delta,long deltaQuantity) {
         if (delta.signum() >= 0 && deltaQuantity >= 0) return;
+        if ("RAW".equals(stock.get("category")) && !stock.containsKey("effective_measurement_mode")) {
+            stock = new java.util.HashMap<>(stock);
+            InventoryMeasurement.enrich(jdbc, java.util.List.of(stock));
+        }
         var held=stock(jdbc,n(stock.get("inventory_id")));
         WarehouseFlowRules.available(d(stock.get("net_weight")).add(delta),n(stock.get("quantity"))+deltaQuantity,
                 d(held.get("weight")),n(held.get("quantity")),BigDecimal.ZERO,0,
-                "RAW".equals(stock.get("category"))||SemiMeasurementRules.weight(stock));
+                InventoryMeasurement.weight(stock));
     }
     static void stockReference(JdbcTemplate jdbc,long stock) {
         if(!jdbc.queryForList("SELECT reservation_id FROM metal_stock_reservation WHERE inventory_id=? AND status='ACTIVE' LIMIT 1",stock).isEmpty())

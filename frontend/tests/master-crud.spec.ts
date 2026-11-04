@@ -1,6 +1,12 @@
+import {fixtureEnvironment} from '../../tools/test-fixture-scope.mjs'
 import {workOrderFixture} from '../../tools/work-order-test-fixture.mjs'
 import {test,expect,type Page} from '@playwright/test'
 import {api,login,ok,detail} from '../../tools/local-test-client.mjs'
+
+function assertIsolatedCrudEnvironment(){
+ const environment=fixtureEnvironment()
+ if(environment.port!=='3321'||!['heavy_metal_flow','heavy_metal_factory_20261104','heavy_metal_processing_v2'].includes(environment.schema)||!/^http:\/\/127\.0\.0\.1:809[123]$/.test(environment.api))throw Error('真实CRUD测试必须显式指定登记隔离环境，禁止访问主环境')
+}
 
 const cases = [
   {title:'产品管理',path:'/metal/product',label:'产品名称',codeLabel:'产品编号',select:['产品类型','环'],fields:{'外径（cm）':'12','内径（cm）':'10','厚（cm）':'2'}},
@@ -15,6 +21,7 @@ async function choose(page:Page,label:string,value:string) {
 }
 
 for(const [index,c] of cases.entries()) test(`${c.title}：真实页面新增、查询、编辑、删除`,async({page,context})=>{
+  assertIsolatedCrudEnvironment()
   test.setTimeout(60000)
   const productFixture=c.path==='/metal/product'?await workOrderFixture():undefined;const token=productFixture?.admin??await login(),suffix=`${Date.now()}_${index}`,name=productFixture?productFixture.prefix+'CRUD':`CRUD页面_${suffix}`,updated=`${name}_修改`
   const filterCurrent=async()=>{if(c.path==='/metal/material'){await page.locator('.master-toolbar').getByPlaceholder('物料编码',{exact:true}).fill('UI'+suffix);await page.locator('.master-toolbar').getByRole('button',{name:'查询',exact:true}).click()}};

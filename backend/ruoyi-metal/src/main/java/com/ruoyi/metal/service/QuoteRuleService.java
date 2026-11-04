@@ -56,6 +56,19 @@ public class QuoteRuleService {
         if(rows.size()!=1) throw new ServiceException("请选择有效金属类型");
         return rows.get(0).get("name").toString();
     }
+    @Transactional(rollbackFor=Exception.class)
+    public void removeMetal(Long id) {
+        Long factory=scope.catalogFactory("metal",id);scope.lockFactories(List.of(factory));
+        if(jdbc.queryForList("SELECT metal_type_id FROM metal_type WHERE metal_type_id=? AND factory_id=? FOR UPDATE",id,factory).isEmpty())throw new ServiceException("金属类型不存在或已删除");
+        // Include deleted master records: their IDs may still be used by historical documents.
+        for(String table:List.of("metal_product","metal_material","metal_type_quote_rule","metal_process_batch"))
+            if(jdbc.queryForObject("SELECT COUNT(*) FROM "+table+" WHERE metal_type_id=?",Integer.class,id)>0)throw new ServiceException("金属类型已被产品、物料、报价或加工记录引用，不能删除");
+        if(jdbc.queryForObject("SELECT COUNT(*) FROM metal_inventory WHERE metal_type_id_snapshot=?",Integer.class,id)>0
+            ||jdbc.queryForObject("SELECT COUNT(*) FROM metal_saved_quotation WHERE JSON_CONTAINS(JSON_EXTRACT(item_snapshot,'$[*].metalTypeId'),JSON_QUOTE(?)) OR JSON_CONTAINS(JSON_EXTRACT(item_snapshot,'$[*].metalTypeId'),CAST(? AS JSON))",Integer.class,id.toString(),id.toString())>0)
+            throw new ServiceException("金属类型已被库存或历史报价引用，不能删除");
+        try{if(jdbc.update("DELETE FROM metal_type WHERE metal_type_id=? AND factory_id=?",id,factory)!=1)throw new ServiceException("金属类型不存在或已删除");}
+        catch(org.springframework.dao.DataIntegrityViolationException e){throw new ServiceException("金属类型已被引用，不能删除");}
+    }
     @Transactional
     public String addMetal(String name){return addMetal(name,null);}
     @Transactional

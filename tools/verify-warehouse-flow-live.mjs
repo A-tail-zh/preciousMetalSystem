@@ -1,0 +1,52 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {randomUUID} from 'node:crypto';
+import {api,ok,detail,sql} from './local-test-client.mjs';
+import {warehouseFlowFixture} from './warehouse-flow-test-fixture.mjs';
+
+assert.equal(process.env.TEST_MYSQL_PORT,'3321');assert.equal(process.env.TEST_DB_SCHEMA,'heavy_metal_flow');
+assert.equal(sql('SELECT @@port'),'3321');assert.equal(process.env.TEST_API_BASE_URL,'http://127.0.0.1:8091');
+const checks=[],pass=name=>{checks.push(name);console.log('PASS '+name)};
+let f;const evidence='.runtime/warehouse-flow-20261103/flow-live-result.json';
+try{
+ f=await warehouseFlowFixture();
+ const customer=await f.incoming('CUSTOMER','90'),factory=await f.incoming('FACTORY','10');
+ assert.notEqual(customer,factory);assert.equal(sql(`SELECT material_ownership FROM metal_inventory WHERE inventory_id=${factory}`),'FACTORY');pass('客户料与厂料独立归属，原料入库由真实库管确认');
+ const batch=await detail('/metal/process-batch',f.flowBatchId,f.admin);
+ const submitted=await f.submit('PRODUCTION_OUT',[{inventoryId:customer,netWeight:'90',quantity:0},{inventoryId:factory,netWeight:'10',quantity:0}],{workOrderId:f.flowWorkOrderId,itemId:f.flowItem.id,processId:f.processB,batchId:f.flowBatchId,batchVersion:batch.version});
+ let root=await f.flow(submitted.flowId);
+ assert.equal(Number(sql(`SELECT net_weight FROM metal_inventory WHERE inventory_id=${customer}`)),90);assert.equal(Number(sql(`SELECT SUM(weight) FROM metal_stock_reservation WHERE flow_id=${root.id} AND status='ACTIVE'`)),100);pass('待出库占用100g，实物库存尚未扣减');
+ assert.notEqual((await f.confirm(root,root.groups[0],f.admin)).code,200);pass('管理员不能替指定领用人签收');
+ const group=root.groups[0],confirmation={requestId:randomUUID(),version:root.version,lines:group.lines.map(line=>({lineId:line.id,netWeight:line.plannedWeight,quantity:0}))};
+ const confirmPath=`/metal/warehouse-flows/${root.id}/groups/${group.id}/confirm`;
+ root=ok(await api(confirmPath,f.processor,'POST',confirmation)).data;
+ assert.equal(root.status,'POSTED');assert.equal(Number(sql(`SELECT net_weight FROM metal_inventory WHERE inventory_id=${customer}`)),0);pass('指定加工人实领后统一扣账');
+ const count=sql(`SELECT COUNT(*) FROM metal_stock_ledger WHERE line_id IN(SELECT line_id FROM metal_warehouse_order_line WHERE order_id=${submitted.id})`);
+ ok(await api(confirmPath,f.processor,'POST',confirmation));assert.equal(sql(`SELECT COUNT(*) FROM metal_stock_ledger WHERE line_id IN(SELECT line_id FROM metal_warehouse_order_line WHERE order_id=${submitted.id})`),count);pass('确认响应丢失重放不重复扣账');
+ const sources=(await detail('/metal/warehouse-order',submitted.id,f.admin)).lines;
+ const clientSource=sources.find(l=>l.inventoryId===customer),factorySource=sources.find(l=>l.inventoryId===factory);
+ const currentBatch=await detail('/metal/process-batch',f.flowBatchId,f.admin);
+ const handover={requestId:randomUUID(),version:currentBatch.version,orderDate:'2026-11-03',physicalChecked:true,residualMode:'RETURNED',reason:'双称重固定验收',documents:[{type:'FINISHED_IN',warehouseId:f.warehouse,keeperId:f.ownerA,lines:[{category:'FINISHED',referenceId:f.productB,netWeight:'96',quantity:10}]},{type:'RAW_RETURN',warehouseId:f.warehouse,keeperId:f.ownerA,lines:[{category:'RAW',sourceLineId:clientSource.id,netWeight:'2',quantity:0},{category:'RAW',sourceLineId:factorySource.id,netWeight:'1',quantity:0}]}]};
+ assert.notEqual((await api('/metal/warehouse-flows/handover/'+f.flowBatchId,f.admin,'POST',handover)).code,200);pass('管理员不能替实际加工人员申报交接');
+ root=ok(await api('/metal/warehouse-flows/handover/'+f.flowBatchId,f.processor,'POST',handover)).data;
+ assert.equal(root.stage,'KEEPER');assert.equal(sql(`SELECT COUNT(*) FROM metal_work_report WHERE batch_id=${f.flowBatchId}`),'0');assert.equal(Number(sql(`SELECT net_weight FROM metal_inventory WHERE inventory_id=${customer}`)),0);pass('加工人申报96+2+1，待验收不入库不报工');
+ for(const group of root.groups){assert.notEqual((await f.confirm(root,group,f.processor)).code,200);root=ok(await f.confirm(root,group,f.keeper,group.type==='FINISHED_IN'?['95.8']:undefined)).data;}
+ assert.equal(root.status,'POSTED');
+ const report=JSON.parse(sql(`SELECT JSON_OBJECT('loss',loss_weight,'input',net_input_weight,'output',processor_output_weight,'returned',processor_returned_weight,'received',keeper_received_weight,'difference',handover_difference) FROM metal_work_report WHERE batch_id=${f.flowBatchId}`));
+ assert.equal(Number(report.input),97);assert.equal(Number(report.loss),1);assert.equal(Number(report.output),96);assert.equal(Number(report.returned),3);assert.equal(Number(report.received),98.8);assert.equal(Number(report.difference),0.2);pass('100=98.8+加工损耗1+交接短少0.2，投入97与厂料净投入9独立');
+ assert.equal(Number(sql(`SELECT net_weight FROM metal_inventory WHERE inventory_id=${customer}`)),2);assert.equal(Number(sql(`SELECT net_weight FROM metal_inventory WHERE inventory_id=${factory}`)),1);pass('客户余料2及厂料余料1分别退回原库存');
+ ok(await api('/metal/warehouse-flows/handover/'+f.flowBatchId,f.processor,'POST',handover));assert.equal(sql(`SELECT COUNT(*) FROM metal_work_report WHERE batch_id=${f.flowBatchId}`),'1');pass('交接成功请求在批次结算后仍可重放');
+ const balance=ok(await api('/metal/work-order/'+f.flowWorkOrderId+'/weight-balance',f.admin)).data;
+ assert.equal(Number(balance.totals.HANDOVER_DIFFERENCE),0.2);assert.equal(Number(balance.totals.RECONCILIATION_DIFFERENCE),0);pass('工单实物总账单列交接差额，100g边界平衡');
+ const consumption=ok(await api(`/metal/work-report/consumption/batches?workOrderId=${f.flowWorkOrderId}&itemId=${f.flowItem.id}&processId=${f.processB}`,f.admin)).data.rows[0];assert.equal(consumption.state,'SETTLED');assert.equal(Number(consumption.outputWeight),96);assert.equal(Number(consumption.handoverDifference),0.2);pass('消耗报表使用加工称重且保留库管差额');
+ let closeout=ok(await api('/metal/warehouse-flows/closeout-context/'+f.flowWorkOrderId,f.processor)).data;assert.equal(Number(closeout.customerRemainingWeight),2);assert.equal(Number(closeout.factoryRemainingWeight),1);pass('客户与厂料余料分别归属，本单仅客户2g需要客户收尾');
+ const olderBody=f.body();olderBody.orderDate='2026-10-12';olderBody.processingType='SHORTAGE';const older=await f.createOrder(olderBody);
+ const offset={requestId:randomUUID(),version:closeout.version,mode:'OFFSET',keeperId:f.ownerA,offsetWorkOrderId:older,weight:'2',reason:'隔离抵料归属验证，不登记钱款或结清'};
+ root=ok(await api('/metal/warehouse-flows/closeout/'+f.flowWorkOrderId,f.processor,'POST',offset)).data;
+ assert.equal(Number(sql(`SELECT net_weight FROM metal_inventory WHERE inventory_id=${customer}`)),2);pass('待抵料仅占用，尚未转移客户库存');
+ for(const group of root.groups)root=ok(await f.confirm(root,group,f.keeper)).data;
+ assert.equal(Number(sql(`SELECT net_weight FROM metal_inventory WHERE inventory_id=${customer}`)),0);assert.equal(Number(sql(`SELECT net_weight FROM metal_inventory WHERE inventory_id=${factory}`)),3);assert.equal(Number(sql(`SELECT SUM(l.delta_weight) FROM metal_stock_ledger l JOIN metal_warehouse_order o ON o.order_id=l.order_id WHERE o.warehouse_flow_id=${root.id}`)),0);assert.equal(Number(sql(`SELECT loss_weight FROM metal_work_report WHERE batch_id=${f.flowBatchId}`)),1);pass('抵料客户-2厂料+2，两条正式流水净实物不变，不改加工损耗');
+ closeout=ok(await api('/metal/warehouse-flows/closeout-context/'+f.flowWorkOrderId,f.admin)).data;assert.equal(closeout.closeout.status,'DONE');
+ ok(await api('/metal/warehouse-flows/closeout/'+f.flowWorkOrderId+'/reverse',f.admin,'POST',{requestId:randomUUID(),version:closeout.version,reason:'隔离收尾整体撤回'}));assert.equal(Number(sql(`SELECT net_weight FROM metal_inventory WHERE inventory_id=${customer}`)),2);assert.equal(Number(sql(`SELECT net_weight FROM metal_inventory WHERE inventory_id=${factory}`)),1);pass('无后续引用抵料整体冲销，恢复两侧库存及余料归属');
+ fs.writeFileSync(evidence,JSON.stringify({passed:checks.length,checks,fixtureCleaned:false},null,2));
+}finally{if(f){await f.cleanup();console.log('FIXTURE CLEANED (audit retained)');if(fs.existsSync(evidence)){const result=JSON.parse(fs.readFileSync(evidence));result.fixtureCleaned=true;fs.writeFileSync(evidence,JSON.stringify(result,null,2))}}}

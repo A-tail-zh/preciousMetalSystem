@@ -9,6 +9,7 @@ import defAva from '@/assets/images/profile.jpg'
 
 interface UserState {
   sessionReady: boolean
+  sessionEpoch: number
   token: string | undefined
   id: string | number
   name: string
@@ -23,6 +24,7 @@ const useUserStore = defineStore(
   {
     state: (): UserState => ({
       sessionReady: false,
+      sessionEpoch: 0,
       token: getToken(),
       id: '',
       name: '',
@@ -34,6 +36,7 @@ const useUserStore = defineStore(
     actions: {
       // 登录
       login(userInfo: { username: string; password: string; code: string; uuid: string }) {
+        this.sessionEpoch++
         this.sessionReady=false
         const username = userInfo.username.trim()
         const password = userInfo.password
@@ -52,11 +55,11 @@ const useUserStore = defineStore(
       },
       // 获取用户信息
       getInfo() {
-        const sessionToken=getToken()
+        const sessionToken=getToken(),sessionEpoch=this.sessionEpoch
         return new Promise((resolve, reject) => {
           if(!sessionToken){reject(new Error("会话已失效"));return}
           getInfo().then(res => {
-            if(getToken()!==sessionToken){reject(new Error("会话已切换"));return}
+            if(getToken()!==sessionToken||this.sessionEpoch!==sessionEpoch){reject(new Error("会话已失效或切换"));return}
             const user = res.user
             let avatar = user.avatar || ''
             if (!isHttp(avatar)) {
@@ -93,7 +96,7 @@ const useUserStore = defineStore(
           })
         })
       },
-      clearSession() { this.sessionReady=false; this.id=''; cache.session.remove('sessionObj'); this.token=''; this.roles=[]; this.permissions=[]; removeToken() },
+      clearSession() { this.sessionEpoch++; this.sessionReady=false; this.id=''; cache.session.remove('sessionObj'); this.token=''; this.roles=[]; this.permissions=[]; removeToken() },
       // 退出系统
       async logOut(expectedToken=getToken()):Promise<boolean> {
         if(!expectedToken||getToken()!==expectedToken)return false

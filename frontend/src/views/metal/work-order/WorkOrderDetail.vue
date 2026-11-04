@@ -6,6 +6,7 @@
    <div class="section-title">&gt;&gt;基本信息</div><div class="basic-card">
     <div>生产单据编号：{{order.orderNo}}</div><div>工厂名称：{{order.factoryName}}</div><div>客户名称：{{order.customer}}</div>
     <div v-for="field in customerFields" :key="field.key">{{field.label}}：{{customerText(field.key)}}</div>
+    <CustomerIncomingWeight :order="order" @changed="load"/>
     <div>产线：{{order.lineName}}</div><div>开单日期：{{order.orderDate}}</div><div>负责人：{{order.ownerName}}</div><div>任务类型：{{raw?'原料加工':'产品生产'}}</div><div>加工类型：{{processingTypes[order.processingType??'']??'历史未记录'}}</div>
     <div>工单状态：{{orderStatus[order.status??'']}}<span v-if="order.rejectReason">，原因：{{order.rejectReason}}</span></div><div>创建人：{{order.creatorName}}</div><div>创建时间：{{displayDateTime(order.createTime)}}</div>
    </div>
@@ -15,6 +16,7 @@
     <div v-if="canViewReports()" class="detail-card reports"><div class="section-title">&gt;&gt;损耗报工</div><p class="report-note">状态按精确损耗率判定，显示保留两位小数。</p><p v-if="reportsLoading" class="report-status" role="status">正在加载报工记录…</p><div v-if="reportState==='error'" class="report-error" role="alert">报工记录加载失败 <el-button link type="primary" @click="loadReports">重试</el-button></div><el-table v-loading="reportsLoading" :data="reports" border :empty-text="reportState==='success'?'暂无报工记录':' '"><el-table-column :label="raw?'物料名称':'产品名称'" prop="productName" min-width="130"/><el-table-column label="工序名称" prop="processName" min-width="120"/><el-table-column label="理论损耗（%）" min-width="150"><template #default="{row}">{{row.lossUnit==='PERCENT'?lossRateText(row.theoreticalLoss):decimalText(row.theoreticalLoss)+'（历史 g/件）'}}</template></el-table-column><el-table-column label="实际损耗（g）" prop="lossWeight" min-width="140" label-class-name="loss-weight-heading" :formatter="decimalColumn"/><el-table-column label="实际损耗率（%）" min-width="145"><template #default="{row}">{{lossRateText(row.lossRatePercent)}}<LossRateBasis :basis="row.lossRateBasis" :weight="row.lossRateDenominatorWeight"/></template></el-table-column><el-table-column label="状态" min-width="85"><template #default="{row}">{{row.status==='ABNORMAL'?'异常':'正常'}}</template></el-table-column><el-table-column label="时间" prop="settledTime" :formatter="dateTimeCell" min-width="150"/><el-table-column label="操作" width="160" align="center"><template #default="{row}"><div class="report-actions"><el-button type="primary" size="small" @click="openReport(row)">查看</el-button><el-button link type="primary" size="small" @click="openConsumption(row)">消耗追溯</el-button></div></template></el-table-column></el-table><p v-if="reportState==='success'&&!reports.length" class="empty-note">加工批次结算后自动生成报工记录</p></div>
    </div>
    <div v-if="order.reviews?.length" class="detail-card"><div class="section-title">操作记录</div><el-table :data="order.reviews" border><el-table-column prop="createTime" label="时间" :formatter="dateTimeCell"/><el-table-column prop="actorName" label="操作人"/><el-table-column label="操作"><template #default="{row}">{{reviewNames[row.action]||row.action}}</template></el-table-column><el-table-column prop="reason" label="说明"/></el-table></div>
+   <WorkOrderBatchProgress v-if="order.id" :work-order-id="order.id"/>
    <WorkOrderResidualPanel v-if="order.id" :work-order-id="order.id"/>
    <WorkOrderWeightBalance v-if="order.id" :raw="raw" :work-order-id="order.id"/>
    <RouteSkipPermit v-if="!raw&&order.id&&has('metal:route-skip:configure')" :work-order-id="order.id" :items="order.items"/>
@@ -27,6 +29,8 @@
  </section>
 </template>
 <script setup lang="ts">
+import WorkOrderBatchProgress from './WorkOrderBatchProgress.vue'
+import CustomerIncomingWeight from './CustomerIncomingWeight.vue'
 import LossRateBasis from '../warehouse-common/LossRateBasis.vue'
 import BusinessDecimalInput from '@/components/BusinessDecimalInput.vue'
 import {createUUID} from '@/utils/uuid'
@@ -54,7 +58,7 @@ import WorkReportDialog from '../warehouse-common/WorkReportDialog.vue'
 import {type Row} from '@/api/metal/warehouse'
 import {orderRawPlan,orderDetail,orderStatus,orderMaterials,orderReports,processingTypes} from '@/api/metal/work-order'
 import type {WorkOrder,WorkOrderItem,CustomerSnapshot} from '@/api/metal/work-order'
-const reviewNames:Record<string,string>={CREATE:'创建',EDIT:'修改',DELETE:'删除',SUBMIT:'旧流程：提交审核',APPROVE:'旧流程：审核通过',REJECT:'旧流程：驳回',RESUBMIT:'旧流程：重新提交'}
+const reviewNames:Record<string,string>={CREATE:'创建',EDIT:'修改',DELETE:'删除',INCOMING_CHANGE:'更正来料重量',SUBMIT:'旧流程：提交审核',APPROVE:'旧流程：审核通过',REJECT:'旧流程：驳回',RESUBMIT:'旧流程：重新提交'}
 const props=defineProps<{id:string}>();defineEmits<{back:[]}>()
 const reports=ref<Row[]>([]),reportDialog=ref<InstanceType<typeof WorkReportDialog>>()
 const order=ref<WorkOrder>(),loading=ref(false),failed=ref(false)

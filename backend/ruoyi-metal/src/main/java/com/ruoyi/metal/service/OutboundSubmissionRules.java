@@ -8,6 +8,9 @@ public final class OutboundSubmissionRules {
   if(r==null||!"PRODUCTION_OUT".equals(r.type()))throw new ServiceException("多仓出库仅支持生产出库");
   if(r.factoryId()==null||r.factoryId()<=0||r.workOrderId()==null||r.workOrderId()<=0||r.itemId()==null||r.itemId()<=0||r.processId()==null||r.processId()<=0)throw new ServiceException("请选择工厂、生产工单、产品明细和工序");
   if(!preview){try{if(!UUID.fromString(r.requestId()).toString().equals(r.requestId()))throw new IllegalArgumentException();}catch(Exception e){throw new ServiceException("提交请求编号无效");}if(r.orderDate()==null)throw new ServiceException("请选择出库日期");}
+  if(r.batchAction()!=null&&!Set.of("NEW","APPEND").contains(r.batchAction()))throw new ServiceException("请选择有效批次安排");
+  if("NEW".equals(r.batchAction())&&r.batchId()!=null||"APPEND".equals(r.batchAction())&&(r.batchId()==null||r.batchVersion()==null))throw new ServiceException("新开批次不能关联旧批次，补料须明确批次及版本");
+  if(r.plannedQuantity()!=null&&(!"NEW".equals(r.batchAction())||r.plannedQuantity()<0||r.plannedQuantity()>1000000))throw new ServiceException("只有新开批次可填写本次计划件数");
   if(r.groups()==null||r.groups().isEmpty())throw new ServiceException("请至少选择一个仓库");
   Set<Long> ids=new HashSet<>();long total=0;
   for(Group g:r.groups()){if(g==null||g.warehouseId()==null||g.warehouseId()<=0||!ids.add(g.warehouseId()))throw new ServiceException("仓库无效或重复");if(!preview)people(g.peopleOverride()==null?new People(r.operatorIds(),r.recipientId(),r.keeperId(),r.reviewerId()):g.peopleOverride());if(g.lines()==null||g.lines().stream().anyMatch(Objects::isNull)||!preview&&g.lines().isEmpty())throw new ServiceException("每个仓库都须添加有效物料明细");total+=g.lines().size();}

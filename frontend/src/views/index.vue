@@ -18,9 +18,10 @@ import{useWindowSize}from'@vueuse/core'
 import{ElMessageBox}from'element-plus'
 import * as echarts from'echarts'
 import useUserStore from'@/store/modules/user'
+import usePermissionStore from'@/store/modules/permission'
 import request from'@/utils/request'
 const user=useUserStore(),router=useRouter(),{width,height}=useWindowSize(),loading=ref(false),failed=ref(false),data=ref<Record<string,any>>({}),trendEl=ref<HTMLElement>(),rankingEl=ref<HTMLElement>(),factoryEl=ref<HTMLElement>(),distributionEl=ref<HTMLElement>(),instances:echarts.ECharts[]=[]
-const can=(p:string)=>user.permissions.includes('*:*:*')||user.permissions.includes(p),managementPath=computed(()=>[{path:'/metal/factory',permission:'metal:factory:list'},{path:'/metal/work-order',permission:'metal:work-order:list'},{path:'/metal/inventory',permission:'metal:inventory:list'},{path:'/metal/product',permission:'metal:product:list'},{path:'/metal/quotation',permission:'metal:quotation:list'},{path:'/system/user',permission:'system:user:list'}].find(x=>can(x.permission))?.path||''),hasTrend=computed(()=>data.value.trend?.some((x:any)=>Number(x.loss)!==0))
+const can=(p:string)=>user.permissions.includes('*:*:*')||user.permissions.includes(p),managementPath=computed(()=>usePermissionStore().managementPath==='/401'?'':usePermissionStore().managementPath),hasTrend=computed(()=>data.value.trend?.some((x:any)=>Number(x.loss)!==0))
 const selectedFactory=ref(''),factoryOptions=ref<{id:string;name:string}[]>([]),canSelectAll=ref(false),optionsReady=ref(false)
 const dashboardFactoryOptions=computed(()=>[...(canSelectAll.value?[{value:'',label:'全部工厂（汇总）'}]:[]),...factoryOptions.value.map(factory=>({value:factory.id,label:factory.name}))])
 let loadEpoch=0,disposed=false

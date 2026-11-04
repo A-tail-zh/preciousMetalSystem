@@ -49,7 +49,8 @@ for(const key of Object.keys(titles))test(`${titles[key]}有记录才显示`,asy
 test('RAW库存显示净重，不显示件数或半成品释放入口',async({page})=>{
  const {root}=await setup(page,'SemiFlowPanel',{...emptyFlow(),workOrder:{id:'W',version:1,status:'COMPLETED'},stocks:[{...row.stocks,category:'RAW',measurementMode:'WEIGHT',quantity:999,unreleasedQuantity:999}]})
  await expect(root.getByRole('heading',{name:titles.stocks,exact:true})).toBeVisible();const table=root.locator('.el-table');await expect(await cell(table,'实物净重(g)')).toHaveText('40.00')
- for(const title of ['实物库存(件)','参考件数（选填）','已释放未领(件)','尚未释放(件)'])await expect(await cell(table,title)).toHaveText('—')
+ for(const title of ['实物库存(件)','已释放未领(件)','尚未释放(件)'])await expect(await cell(table,title)).toHaveText('—')
+ await expect(await cell(table,'参考件数（选填）')).toHaveText('未记录')
  await expect(table.getByRole('button',{name:'释放',exact:true})).toHaveCount(0)
 })
 test('刷新后有记录显示，记录清空后整段隐藏',async({page})=>{
