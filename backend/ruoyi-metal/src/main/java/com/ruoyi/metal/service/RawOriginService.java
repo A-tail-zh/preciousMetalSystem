@@ -24,11 +24,16 @@ public class RawOriginService {
 
     public record Origin(String powderOrigin, String washingStatus) {}
 
-    public static Origin receipt(long metalId, String materialType, String powderOrigin) {
+    public static boolean iridium(JdbcTemplate jdbc,long metalId,long factory){
+        if(metalId<=0||factory<=0)return false;
+        return Integer.valueOf(1).equals(jdbc.queryForObject("SELECT COUNT(*) FROM metal_type WHERE metal_type_id=? AND factory_id=? AND name='铱'",Integer.class,metalId,factory));
+    }
+    public static Origin receipt(long metalId,String materialType,String powderOrigin){return receipt(metalId,materialType,powderOrigin,metalId==1);}
+    public static Origin receipt(long metalId, String materialType, String powderOrigin,boolean iridium) {
         if(metalId<=0 || materialType==null || materialType.isBlank()) throw fail("物料金属或类型缺失，请先核对");
         String origin=powderOrigin==null || powderOrigin.isBlank()?"UNKNOWN":powderOrigin;
         if(!Set.of("NATIVE","RECYCLED","UNKNOWN").contains(origin)) throw fail("粉料来源无效");
-        if("NATIVE".equals(origin) && (metalId!=1 || !powder(materialType))) throw fail("只有原生铱粉可免酸洗");
+        if("NATIVE".equals(origin) && (!iridium || !powder(materialType))) throw fail("只有原生铱粉可免酸洗");
         return new Origin(origin,"NATIVE".equals(origin)?"EXEMPT":"REQUIRED");
     }
 
@@ -38,12 +43,16 @@ public class RawOriginService {
         if(metalId<=0 || number(actual)!=metalId) throw fail("库存金属与工单不一致或尚未核对");
     }
 
-    public static void requireSmelting(Map<String,Object> inventory, long metalId) {
+    public static void requireSmelting(Map<String,Object> inventory,long metalId){
+        Object name=inventory.get("metal_type_name_snapshot");if(name==null)name=inventory.get("metal_type_name");
+        requireSmelting(inventory,metalId,name==null?metalId==1:"铱".equals(name.toString()));
+    }
+    public static void requireSmelting(Map<String,Object> inventory, long metalId,boolean iridium) {
         requireMetal(inventory,metalId);
         if(!"RAW".equals(inventory.get("category"))) throw fail("融定须领用合格原料");
         String washing=text(inventory.get("washing_status"));
         if("PASSED".equals(washing) && !isPowder(inventory)) return;
-        if("EXEMPT".equals(washing) && "NATIVE".equals(inventory.get("powder_origin")) && metalId==1 && isPowder(inventory)) return;
+        if("EXEMPT".equals(washing) && "NATIVE".equals(inventory.get("powder_origin")) && iridium && isPowder(inventory)) return;
         throw fail("原料尚未通过酸洗或来源核对，不能融定");
     }
 
@@ -79,6 +88,7 @@ public class RawOriginService {
         if(request.evidence()==null || request.evidence().isBlank() || request.evidence().length()>500)
             throw fail("请填写不超过500字的核对依据");
         if(!Set.of("RAW","SEMI").contains(text(inventory.get("category")))) throw fail("仅原料及半成品可核对来源资格");
+        scope.requireCatalog("RAW".equals(inventory.get("category"))?"material":"product",number(inventory.get("reference_id")),factory);
         String origin=request.powderOrigin(),washing=request.washingStatus();
         if(!Set.of("NATIVE","RECYCLED","UNKNOWN").contains(text(origin))
                 || !Set.of("EXEMPT","PASSED","REQUIRED","UNVERIFIED").contains(text(washing))) throw fail("来源或酸洗资格无效");
@@ -89,8 +99,9 @@ public class RawOriginService {
         long metal=number(inventory.get("metal_type_id_snapshot"));
         if(metal==0) metal=number(inventory.get("metal_type_id"));
         if(metal<=0) throw fail("库存金属缺失，请先核对物料资料");
-        if("NATIVE".equals(origin) && (metal!=1 || !isPowder(inventory))) throw fail("只有原生铱粉可免酸洗");
-        if("EXEMPT".equals(washing) && (!"NATIVE".equals(origin) || metal!=1 || !isPowder(inventory))) throw fail("只有原生铱粉可免酸洗");
+        scope.requireCatalog("metal",metal,factory);
+        if("NATIVE".equals(origin) && (!iridium(jdbc,metal,factory) || !isPowder(inventory))) throw fail("只有原生铱粉可免酸洗");
+        if("EXEMPT".equals(washing) && (!"NATIVE".equals(origin) || !iridium(jdbc,metal,factory) || !isPowder(inventory))) throw fail("只有原生铱粉可免酸洗");
         if("PASSED".equals(washing) && "RAW".equals(inventory.get("category")) && isPowder(inventory)) throw fail("酸洗合格原料应为金属料，不能将粉料直接核对为已酸洗");
         validateBasis(inventory,washing,smelting);
 

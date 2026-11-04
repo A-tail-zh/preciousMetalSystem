@@ -104,6 +104,7 @@ public class WarehouseService {
             else if (v instanceof java.sql.Date) value = v.toString();
             else if (v instanceof Number && (key.equals("id") || key.endsWith("Id") || key.endsWith("Actor")))
                 value = v.toString();
+            if("customerSnapshot".equals(key)&&v!=null)value=v instanceof String?JSON.parseObject(v.toString()):v;
             result.put(key, value);
         });
         if(SemiMeasurementRules.weight(input)){for(String field:List.of("quantity","completedQuantity","averageLoss","thresholdValue","plannedQuantity"))if(result.containsKey(field)&&(!"thresholdValue".equals(field)||!"PERCENT".equals(input.get("loss_unit"))))result.put(field,null);}
@@ -154,7 +155,7 @@ public class WarehouseService {
             case "warehouse" ->
                     ",(SELECT factory_name FROM metal_factory f WHERE f.factory_id=t.factory_id) factory_name";
             case "warehouse-order" ->
-                    ",(SELECT order_no FROM metal_work_order w WHERE w.work_order_id=t.work_order_id) work_order_no,(SELECT o.order_no FROM metal_warehouse_order_line l JOIN metal_warehouse_order o ON o.order_id=l.order_id WHERE l.line_id=(SELECT MIN(x.source_line_id) FROM metal_warehouse_order_line x WHERE x.order_id=t.order_id)) source_order_no";
+                    ",(SELECT factory_name FROM metal_factory f WHERE f.factory_id=t.factory_id) factory_name,(SELECT order_no FROM metal_work_order w WHERE w.work_order_id=t.work_order_id) work_order_no,(SELECT o.order_no FROM metal_warehouse_order_line l JOIN metal_warehouse_order o ON o.order_id=l.order_id WHERE l.line_id=(SELECT MIN(x.source_line_id) FROM metal_warehouse_order_line x WHERE x.order_id=t.order_id)) source_order_no";
             case "inventory" ->
                     ",h.name warehouse_name,"+RawMaterialKinds.labelSql("t","m")+" material_type,CASE WHEN t.category='RAW' AND t.material_ownership='FACTORY' THEN '工厂自有' WHEN t.category='RAW' THEN c.company_name ELSE t.customer_company_snapshot END customer_company_name,t.customer_name_snapshot customer_name,t.product_type_snapshot product_type,t.metal_type_name_snapshot metal_type_name,COALESCE((SELECT SUM(r.weight) FROM metal_stock_reservation r WHERE r.inventory_id=t.inventory_id AND r.status='ACTIVE'),0) reserved_weight,COALESCE((SELECT SUM(r.quantity) FROM metal_stock_reservation r WHERE r.inventory_id=t.inventory_id AND r.status='ACTIVE'),0) reserved_quantity,t.net_weight-COALESCE((SELECT SUM(r.weight) FROM metal_stock_reservation r WHERE r.inventory_id=t.inventory_id AND r.status='ACTIVE'),0) available_weight,EXISTS(SELECT 1 FROM metal_warehouse_order_line l JOIN metal_warehouse_order o ON o.order_id=l.order_id WHERE l.inventory_id=t.inventory_id AND (o.type NOT IN ('OPENING','ADJUST','RAW_IN','FINISHED_IN','SEMI_IN','RAW_PROCESS_IN') OR o.batch_id IS NOT NULL)) business_referenced";
             case "process-batch" -> ",w.order_no,s.process_name";
@@ -460,6 +461,10 @@ public class WarehouseService {
         var w = workOrder(input.workOrderId());
         if ("COMPLETED".equals(w.get("status"))) throw fail("已完成工单不能新增加工批次");
         var s = step(input.itemId(), input.processId());
+        Long factory=number(w.get("factory_id"));
+        scope.requireCatalog("process",input.processId(),factory);
+        scope.requireCatalog(s.get("material_id")!=null?"material":"product",number(s.get("material_id")!=null?s.get("material_id"):s.get("product_id")),factory);
+        scope.requireCatalog("metal",ProcessingPolicy.metalId(JSON.parseObject(str(s.get("product_snapshot")))),factory);
         requireProductionMetal(s);
         if (!input.workOrderId().equals(number(s.get("work_order_id")))) throw fail("产品明细不属于所选工单");
         int seq = number(s.get("sequence_no")).intValue();
@@ -471,6 +476,7 @@ public class WarehouseService {
         if (!SemiMeasurementRules.weight(s) && input.plannedQuantity() > max - used) throw fail("加工数量超过工单或前工序可用数量");
         var product = JSON.parseObject(str(s.get("product_snapshot")));
         long saved = insert("INSERT INTO metal_process_batch(request_id,request_hash,request_actor,factory_id,work_order_id,item_id,process_id,sequence_no,planned_quantity,completion_policy,measurement_mode,processing_policy_version,process_role,output_stage,metal_type_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", input.requestId(), hash, SecurityUtils.getUserId(), w.get("factory_id"), input.workOrderId(), input.itemId(), input.processId(), seq, input.plannedQuantity(), WarehouseFlowRules.POLICY, SemiMeasurementRules.mode(s.get("measurement_mode")),ProcessingPolicy.version(s),s.get("process_role"),s.get("output_stage"),product==null?null:product.get("metalTypeId"));
+        jdbc.update("UPDATE metal_process_batch SET loss_rate_basis=? WHERE batch_id=?",Objects.toString(w.get("loss_rate_basis"),"NET_INPUT"),saved);
         LocalDateTime stamp = LocalDateTime.now(ZoneId.of("Asia/Shanghai"));
         String no;
         do {
@@ -977,6 +983,7 @@ public class WarehouseService {
             RawInventoryCustomers.inherited(line,customerId);
             organization=customerId==null?"工厂自有":str(one("SELECT company_name FROM metal_customer WHERE customer_id=?",customerId).get("company_name"));
         }
+        scope.requireCatalog("RAW".equals(category)?"material":"product",reference,input.factoryId());
         var source = source(category, reference);
         if(origin!=null&&!"RAW".equals(category)){
             var inheritedStock=one("SELECT * FROM metal_inventory WHERE inventory_id=?",origin.get("inventory_id"));source=new LinkedHashMap<>(source);
@@ -1040,6 +1047,14 @@ public class WarehouseService {
         }
         if(rawKind!=null)jdbc.update("UPDATE metal_warehouse_order_line SET raw_material_kind=? WHERE line_id=?",rawKind,lineId);
         if(customerId!=null)jdbc.update("UPDATE metal_warehouse_order_line SET customer_id=? WHERE line_id=?",customerId,lineId);
+        if(Set.of("RAW_IN","OPENING").contains(input.type())&&"RAW".equals(category)){
+            var customer=new RawInventoryCustomers(jdbc).selected(input.factoryId(),line,true);
+            if("CUSTOMER".equals(customer.get("material_ownership"))){
+                var pending=rows("SELECT f.line_json FROM metal_warehouse_flow_line f JOIN metal_warehouse_flow_group g ON g.group_id=f.group_id WHERE g.order_id=? AND f.sequence_no=?",docId,sequence);
+                Object snapshot=pending.isEmpty()?RawInventoryCustomers.snapshot(customer):JSON.parseObject(str(pending.get(0).get("line_json"))).get("customerSnapshot");
+                jdbc.update("UPDATE metal_warehouse_order_line SET customer_snapshot=? WHERE line_id=?",snapshot==null?null:JSON.toJSONString(snapshot),lineId);
+            }
+        }
         if(weightManaged)jdbc.update("UPDATE metal_warehouse_order_line SET measurement_mode='WEIGHT',reference_quantity=? WHERE line_id=?",referenceQuantity,lineId);
         if(recoveryContext!=null)new ProcessRawReturnService(jdbc,scope).register(lineId,stockId,input.batchId(),recoveryContext);
         if(input.type().equals("PRODUCTION_OUT")&&"SEMI".equals(category))new SemiSourcePolicyService(jdbc,scope).bind(stock,batch,line.skipPermitId(),line.skipPermitVersion(),lineId);
@@ -1239,13 +1254,16 @@ public class WarehouseService {
         boolean percentage="PERCENT".equals(s.get("loss_unit"));
         var outputWeight=one("SELECT COALESCE(SUM(COALESCE(l.processor_net_weight,l.net_weight)),0) weight FROM metal_warehouse_order o JOIN metal_warehouse_order_line l ON l.order_id=o.order_id WHERE o.batch_id=? AND o.status='POSTED' AND o.type IN ('SEMI_IN','FINISHED_IN','RAW_PROCESS_IN')",batchId);
         BigDecimal output=decimal(outputWeight.get("weight")),returns=decimal(totals.get("returned")).subtract(output);
-        LossCalculator.PercentageResult rate=percentage?LossCalculator.percentage(decimal(totals.get("issued")),returns,output,decimal(s.get("theoretical_loss"))):null;
+        String lossBasis=Objects.toString(batch.get("loss_rate_basis"),"NET_INPUT");
+        BigDecimal denominator=LossCalculator.denominator(lossBasis,decimal(totals.get("issued")),returns);
+        LossCalculator.PercentageResult rate=percentage?LossCalculator.percentage(decimal(totals.get("issued")),returns,output,decimal(s.get("theoretical_loss")),lossBasis):null;
         var calculation = percentage?new LossCalculator.Result(rate.loss(),byWeight?BigDecimal.ZERO:rate.loss().divide(BigDecimal.valueOf(completed),2,java.math.RoundingMode.HALF_UP),rate.threshold(),rate.abnormal()):byWeight ? new LossCalculator.Result(decimal(totals.get("issued")).subtract(decimal(totals.get("returned"))),BigDecimal.ZERO,decimal(s.get("theoretical_loss")),false) : LossCalculator.calculate(decimal(totals.get("issued")), decimal(totals.get("returned")), completed, decimal(s.get("theoretical_loss")), tolerance);
         var materials = rows("SELECT l.code,l.name,SUM(COALESCE(l.processor_net_weight,l.net_weight)) weight FROM metal_warehouse_order o JOIN metal_warehouse_order_line l ON l.order_id=o.order_id WHERE o.batch_id=? AND o.status='POSTED' AND o.type='PRODUCTION_OUT' GROUP BY l.category,l.reference_id,l.code,l.name ORDER BY l.category,l.reference_id", batchId);
         for(var material:materials)BusinessDecimal.requireCompatibleBalance(decimal(material.get("weight")),"批次#"+batchId+"领料类别资料("+material.get("code")+")");
         var allocated = LossCalculator.allocate(calculation.loss(), materials.stream().map(r -> decimal(r.get("weight"))).toList());
         long report = insert("INSERT INTO metal_work_report(batch_id,factory_id,item_id,process_id,completed_quantity,issued_weight,returned_weight,loss_weight,average_loss,theoretical_loss,tolerance,threshold_value,rule_id,rule_version,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", batchId, batch.get("factory_id"), batch.get("item_id"), batch.get("process_id"), completed, totals.get("issued"), totals.get("returned"), calculation.loss(), calculation.average(), s.get("theoretical_loss"), tolerance, calculation.threshold(), rule == null ? null : rule.get("rule_id"), rule == null ? null : rule.get("version"), calculation.abnormal() ? "ABNORMAL" : "NORMAL");
         jdbc.update("UPDATE metal_work_report SET numeric_policy_version=2,loss_unit=?,net_input_weight=?,loss_rate_percent=? WHERE report_id=?",percentage?"PERCENT":"G_PER_PIECE",percentage?decimal(totals.get("issued")).subtract(returns):null,rate==null?null:rate.rate(),report);
+        jdbc.update("UPDATE metal_work_report SET loss_rate_basis=?,loss_rate_denominator_weight=? WHERE report_id=?",lossBasis,denominator,report);
         if(WarehouseFlowRules.POLICY.equals(batch.get("completion_policy"))){
             var received=one("SELECT COALESCE(SUM(l.net_weight),0) weight FROM metal_warehouse_order o JOIN metal_warehouse_order_line l ON l.order_id=o.order_id WHERE o.batch_id=? AND o.status='POSTED' AND o.type IN ('SEMI_IN','FINISHED_IN','RAW_PROCESS_IN','RAW_RETURN','SEMI_RETURN','PROCESS_RAW_RETURN')",batchId);
             var mass=WarehouseFlowRules.mass(decimal(totals.get("issued")),output,returns,decimal(received.get("weight")));
@@ -1259,9 +1277,10 @@ public class WarehouseService {
             var product = JSON.parseObject(str(s.get("product_snapshot")));
             long warning = insert("INSERT INTO metal_warning_record(report_id,factory_id,process_name,product_category,specification,order_no,threshold_value,theoretical_loss,average_loss) VALUES(?,?,?,?,?,?,?,?,?)", report, batch.get("factory_id"), s.get("process_name"), Objects.toString(product.get("category"),Objects.toString(product.get("materialType"),"原料加工")), product.get("specification"), one("SELECT order_no FROM metal_work_order WHERE work_order_id=?", batch.get("work_order_id")).get("order_no"), calculation.threshold(), s.get("theoretical_loss"), calculation.average());
             jdbc.update("UPDATE metal_warning_record SET loss_unit=?,loss_rate_percent=? WHERE warning_id=?",percentage?"PERCENT":"G_PER_PIECE",rate==null?null:rate.rate(),warning);
+            jdbc.update("UPDATE metal_warning_record SET loss_rate_basis=?,loss_rate_denominator_weight=? WHERE warning_id=?",lossBasis,denominator,warning);
             history(warning, "GENERATED", rule == null ? "按工单工序理论损耗快照判定" : "按配置规则生成");
         }
-        jdbc.update("UPDATE metal_process_batch SET status='SETTLED',completed_quantity=?,version=version+1 WHERE batch_id=?", completed, batchId);
+        jdbc.update("UPDATE metal_process_batch SET status='SETTLED',completed_quantity=?,loss_rate_denominator_weight=?,version=version+1 WHERE batch_id=?", completed, denominator, batchId);
         semi.checkCapacity(number(batch.get("item_id")));
         refreshOrder(number(batch.get("work_order_id")));
     }
@@ -1304,7 +1323,7 @@ public class WarehouseService {
         scope.check(number(w.get("factory_id")));
         var result = cleaned(rows("SELECT CAST(r.item_id AS CHAR) item_id,CAST(r.process_id AS CHAR) process_id,s.process_name,SUM(r.loss_weight) loss_weight,CAST(ROUND(SUM(r.loss_weight)/SUM(r.completed_quantity),6) AS DECIMAL(20,6)) average_loss,SUM(r.completed_quantity) completed_quantity,CASE WHEN SUM(r.status='ABNORMAL')>0 THEN 'ABNORMAL' ELSE 'NORMAL' END status FROM metal_work_report r JOIN metal_process_batch b ON b.batch_id=r.batch_id JOIN metal_work_order_step s ON s.item_id=r.item_id AND s.process_id=r.process_id WHERE b.work_order_id=? AND r.voided=FALSE AND b.status='SETTLED' GROUP BY r.item_id,r.process_id,s.process_name,s.sequence_no ORDER BY r.item_id,s.sequence_no", workOrderId));
         var metrics=new ProcessConsumptionService(jdbc,scope).settledReportMetrics(workOrderId);
-        for(var row:result){var values=metrics.get(row.get("itemId")+":"+row.get("processId"));if(values!=null)for(String key:List.of("lossUnit","measurementMode","thresholdValue","thresholdMin","thresholdMax","thresholdWarning","lossRatePercent","lossRateWarning","settledNetInputWeight","netInputWeight"))row.put(key,values.get(key));}
+        for(var row:result){var values=metrics.get(row.get("itemId")+":"+row.get("processId"));if(values!=null)for(String key:List.of("lossUnit","measurementMode","thresholdValue","thresholdMin","thresholdMax","thresholdWarning","lossRatePercent","lossRateWarning","settledNetInputWeight","netInputWeight","lossRateBasis","lossRateDenominatorWeight","lossRateGroups"))row.put(key,values.get(key));}
         return result;
     }
 
@@ -1524,11 +1543,11 @@ public class WarehouseService {
             case "people" ->
                     cleaned(rows("SELECT u.user_id id,COALESCE(NULLIF(u.nick_name,''),u.user_name) name,u.phonenumber phone," + PersonOptions.roles("u") + " role_names FROM sys_user u WHERE u.factory_id=? AND u.status='0' AND u.del_flag='0' ORDER BY u.user_id", factoryId));
             case "materials" ->
-                    cleaned(rows("SELECT m.material_id id,m.material_code code,CONCAT(t.name,m.material_type) name,m.material_type,m.metal_type_id,t.name metal_type_name,m.specification FROM metal_material m JOIN metal_type t ON t.metal_type_id=m.metal_type_id WHERE m.del_flag='0' ORDER BY m.material_id"));
+                    cleaned(rows("SELECT m.material_id id,m.material_code code,CONCAT(t.name,m.material_type) name,m.material_type,m.metal_type_id,t.name metal_type_name,m.specification FROM metal_material m JOIN metal_type t ON t.metal_type_id=m.metal_type_id WHERE m.del_flag='0' AND m.factory_id=? AND t.factory_id=m.factory_id ORDER BY m.material_id",factoryId));
             case "products" ->
-                    cleaned(rows("SELECT product_id id,product_code code,product_name name,product_category category,specification FROM metal_product WHERE del_flag='0' ORDER BY product_id"));
+                    cleaned(rows("SELECT product_id id,product_code code,product_name name,product_category category,specification FROM metal_product WHERE del_flag='0' AND factory_id=? ORDER BY product_id",factoryId));
             case "processes" ->
-                    cleaned(rows("SELECT p.process_id id,p.process_name name FROM metal_product_process x JOIN metal_process p ON p.process_id=x.process_id WHERE x.product_id=? AND p.del_flag='0' ORDER BY x.sequence_no", referenceId));
+                    cleaned(rows("SELECT p.process_id id,p.process_name name FROM metal_product_process x JOIN metal_process p ON p.process_id=x.process_id WHERE x.product_id=? AND p.del_flag='0' AND p.factory_id=? AND EXISTS(SELECT 1 FROM metal_product prod WHERE prod.product_id=x.product_id AND prod.factory_id=p.factory_id) ORDER BY x.sequence_no", referenceId,factoryId));
             case "work-orders" -> {
                 if (outputType == null) yield cleaned(rows("SELECT work_order_id id,order_no name,status FROM metal_work_order WHERE factory_id=? AND del_flag='0' AND status IN ('WAITING_MATERIAL','IN_PROGRESS') ORDER BY work_order_id", factoryId));
                 if (!Set.of("SEMI_IN", "FINISHED_IN", "RAW_PROCESS_IN").contains(outputType)) throw fail("请选择有效的产出入库类型");
@@ -1536,7 +1555,7 @@ public class WarehouseService {
                 yield cleaned(rows("SELECT w.work_order_id id,w.order_no name,w.status FROM metal_work_order w WHERE w.factory_id=? AND w.del_flag='0' AND w.status IN ('WAITING_MATERIAL','IN_PROGRESS') AND EXISTS(SELECT 1 FROM metal_work_order_item i JOIN metal_work_order_step s ON s.item_id=i.item_id WHERE i.work_order_id=w.work_order_id AND s.sequence_no " + comparison + " (SELECT MAX(last_step.sequence_no) FROM metal_work_order_step last_step WHERE last_step.item_id=i.item_id)) ORDER BY w.work_order_id", factoryId));
             }
             case "stocks" ->
-                    cleaned(rows("SELECT i.inventory_id id,i.name,i.code,i.specification,i.batch_no,i.category,i.warehouse_id,i.reference_id,i.net_weight,i.quantity,i.measurement_mode,i.reference_quantity,i.reference_complete,i.organization,i.customer_id,i.material_ownership,i.ownership_status,COALESCE((SELECT SUM(r.weight) FROM metal_stock_reservation r WHERE r.inventory_id=i.inventory_id AND r.status='ACTIVE'),0) reserved_weight,i.net_weight-COALESCE((SELECT SUM(r.weight) FROM metal_stock_reservation r WHERE r.inventory_id=i.inventory_id AND r.status='ACTIVE'),0) available_weight,i.origin_batch_id,b.status origin_batch_status,s.process_name origin_process_name,b.sequence_no origin_process_sequence,w.order_no origin_work_order_no FROM metal_inventory i LEFT JOIN metal_process_batch b ON b.batch_id=i.origin_batch_id LEFT JOIN metal_work_order w ON w.work_order_id=b.work_order_id LEFT JOIN metal_work_order_step s ON s.item_id=b.item_id AND s.process_id=b.process_id WHERE i.factory_id=? AND i.del_flag='0' AND i.origin_recovery_line_id IS NULL AND NOT EXISTS(SELECT 1 FROM metal_process_raw_return_line recovery WHERE recovery.inventory_id=i.inventory_id) ORDER BY i.inventory_id", factoryId));
+                    cleaned(rows("SELECT i.inventory_id id,i.name,i.code,i.specification,i.batch_no,i.category,i.warehouse_id,i.reference_id,i.net_weight,i.quantity,i.measurement_mode,i.reference_quantity,i.reference_complete,i.organization,i.customer_id,i.material_ownership,i.ownership_status,COALESCE((SELECT SUM(r.weight) FROM metal_stock_reservation r WHERE r.inventory_id=i.inventory_id AND r.status='ACTIVE'),0) reserved_weight,i.net_weight-COALESCE((SELECT SUM(r.weight) FROM metal_stock_reservation r WHERE r.inventory_id=i.inventory_id AND r.status='ACTIVE'),0) available_weight,i.origin_batch_id,b.status origin_batch_status,s.process_name origin_process_name,b.sequence_no origin_process_sequence,w.order_no origin_work_order_no FROM metal_inventory i LEFT JOIN metal_process_batch b ON b.batch_id=i.origin_batch_id LEFT JOIN metal_work_order w ON w.work_order_id=b.work_order_id LEFT JOIN metal_work_order_step s ON s.item_id=b.item_id AND s.process_id=b.process_id WHERE i.factory_id=? AND i.del_flag='0' AND ((i.category='RAW' AND EXISTS(SELECT 1 FROM metal_material cm JOIN metal_type mt ON mt.metal_type_id=cm.metal_type_id WHERE cm.material_id=i.reference_id AND cm.factory_id=i.factory_id AND mt.factory_id=i.factory_id AND cm.del_flag='0')) OR (i.category<>'RAW' AND EXISTS(SELECT 1 FROM metal_product cp JOIN metal_type mt ON mt.metal_type_id=cp.metal_type_id WHERE cp.product_id=i.reference_id AND cp.factory_id=i.factory_id AND mt.factory_id=i.factory_id AND cp.del_flag='0'))) AND i.origin_recovery_line_id IS NULL AND NOT EXISTS(SELECT 1 FROM metal_process_raw_return_line recovery WHERE recovery.inventory_id=i.inventory_id) ORDER BY i.inventory_id", factoryId));
             case "batches" ->
                     cleaned(rows("SELECT b.batch_id id,CONCAT(b.batch_no,' / ',s.process_name) name,b.batch_no,b.planned_quantity,b.version,b.completion_policy,b.work_order_id,b.item_id,b.process_id,(EXISTS(SELECT 1 FROM metal_warehouse_order io JOIN metal_warehouse_order_line il ON il.order_id=io.order_id WHERE io.batch_id=b.batch_id AND io.status='POSTED' AND io.type='PRODUCTION_OUT' AND il.category='SEMI' AND il.net_weight>0) AND EXISTS(SELECT 1 FROM metal_warehouse_order oo JOIN metal_warehouse_order_line ol ON ol.order_id=oo.order_id WHERE oo.batch_id=b.batch_id AND oo.status='POSTED' AND oo.type IN ('SEMI_IN','FINISHED_IN','RAW_PROCESS_IN') AND ol.net_weight>0) AND (SELECT COALESCE(SUM(CASE WHEN ro.type='PRODUCTION_OUT' THEN rl.net_weight WHEN ro.type IN ('SEMI_IN','FINISHED_IN','RAW_PROCESS_IN','RAW_RETURN','SEMI_RETURN','PROCESS_RAW_RETURN') THEN -rl.net_weight ELSE 0 END),0) FROM metal_warehouse_order ro JOIN metal_warehouse_order_line rl ON rl.order_id=ro.order_id WHERE ro.batch_id=b.batch_id AND ro.status='POSTED')>0) recovery_eligible FROM metal_process_batch b JOIN metal_work_order w ON w.work_order_id=b.work_order_id JOIN metal_work_order_step s ON s.item_id=b.item_id AND s.process_id=b.process_id WHERE b.factory_id=? AND b.status='OPEN' ORDER BY b.batch_id", factoryId));
             case "out-lines" -> outLines(factoryId);

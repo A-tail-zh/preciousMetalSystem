@@ -1,6 +1,6 @@
 import request from '@/utils/request'
 export interface MasterRow {
-  id: string; version: number; createBy: string; createTime: string; updateTime: string
+  id: string; version: number; createBy: string; creatorName?:string; processTypeName?:string; createTime: string; updateTime: string
   metalTypeId?:string; metalTypeName?:string; productType?:string; calculationVersion?:number;
   code?: string; name?: string; description?: string; processType?: number
   classificationLocked?: boolean; materialType?: string; specification?: string; category?: string; dimensions?: Record<string,string>

@@ -15,16 +15,16 @@ import com.ruoyi.metal.security.FactoryScope;
  /**
   * 获取当前用户可访问的工厂选项。
   */
- @GetMapping("/factories") @PreAuthorize("@ss.hasAnyPermi('metal:customer:add,metal:customer:edit,metal:production-line:add,metal:production-line:edit,system:user:add,system:user:edit,system:role:add,system:role:edit')")
+ @GetMapping("/factories") @PreAuthorize("@ss.hasAnyPermi('metal:product:list,metal:product:add,metal:product:edit,metal:material:list,metal:material:add,metal:material:edit,metal:process:list,metal:process:add,metal:process:edit,metal:quote-rule:list,metal:quote-rule:edit,metal:quotation:list,metal:customer:add,metal:customer:edit,metal:production-line:add,metal:production-line:edit,system:user:add,system:user:edit,system:role:add,system:role:edit')")
  public AjaxResult factories(){Long id=scope.currentFactory();return success(id==null?jdbc.queryForList("SELECT CAST(factory_id AS CHAR) id,factory_name name FROM metal_factory WHERE del_flag='0' ORDER BY factory_id"):jdbc.queryForList("SELECT CAST(factory_id AS CHAR) id,factory_name name FROM metal_factory WHERE del_flag='0' AND factory_id=?",id));}
  /**
   * 获取可选择的产品资料。
   */
- @GetMapping("/products") @PreAuthorize("@ss.hasAnyPermi('metal:production-line:add,metal:production-line:edit')") public AjaxResult products(){return success(jdbc.queryForList("SELECT CAST(product_id AS CHAR) id,product_name name FROM metal_product WHERE del_flag='0' ORDER BY product_id"));}
+ @GetMapping("/products") @PreAuthorize("@ss.hasAnyPermi('metal:production-line:add,metal:production-line:edit')") public AjaxResult products(@RequestParam(required=false) Long factoryId){Long factory=scope.resolveFactory(factoryId);return success(jdbc.queryForList("SELECT CAST(product_id AS CHAR) id,product_name name FROM metal_product WHERE del_flag='0' AND factory_id=? ORDER BY product_id",factory));}
  /**
   * 获取可选择的工序资料或产品工序计划。
   */
- @GetMapping("/processes") @PreAuthorize("@ss.hasAnyPermi('metal:product:add,metal:product:edit')") public AjaxResult processes(){return success(jdbc.queryForList("SELECT CAST(p.process_id AS CHAR) id,p.process_name name,CAST(p.process_type AS CHAR) processType,t.type_name processTypeName FROM metal_process p JOIN metal_process_type t ON t.type_id=p.process_type WHERE p.del_flag='0' ORDER BY p.process_id"));}
+ @GetMapping("/processes") @PreAuthorize("@ss.hasAnyPermi('metal:product:add,metal:product:edit')") public AjaxResult processes(@RequestParam(required=false) Long factoryId){Long factory=scope.resolveFactory(factoryId);return success(jdbc.queryForList("SELECT CAST(p.process_id AS CHAR) id,p.process_name name,CAST(p.process_type AS CHAR) processType,t.type_name processTypeName FROM metal_process p JOIN metal_process_type t ON t.type_id=p.process_type WHERE p.del_flag='0' AND p.factory_id=? AND t.factory_id=p.factory_id ORDER BY p.process_id",factory));}
  /**
   * 获取指定工厂的有效角色选项。
   */

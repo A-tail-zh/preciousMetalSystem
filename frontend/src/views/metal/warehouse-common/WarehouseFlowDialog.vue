@@ -16,6 +16,7 @@
      <h4>{{group.warehouseName||group.order?.warehouseId}} · {{group.orderNo}} · {{orderTypeNames[group.type]||group.type}}<template v-if="!rawInbound"> · {{group.status==='CONFIRMED'?'已确认':'待确认'}}</template></h4>
      <template v-if="rawInbound"><p class="receipt-people">指定验收人：{{keeperName(group)}}<span>实际验收人：{{group.confirmedBy?personName(group.confirmedByName,group.confirmedByDeleted):'尚未验收'}}</span></p><el-alert :title="acceptanceHint(group)" :type="canConfirm(group)?'success':'info'" :closable="false" show-icon/></template>
      <p v-else>领用人：{{group.recipientName||group.order?.recipientId||'—'}}；仓管员：{{group.keeperName||group.order?.keeperId}}；实际确认人：{{group.confirmedByName||group.confirmedBy||'—'}}</p>
+     <section v-if="rawInbound"><div v-for="(entry,index) in group.lines" :key="entry.id"><h4>第{{index+1}}条原料客户资料（申请快照）</h4><CustomerSnapshot :snapshot="entry.line.customerSnapshot" :factory-owned="entry.line.materialOwnership==='FACTORY'"/></div></section>
      <el-table :data="group.lines" border>
       <el-table-column :label="rawInbound?'物料':'物料/产品'" min-width="150"><template #default="{row}"><template v-if="rawInbound"><strong>{{row.line.code||row.stock?.code||'历史未记录编码'}}</strong><div>{{row.line.name||row.stock?.name||'历史未记录名称'}}</div></template><template v-else>{{row.line.code||row.stock?.code||row.line.referenceId||row.line.sourceLineId}}</template></template></el-table-column>
       <el-table-column v-if="rawInbound" label="归属" min-width="150"><template #default="{row}">{{ownership(row)}}</template></el-table-column>
@@ -46,6 +47,7 @@
  </el-dialog>
 </template>
 <script setup lang="ts">
+import CustomerSnapshot from './CustomerSnapshot.vue'
 import {ref,computed,onBeforeUnmount} from 'vue'
 import {onBeforeRouteLeave,onBeforeRouteUpdate} from 'vue-router'
 import {ElMessage} from 'element-plus'

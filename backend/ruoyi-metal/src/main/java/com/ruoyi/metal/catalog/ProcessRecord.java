@@ -10,7 +10,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 /**
  * 工序数据模型，承载业务字段及适用的参数校验规则。
  */
-public class ProcessRecord extends MasterRecord {
+public class ProcessRecord extends FactoryCatalogRecord {
     @NotBlank
     @Size(max = 100)
     private String name;
@@ -19,6 +19,9 @@ public class ProcessRecord extends MasterRecord {
     @NotNull
     @Min(1)
     private Integer processType;
+    private String processTypeName;
+    public String getProcessTypeName(){return processTypeName;}
+    public void setProcessTypeName(String value){processTypeName=value;}
 
     public String getName() {
         return name;

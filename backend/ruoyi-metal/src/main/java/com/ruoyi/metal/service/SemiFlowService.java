@@ -130,6 +130,8 @@ public class SemiFlowService {
         if (!"SEMI".equals(stock.get("category"))) throw fail("请选择半成品库存");
         if (!"NORMAL".equals(stock.get("ownership_status"))) throw fail("半成品来源待核对，不能领用或释放");
         WarehouseService.validateOwnership(stock);
+        scope.requireCatalog("product",num(stock.get("reference_id")),num(stock.get("factory_id")));
+        scope.requireCatalog("process",num(target.get("process_id")),num(stock.get("factory_id")));
         var source = sourceBatch(stock);
         var item = one("SELECT i.*,w.customer,w.customer_id,w.factory_id FROM metal_work_order_item i JOIN metal_work_order w ON w.work_order_id=i.work_order_id WHERE i.item_id=?", target.get("item_id"));
         if (num(stock.get("factory_id")) != num(item.get("factory_id")) || num(source.get("factory_id")) != num(item.get("factory_id")) || num(item.get("work_order_id")) != num(target.get("work_order_id")))
@@ -296,9 +298,10 @@ public class SemiFlowService {
         if (num(w.get("factory_id")) != factory || !Set.of("WAITING_MATERIAL", "IN_PROGRESS").contains(text(w.get("status"))))
             throw fail("请选择当前工厂的待领料或生产中工单");
         var target = one("SELECT s.*,i.work_order_id,w.processing_policy_version,COALESCE(i.material_snapshot,i.product_snapshot) product_snapshot FROM metal_work_order_step s JOIN metal_work_order_item i ON i.item_id=s.item_id JOIN metal_work_order w ON w.work_order_id=i.work_order_id WHERE s.item_id=? AND s.process_id=? AND i.work_order_id=?", item, process, work);
+        scope.requireCatalog("process",process,factory);
         target.put("item_id", item);
         var out = new ArrayList<Map<String, Object>>();
-        String candidateSql="SELECT i.*,m.material_type,COALESCE(i.metal_type_id_snapshot,m.metal_type_id) metal_type_id,EXISTS(SELECT 1 FROM metal_process_batch b JOIN metal_warehouse_order o ON o.batch_id=b.batch_id WHERE b.batch_id=i.origin_batch_id AND b.work_order_id=? AND o.type='RAW_PROCESS_IN' AND o.status='POSTED') same_work_raw_output FROM metal_inventory i LEFT JOIN metal_material m ON i.category='RAW' AND m.material_id=i.reference_id WHERE i.factory_id=? AND i.warehouse_id=? AND i.del_flag='0' AND i.ownership_status='NORMAL' AND i.net_weight>0 AND i.category IN ('RAW','SEMI')";
+        String candidateSql="SELECT i.*,m.material_type,COALESCE(i.metal_type_id_snapshot,m.metal_type_id) metal_type_id,EXISTS(SELECT 1 FROM metal_process_batch b JOIN metal_warehouse_order o ON o.batch_id=b.batch_id WHERE b.batch_id=i.origin_batch_id AND b.work_order_id=? AND o.type='RAW_PROCESS_IN' AND o.status='POSTED') same_work_raw_output FROM metal_inventory i LEFT JOIN metal_material m ON i.category='RAW' AND m.material_id=i.reference_id WHERE i.factory_id=? AND i.warehouse_id=? AND i.del_flag='0' AND i.ownership_status='NORMAL' AND i.net_weight>0 AND i.category IN ('RAW','SEMI') AND ((i.category='RAW' AND EXISTS(SELECT 1 FROM metal_material c JOIN metal_type mt ON mt.metal_type_id=c.metal_type_id AND mt.factory_id=c.factory_id WHERE c.material_id=i.reference_id AND c.factory_id=i.factory_id AND c.del_flag='0')) OR (i.category='SEMI' AND EXISTS(SELECT 1 FROM metal_product c JOIN metal_type mt ON mt.metal_type_id=c.metal_type_id AND mt.factory_id=c.factory_id WHERE c.product_id=i.reference_id AND c.factory_id=i.factory_id AND c.del_flag='0')))";
         if(!ProcessingPolicy.v2(target))candidateSql+=" AND (i.category<>'RAW' OR m.del_flag='0' AND m.metal_type_id=1)";
         for (var stock : jdbc.queryForList(candidateSql+" ORDER BY CASE i.category WHEN 'RAW' THEN 0 ELSE 1 END,i.inventory_id",work,factory,warehouse)) {
             if ("RAW".equals(stock.get("category"))) {
@@ -505,6 +508,7 @@ public class SemiFlowService {
         weight=BusinessDecimal.positive(weight,"释放净重");
         stock = one("SELECT * FROM metal_inventory WHERE inventory_id=? AND del_flag='0' FOR UPDATE", stockId);
         version(stock, v);
+        scope.requireCatalog("product",num(stock.get("reference_id")),num(stock.get("factory_id")));
         var source = sourceBatch(stock);
         if (SemiSourcePolicyService.hasSkipped(source)) throw fail("来源含跳步轨迹，不符合跨工单完整路线，不能释放");
         if (!"SEMI".equals(stock.get("category")) || !"SETTLED".equals(source.get("status")) || !Set.of("COMPLETED", "CLOSED_PARTIAL").contains(text(source.get("work_status"))) || !MaterialOwnership.sameCustomer(stock,source,source))

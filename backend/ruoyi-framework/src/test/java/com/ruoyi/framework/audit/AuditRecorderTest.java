@@ -13,11 +13,21 @@ class AuditRecorderTest{
   assertEquals(Set.of("2"),recorder.snapshot(c,body,null).keySet());assertEquals(Set.of("2"),recorder.snapshot(c,body,null).keySet());assertEquals("2",c.businessCode);assertEquals("metal_type_quote_rule",c.objectType);assertTrue(c.factories.isEmpty());
   verify(jdbc,times(2)).queryForList("SELECT * FROM metal_type_quote_rule WHERE metal_type_id=?",2L);
  }
- @Test void sharedPiUsesFixedGlobalIdForAuditSnapshots(){
-  var jdbc=mock(JdbcTemplate.class);when(jdbc.queryForList(anyString(),any(Object[].class))).thenReturn(List.of(new LinkedHashMap<>(Map.of("rule_id",1L,"pi_value",new java.math.BigDecimal("3.14"),"curved_bottom_factor",new java.math.BigDecimal("1.03")))));
-  var c=new AuditContext();c.path="/metal/volume-rule";c.verb="PUT";c.actorId=1L;
+ @Test void factoryPiAuditsTheSelectedFactory(){
+  var jdbc=mock(JdbcTemplate.class);when(jdbc.queryForList(anyString(),any(Object[].class))).thenReturn(List.of(new LinkedHashMap<>(Map.of("factory_id",7L,"pi_value",new java.math.BigDecimal("3.14"),"curved_bottom_factor",new java.math.BigDecimal("1.03")))));
+  var c=new AuditContext();c.path="/metal/volume-rule";c.verb="PUT";c.actorId=1L;c.request="{\"parameters\":{\"factoryId\":7}}";
   var body=new com.ruoyi.metal.catalog.VolumeRule(new java.math.BigDecimal("3.20"),0,new java.math.BigDecimal("1.035"));
-  var snapshot=new AuditRecorder(jdbc,mock(PlatformTransactionManager.class)).snapshot(c,body,null);assertEquals(Set.of("1"),snapshot.keySet());assertEquals("1.03",((Map<?,?>)snapshot.get("1")).get("curved_bottom_factor").toString());assertEquals("metal_volume_rule",c.objectType);verify(jdbc).queryForList("SELECT * FROM metal_volume_rule WHERE rule_id=?",1L);
+  var snapshot=new AuditRecorder(jdbc,mock(PlatformTransactionManager.class)).snapshot(c,body,null);assertEquals(Set.of("7"),snapshot.keySet());assertEquals(Set.of(7L),c.factories);assertEquals("1.03",((Map<?,?>)snapshot.get("7")).get("curved_bottom_factor").toString());assertEquals("metal_factory_volume_rule",c.objectType);verify(jdbc).queryForList("SELECT * FROM metal_factory_volume_rule WHERE factory_id=?",7L);
+ }
+ @Test void crossFactoryCatalogSnapshotDoesNotLeakToDeniedCaller(){
+  var jdbc=mock(JdbcTemplate.class);when(jdbc.queryForList(anyString(),any(Object[].class))).thenReturn(List.of(new LinkedHashMap<>(Map.of("product_id",12L,"factory_id",8L,"name","other factory"))));
+  var c=new AuditContext();c.path="/metal/product/12";c.actorId=2L;c.actorFactory=7L;
+  assertTrue(new AuditRecorder(jdbc,mock(PlatformTransactionManager.class)).snapshot(c,null,null).isEmpty());assertTrue(c.factories.isEmpty());
+ }
+ @Test void createdProcessTypeUsesReturnedIdAndDatabaseFactory(){
+  var jdbc=mock(JdbcTemplate.class);when(jdbc.queryForList(anyString(),any(Object[].class))).thenReturn(List.of(new LinkedHashMap<>(Map.of("type_id",12L,"factory_id",7L,"type_name","打磨"))));
+  var c=new AuditContext();c.path="/metal/process/types";c.actorId=1L;
+  assertEquals(Set.of("12"),new AuditRecorder(jdbc,mock(PlatformTransactionManager.class)).snapshot(c,Map.of("name","打磨"),Map.of("id","12")).keySet());assertEquals(Set.of(7L),c.factories);verify(jdbc).queryForList("SELECT * FROM metal_process_type WHERE type_id=?",12L);
  }
  @Test void deletedMetalRuleKeepsBeforeAndAfterAuditEvidence(){
   var jdbc=mock(JdbcTemplate.class);when(jdbc.queryForList(anyString(),any(Object[].class))).thenReturn(List.of(new LinkedHashMap<>(Map.of("metal_type_id",2L,"del_flag","0","version",4))),List.of(new LinkedHashMap<>(Map.of("metal_type_id",2L,"del_flag","2","version",5))));

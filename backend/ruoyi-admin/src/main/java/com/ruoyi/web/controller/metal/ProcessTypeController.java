@@ -15,9 +15,9 @@ import com.ruoyi.metal.service.ProcessTypeService;
 public class ProcessTypeController extends BaseController {
  private final ProcessTypeService service;
  public ProcessTypeController(ProcessTypeService service){this.service=service;}
- public record CreateType(@NotBlank(message="请输入工序类型名称") @Size(max=100,message="工序类型名称最多100个字符") String name){}
+ public record CreateType(@NotBlank(message="请输入工序类型名称") @Size(max=100,message="工序类型名称最多100个字符") String name, @jakarta.validation.constraints.Positive Long factoryId){}
  @GetMapping @PreAuthorize("@ss.hasAnyPermi('metal:process:list,metal:process:add,metal:process:edit')")
- public AjaxResult list(){return success(service.list());}
+ public AjaxResult list(@RequestParam(required=false) Long factoryId){return success(service.list(factoryId));}
  @PostMapping @PreAuthorize("@ss.hasPermi('metal:process:add')") @Log(title="工序类型",businessType=BusinessType.INSERT)
- public AjaxResult create(@Valid @RequestBody CreateType form){return success(service.create(form.name(),SecurityUtils.getUsername()));}
+ public AjaxResult create(@Valid @RequestBody CreateType form){return success(service.create(form.name(),SecurityUtils.getUsername(),form.factoryId()));}
 }

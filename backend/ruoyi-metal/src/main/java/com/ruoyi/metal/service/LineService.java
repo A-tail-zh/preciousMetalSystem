@@ -79,9 +79,11 @@ public class LineService extends MasterService<LineRecord> {
         if (row.getProductIds() == null || row.getProductIds().size() > 1000 || row.getProductIds().stream().anyMatch(i -> i == null || i <= 0) || new HashSet<>(row.getProductIds()).size() != row.getProductIds().size())
             throw new ServiceException("产品关联无效或重复");
         if (old != null) WorkOrderReferences.lineProducts(jdbc, row.getId(), row.getProductIds());
-        for (Long id : row.getProductIds().stream().sorted().toList())
+        for (Long id : row.getProductIds().stream().sorted().toList()) {
+            scope.requireCatalog("product",id,row.getFactoryId());
             if (jdbc.queryForList("SELECT product_id FROM metal_product WHERE product_id=? AND del_flag='0' FOR UPDATE", id).isEmpty())
                 throw new ServiceException("关联产品不存在或已删除");
+        }
     }
 
     /**

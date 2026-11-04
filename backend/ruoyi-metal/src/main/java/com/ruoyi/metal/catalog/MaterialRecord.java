@@ -7,7 +7,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 /**
  * 物料数据模型，承载业务字段及适用的参数校验规则。
  */
-public class MaterialRecord extends MasterRecord {
+public class MaterialRecord extends FactoryCatalogRecord {
     @NotBlank @Size(max=64)  private String code;
     @NotBlank @Size(max=100) private String materialType;
     @Size(max=200)  private String specification;

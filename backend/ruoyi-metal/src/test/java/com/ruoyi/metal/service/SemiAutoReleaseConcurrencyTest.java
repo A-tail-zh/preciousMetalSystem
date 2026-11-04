@@ -4,7 +4,7 @@ import org.junit.jupiter.api.Test;import org.junit.jupiter.api.condition.Enabled
 import static org.junit.jupiter.api.Assertions.*;
 import org.springframework.jdbc.core.JdbcTemplate;import org.springframework.jdbc.datasource.*;import org.springframework.transaction.support.TransactionTemplate;
 /** Two real MySQL connections in the disposable migration copy; never runs on the business database. */
-@EnabledIfEnvironmentVariable(named="METAL_FLOW_ISOLATED_JDBC_URL",matches=".*(3310/heavy_metal_plan_upgrade_20261022|3321/heavy_metal_flow).*")
+@EnabledIfEnvironmentVariable(named="METAL_FLOW_ISOLATED_JDBC_URL",matches=".*(3310/heavy_metal_plan_upgrade_20261022|3321/(?:heavy_metal_flow|heavy_metal_factory_20261104)).*")
 class SemiAutoReleaseConcurrencyTest {
  @Test void manualReleaseCommittedDuringWorkerLockWaitIsDeductedAndCanceledAutoDoesNotReappear()throws Exception{
   var ds=WarehouseIntegrationEnvironment.dataSource();var latch=new CountDownLatch(1);

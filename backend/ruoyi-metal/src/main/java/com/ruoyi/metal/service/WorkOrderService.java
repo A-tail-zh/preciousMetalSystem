@@ -245,6 +245,7 @@ public class WorkOrderService {
     @SuppressWarnings("unchecked")
     private List<Prepared> prepare(WorkOrderRequest request, List<Map<String, Object>> previous,int policy,String taskType) {
         line(request.productionLineId(), request.factoryId(), true);
+        for(var item:request.items()){if(item.productId()!=null)scope.requireCatalog("product",item.productId(),request.factoryId());if(item.materialId()!=null)scope.requireCatalog("material",item.materialId(),request.factoryId());for(var plan:item.plans())scope.requireCatalog("process",plan.processId(),request.factoryId());}
         if (request.orderDate().getYear() < 1000 || request.orderDate().getYear() > 9999)
             throw invalid("开单日期超出支持范围");
         Map<Long, Map<String, Object>> old = new HashMap<>();
@@ -447,7 +448,7 @@ public class WorkOrderService {
     @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public List<Map<String,Object>> reports(Long work){
         access(header(work,false));
-        var result=jdbc.queryForList("SELECT CAST(r.report_id AS CHAR) id,CAST(r.batch_id AS CHAR) batchId,CAST(r.item_id AS CHAR) itemId,CAST(r.process_id AS CHAR) processId,b.batch_no batchNo,JSON_UNQUOTE(JSON_EXTRACT(COALESCE(i.material_snapshot,i.product_snapshot),'$.name')) productName,s.process_name processName,b.process_role processRole,b.output_stage outputStage,b.measurement_mode measurementMode,r.loss_unit lossUnit,CAST(r.theoretical_loss AS CHAR) theoreticalLoss,CAST(r.loss_weight AS CHAR) lossWeight,CAST(r.issued_weight AS CHAR) issuedWeight,CAST(r.returned_weight AS CHAR) returnedWeight,(SELECT COALESCE(SUM(COALESCE(l.processor_net_weight,l.net_weight)),0) FROM metal_warehouse_order o JOIN metal_warehouse_order_line l ON l.order_id=o.order_id WHERE o.batch_id=r.batch_id AND o.status='POSTED' AND o.type IN ('RAW_PROCESS_IN','SEMI_IN','FINISHED_IN')) outputWeight,r.handover_difference handoverDifference,r.keeper_received_weight keeperReceivedWeight,r.processor_output_weight processorOutputWeight,r.processor_returned_weight processorReturnedWeight,r.status,DATE_FORMAT(r.create_time,'%Y-%m-%d %H:%i:%s') settledTime,CASE WHEN r.loss_unit='PERCENT' THEN CAST(r.loss_rate_percent AS CHAR) ELSE NULL END lossRatePercent FROM metal_work_report r JOIN metal_process_batch b ON b.batch_id=r.batch_id JOIN metal_work_order_item i ON i.item_id=r.item_id JOIN metal_work_order_step s ON s.item_id=r.item_id AND s.process_id=r.process_id WHERE b.work_order_id=? AND b.status='SETTLED' AND r.voided=FALSE ORDER BY r.create_time DESC,r.report_id DESC",work);
+        var result=jdbc.queryForList("SELECT CAST(r.report_id AS CHAR) id,CAST(r.batch_id AS CHAR) batchId,CAST(r.item_id AS CHAR) itemId,CAST(r.process_id AS CHAR) processId,b.batch_no batchNo,JSON_UNQUOTE(JSON_EXTRACT(COALESCE(i.material_snapshot,i.product_snapshot),'$.name')) productName,s.process_name processName,b.process_role processRole,b.output_stage outputStage,b.measurement_mode measurementMode,r.loss_unit lossUnit,r.loss_rate_basis lossRateBasis,CAST(r.loss_rate_denominator_weight AS CHAR) lossRateDenominatorWeight,CAST(r.theoretical_loss AS CHAR) theoreticalLoss,CAST(r.loss_weight AS CHAR) lossWeight,CAST(r.issued_weight AS CHAR) issuedWeight,CAST(r.returned_weight AS CHAR) returnedWeight,(SELECT COALESCE(SUM(COALESCE(l.processor_net_weight,l.net_weight)),0) FROM metal_warehouse_order o JOIN metal_warehouse_order_line l ON l.order_id=o.order_id WHERE o.batch_id=r.batch_id AND o.status='POSTED' AND o.type IN ('RAW_PROCESS_IN','SEMI_IN','FINISHED_IN')) outputWeight,r.handover_difference handoverDifference,r.keeper_received_weight keeperReceivedWeight,r.processor_output_weight processorOutputWeight,r.processor_returned_weight processorReturnedWeight,r.status,DATE_FORMAT(r.create_time,'%Y-%m-%d %H:%i:%s') settledTime,CASE WHEN r.loss_unit='PERCENT' THEN CAST(r.loss_rate_percent AS CHAR) ELSE NULL END lossRatePercent FROM metal_work_report r JOIN metal_process_batch b ON b.batch_id=r.batch_id JOIN metal_work_order_item i ON i.item_id=r.item_id JOIN metal_work_order_step s ON s.item_id=r.item_id AND s.process_id=r.process_id WHERE b.work_order_id=? AND b.status='SETTLED' AND r.voided=FALSE ORDER BY r.create_time DESC,r.report_id DESC",work);
         for(var row:result)if(!"PERCENT".equals(row.get("lossUnit"))){var loss=new BigDecimal(row.get("lossWeight").toString());var issued=new BigDecimal(row.get("issuedWeight").toString());var returned=new BigDecimal(row.get("returnedWeight").toString());var net=issued.subtract(returned).add(new BigDecimal(row.get("outputWeight").toString()));row.put("lossRatePercent",ReportMetrics.percentage(loss,net,loss.compareTo(issued.subtract(returned))==0));}
         return result;
     }
@@ -524,6 +525,7 @@ public class WorkOrderService {
         String ownerName = text(owner(request.factoryId(), request.ownerId(), true), "name");
         long orderId = insert("INSERT INTO metal_work_order(order_no,request_id,request_hash,request_actor,customer,factory_id,production_line_id,owner_id,factory_name,line_name,owner_name,order_date,create_by,creator_name,update_by,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'WAITING_MATERIAL')", reservedNumber, request.requestId(), fingerprint, SecurityUtils.getUserId(), customer.get("name"), request.factoryId(), request.productionLineId(), request.ownerId(), factory, lineName, ownerName, java.sql.Date.valueOf(request.orderDate()), SecurityUtils.getUsername(), actorName(), SecurityUtils.getUsername());
         jdbc.update("UPDATE metal_work_order SET auto_semi_release_eligible=?,customer_id=?,customer_version=?,customer_snapshot=?,processing_type=?,task_type=?,processing_policy_version=? WHERE work_order_id=?",autoSemiReleaseEnabled&&"PRODUCTION".equals(task),request.customerId(),customer.get("version"),customer.size()==1?null:JSON.toJSONString(customer),request.processingType(),task,ProcessingPolicy.EXECUTION_VERSION,orderId);
+        jdbc.update("UPDATE metal_work_order SET loss_rate_basis='OUTBOUND_TOTAL' WHERE work_order_id=?",orderId);
         writeItems(orderId, prepared);
         review(orderId, "CREATE", null, "WAITING_MATERIAL", null);
         return Long.toString(orderId);
@@ -625,18 +627,18 @@ public class WorkOrderService {
      */
     public List<Map<String, Object>> availableProducts(Long lineId) {
         line(lineId, null, false);
-        return jdbc.queryForList("SELECT CAST(p.product_id AS CHAR) id,p.product_name name,p.product_category category,p.version version,CAST(p.metal_type_id AS CHAR) metalTypeId,EXISTS(SELECT 1 FROM metal_product_process pp WHERE pp.product_id=p.product_id) hasProcesses FROM metal_line_product lp JOIN metal_product p ON p.product_id=lp.product_id JOIN metal_type t ON t.metal_type_id=p.metal_type_id WHERE lp.production_line_id=? AND p.del_flag='0' ORDER BY p.product_id", lineId);
+        return jdbc.queryForList("SELECT CAST(p.product_id AS CHAR) id,p.product_name name,p.product_category category,p.version version,CAST(p.metal_type_id AS CHAR) metalTypeId,EXISTS(SELECT 1 FROM metal_product_process pp WHERE pp.product_id=p.product_id) hasProcesses FROM metal_line_product lp JOIN metal_product p ON p.product_id=lp.product_id JOIN metal_type t ON t.metal_type_id=p.metal_type_id WHERE lp.production_line_id=? AND p.del_flag='0' AND p.factory_id=t.factory_id AND p.factory_id=(SELECT factory_id FROM metal_production_line WHERE production_line_id=lp.production_line_id) ORDER BY p.product_id", lineId);
     }
 
     public List<Map<String,Object>> availableMaterials(Long factoryId){
         scope.check(factoryId);
-        return jdbc.queryForList("SELECT CAST(m.material_id AS CHAR) id,m.material_code code,CONCAT(t.name,m.material_type) name,m.material_type materialType,m.specification,CAST(m.metal_type_id AS CHAR) metalTypeId,t.name metalTypeName FROM metal_material m JOIN metal_type t ON t.metal_type_id=m.metal_type_id WHERE m.del_flag='0' ORDER BY m.material_id");
+        return jdbc.queryForList("SELECT CAST(m.material_id AS CHAR) id,m.material_code code,CONCAT(t.name,m.material_type) name,m.material_type materialType,m.specification,CAST(m.metal_type_id AS CHAR) metalTypeId,t.name metalTypeName FROM metal_material m JOIN metal_type t ON t.metal_type_id=m.metal_type_id WHERE m.del_flag='0' AND m.factory_id=? AND t.factory_id=m.factory_id ORDER BY m.material_id",factoryId);
     }
 
     public List<Map<String,Object>> rawProcesses(Long factoryId){
         scope.check(factoryId);
         var result=new ArrayList<Map<String,Object>>();
-        for(var process:jdbc.queryForList("SELECT CAST(p.process_id AS CHAR) id,p.process_name name,t.type_name typeName FROM metal_process p JOIN metal_process_type t ON t.type_id=p.process_type WHERE p.del_flag='0' ORDER BY p.process_id")){
+        for(var process:jdbc.queryForList("SELECT CAST(p.process_id AS CHAR) id,p.process_name name,t.type_name typeName FROM metal_process p JOIN metal_process_type t ON t.type_id=p.process_type WHERE p.del_flag='0' AND p.factory_id=? AND t.factory_id=p.factory_id ORDER BY p.process_id",factoryId)){
             try{ProcessingPolicy.route("RAW_PROCESSING",List.of(text(process,"typeName")),List.of("WEIGHT"));result.add(process);}
             catch(ServiceException ignored){}
         }
@@ -651,11 +653,14 @@ public class WorkOrderService {
         if (jdbc.queryForList("SELECT p.product_id FROM metal_line_product lp JOIN metal_product p ON p.product_id=lp.product_id WHERE lp.production_line_id=? AND lp.product_id=? AND p.del_flag='0'", lineId, productId).isEmpty())
             throw invalid("产品不属于所选产线");
         var product = products.detail(productId);
+        var lineFactory=jdbc.queryForObject("SELECT factory_id FROM metal_production_line WHERE production_line_id=?",Long.class,lineId);
+        scope.requireCatalog("product",productId,lineFactory);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("snapshot", snapshot(product));
         result.put("version",product.getVersion());
         List<Map<String, Object>> steps = new ArrayList<>();
         for (var step : product.getProcesses()) {
+            scope.requireCatalog("process",step.getProcessId(),lineFactory);
             Map<String, Object> value = new LinkedHashMap<>();
             value.put("processId", step.getProcessId().toString());
             value.put("processName", step.getProcessName());

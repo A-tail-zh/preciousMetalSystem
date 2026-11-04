@@ -93,6 +93,7 @@ class FactoryServiceTest {
     @Test void activeCustomersPreventFactoryDeletion() {
         var scope=mock(com.ruoyi.metal.security.FactoryScope.class);
         var jdbc=mock(org.springframework.jdbc.core.JdbcTemplate.class);
+        when(jdbc.queryForObject(anyString(),eq(Integer.class),any(Object[].class))).thenReturn(0);
         when(jdbc.queryForObject(contains("metal_customer"),eq(Integer.class),eq(1L))).thenReturn(1);
         when(mapper.lockFactory(1L)).thenReturn(factory(1));
         var guarded=new FactoryService(mapper,scope,jdbc);

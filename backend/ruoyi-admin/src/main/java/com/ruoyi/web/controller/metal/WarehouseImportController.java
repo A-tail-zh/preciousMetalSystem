@@ -48,7 +48,7 @@ public class WarehouseImportController {
    if(type!=null&&Set.of("RAW_IN","RAW_PROCESS_IN","PROCESS_RAW_RETURN","SEMI_IN","FINISHED_IN").contains(type)){
     var reference=book.createSheet("ID参考");boolean rawReference=Set.of("RAW_IN","RAW_PROCESS_IN","PROCESS_RAW_RETURN").contains(type);String[] headings=rawReference?new String[]{"ID","编号","名称","规格型号","物料类型","金属类型"}:new String[]{"ID","编号","名称","规格型号"};String[] keys=rawReference?new String[]{"id","code","name","specification","material_type","metal_type_name"}:new String[]{"id","code","name","specification"};var heading=reference.createRow(0);
     for(int i=0;i<headings.length;i++){heading.createCell(i).setCellValue(headings[i]);reference.setColumnWidth(i,(i==3?60:i==0?20:30)*256);reference.setDefaultColumnStyle(i,textStyle);}
-    int rowIndex=1;for(var item:imports.templateReferences(type)){var referenceRow=reference.createRow(rowIndex++);for(int i=0;i<keys.length;i++){var cell=referenceRow.createCell(i);cell.setCellStyle(textStyle);cell.setCellValue(Objects.toString(item.get(keys[i]),""));}}
+    int rowIndex=1;for(var item:imports.templateReferences(type,factoryId)){var referenceRow=reference.createRow(rowIndex++);for(int i=0;i<keys.length;i++){var cell=referenceRow.createCell(i);cell.setCellStyle(textStyle);cell.setCellValue(Objects.toString(item.get(keys[i]),""));}}
     reference.createFreezePane(0,1);
    }
    response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");response.setHeader("Content-Disposition","attachment; filename=warehouse-lines.xlsx");book.write(response.getOutputStream());

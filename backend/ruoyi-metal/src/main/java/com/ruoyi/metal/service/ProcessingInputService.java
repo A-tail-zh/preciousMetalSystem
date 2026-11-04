@@ -24,7 +24,7 @@ final class ProcessingInputService {
   String role=Objects.toString(target.get("process_role"),"");
   if("RAW".equals(stock.get("category"))){
    if("POST_PROCESS".equals(role))throw new ServiceException("融定后工序必须领用合格半成品，原料不能绕过融定");
-   if("SMELTING".equals(role))RawOriginService.requireSmelting(stock,metal);
+   if("SMELTING".equals(role))RawOriginService.requireSmelting(stock,metal,RawOriginService.iridium(jdbc,metal,SemiFlowService.num(stock.get("factory_id"))));
    else if("UNVERIFIED".equals(stock.get("washing_status")))throw new ServiceException("旧库存来源尚未核对，请先完成来源核对");
    Map<String,Object> source=null;
    if(stock.get("origin_batch_id")!=null){source=jdbc.queryForMap("SELECT item_id,work_order_id,factory_id,sequence_no,status FROM metal_process_batch WHERE batch_id=?",stock.get("origin_batch_id"));if(!"SETTLED".equals(source.get("status")))throw new ServiceException("加工原料产出须结算后才能领用");if(Objects.equals(String.valueOf(source.get("item_id")),String.valueOf(target.get("item_id")))&&SemiFlowService.num(source.get("sequence_no"))>=SemiFlowService.num(target.get("sequence_no")))throw new ServiceException("同任务原料产出只能承接后续工序");}

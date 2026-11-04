@@ -30,13 +30,26 @@ public class QuoteController extends BaseController {
         return success((Object) ("data:image/png;base64," + java.util.Base64.getEncoder().encodeToString(images.render(input.category(), input.dimensions()))));
     }
 
+
+    @GetMapping("/metal/metal-types")
+    @PreAuthorize("@ss.hasAnyPermi('metal:material:list,metal:material:query,metal:material:add,metal:material:edit,metal:product:list,metal:product:query,metal:product:add,metal:product:edit,metal:quote-rule:list,metal:quote-rule:edit,metal:quotation:list')")
+    public AjaxResult metals(@RequestParam(name="factoryId",required=false) Long factoryId){return success(service.metals(factoryId));}
+    public record MetalName(@jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max=100) String name,@jakarta.validation.constraints.Positive Long factoryId){}
+    @PostMapping("/metal/metal-types")
+    @PreAuthorize("@ss.hasAnyPermi('metal:material:add,metal:material:edit,metal:product:add,metal:product:edit,metal:quote-rule:edit')")
+    @Log(title="新增金属类型",businessType=BusinessType.INSERT)
+    public AjaxResult addMetal(@Valid @RequestBody MetalName input){return success().put("id",service.addMetal(input.name(),input.factoryId()));}
+    @GetMapping("/metal/quote-rule/list")
+    @PreAuthorize("@ss.hasPermi('metal:quote-rule:list')")
+    public AjaxResult rules(@RequestParam(required=false) Long metalTypeId,@RequestParam(name="factoryId",required=false) Long factoryId){return success(service.rules(metalTypeId,factoryId));}
+
     /**
      * 查询当前报价规则。
      */
     @GetMapping("/metal/quote-rule")
     @PreAuthorize("@ss.hasPermi('metal:quote-rule:list')")
-    public AjaxResult get() {
-        return success(service.get());
+    public AjaxResult get(@RequestParam Long metalTypeId) {
+        return success(service.rule(metalTypeId));
     }
 
     /**
@@ -45,8 +58,29 @@ public class QuoteController extends BaseController {
     @PutMapping("/metal/quote-rule")
     @PreAuthorize("@ss.hasPermi('metal:quote-rule:edit')")
     @Log(title = "报价规则", businessType = BusinessType.UPDATE)
-    public AjaxResult update(@Valid @RequestBody QuoteRule rule) {
+    public AjaxResult update(@Valid @RequestBody com.ruoyi.metal.catalog.MetalQuoteRule rule) {
         service.update(rule);
+        return success();
+    }
+
+    public record RuleVersion(@jakarta.validation.constraints.NotNull @jakarta.validation.constraints.Min(0) Integer version){}
+    @DeleteMapping("/metal/quote-rule/{metalTypeId}")
+    @PreAuthorize("@ss.hasPermi('metal:quote-rule:edit')")
+    @Log(title="删除金属报价规则",businessType=BusinessType.DELETE)
+    public AjaxResult remove(@PathVariable Long metalTypeId,@Valid @RequestBody RuleVersion input){
+        service.remove(metalTypeId,input.version());
+        return success();
+    }
+
+    @GetMapping("/metal/volume-rule")
+    @PreAuthorize("@ss.hasAnyPermi('metal:quote-rule:list,metal:quotation:list,metal:product:query,metal:product:add,metal:product:edit')")
+    public AjaxResult volumeRule(@RequestParam(name="factoryId",required=false) Long factoryId){return success(service.volumeRule(factoryId));}
+
+    @PutMapping("/metal/volume-rule")
+    @PreAuthorize("@ss.hasPermi('metal:quote-rule:edit')")
+    @Log(title="本厂体积参数",businessType=BusinessType.UPDATE)
+    public AjaxResult updateVolumeRule(@Valid @RequestBody com.ruoyi.metal.catalog.VolumeRule rule,@RequestParam(name="factoryId",required=false) Long factoryId){
+        service.updateVolumeRule(rule,factoryId);
         return success();
     }
 
@@ -55,8 +89,8 @@ public class QuoteController extends BaseController {
      */
     @GetMapping("/metal/quotation/context")
     @PreAuthorize("@ss.hasPermi('metal:quotation:list')")
-    public AjaxResult context() {
-        return success(service.context());
+    public AjaxResult context(@RequestParam(name="factoryId",required=false) Long factoryId) {
+        return success(service.context(factoryId));
     }
 
     /**
@@ -64,8 +98,8 @@ public class QuoteController extends BaseController {
      */
     @GetMapping("/metal/product/calculation-rule")
     @PreAuthorize("@ss.hasAnyPermi('metal:product:query,metal:product:add,metal:product:edit')")
-    public AjaxResult productRule() {
-        return success(service.get());
+    public AjaxResult productRule(@RequestParam(required=false) Long metalTypeId,@RequestParam(name="factoryId",required=false) Long factoryId) {
+        return success(metalTypeId==null?service.productRules(null,factoryId):service.productRules(metalTypeId,factoryId).stream().findFirst().orElseThrow(()->new com.ruoyi.common.exception.ServiceException("请先配置金属密度"))).put("volumeRule",service.volumeRule(factoryId));
     }
 
     /**
@@ -73,7 +107,7 @@ public class QuoteController extends BaseController {
      */
     @PostMapping("/metal/quotation/calculate")
     @PreAuthorize("@ss.hasPermi('metal:quotation:list')")
-    public AjaxResult calculate(@Valid @RequestBody com.ruoyi.metal.catalog.CalculationRequest input) {
-        return success(service.calculate(input));
+    public AjaxResult calculate(@Valid @RequestBody com.ruoyi.metal.catalog.CalculationRequest input,@RequestParam(name="factoryId",required=false) Long factoryId) {
+        return success(service.calculate(input,factoryId));
     }
 }

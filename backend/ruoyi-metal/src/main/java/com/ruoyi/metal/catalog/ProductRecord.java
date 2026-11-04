@@ -10,7 +10,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 /**
  * 产品数据模型，承载业务字段及适用的参数校验规则。
  */
-public class ProductRecord extends MasterRecord {
+public class ProductRecord extends FactoryCatalogRecord {
     @NotBlank
     @Size(max = 64)
     private String code;

@@ -80,6 +80,43 @@ public class FactoryScope {
             throw new ServiceException("所属工厂不存在或已删除");
     }
 
+    public Long resolveFactory(Long requested) {
+        Long own=currentFactory();
+        Long target=requested==null?own:requested;
+        if(target==null)throw new ServiceException("请先选择所属工厂");
+        check(target);
+        return target;
+    }
+
+    public Long catalogFactory(String kind,Long id) {
+        String table,pk,active="";
+        switch(kind){
+            case "product" -> {table="metal_product";pk="product_id";active=" AND del_flag='0'";}
+            case "material" -> {table="metal_material";pk="material_id";active=" AND del_flag='0'";}
+            case "process" -> {table="metal_process";pk="process_id";active=" AND del_flag='0'";}
+            case "process-type" -> {table="metal_process_type";pk="type_id";}
+            case "metal" -> {table="metal_type";pk="metal_type_id";}
+            default -> throw new IllegalArgumentException("Invalid catalog kind");
+        }
+        if(id==null||id<=0)throw new ServiceException("请选择有效的本厂资料");
+        String related=Set.of("product","material").contains(kind)?",metal_type_id":kind.equals("process")?",process_type":"";
+        var rows=jdbc.queryForList("SELECT factory_id"+related+" FROM "+table+" WHERE "+pk+"=?"+active,id);
+        if(rows.isEmpty())throw new ServiceException("资料不存在或已删除");
+        Object owner=rows.get(0).get("factory_id");
+        if(!(owner instanceof Number number))throw new ServiceException("历史公共资料不能用于新业务，请创建本厂资料",403);
+        Long factory=number.longValue();check(factory);
+        if(Set.of("product","material").contains(kind))requireCatalog("metal",asCatalogId(rows.get(0).get("metal_type_id")),factory);
+        if(kind.equals("process"))requireCatalog("process-type",asCatalogId(rows.get(0).get("process_type")),factory);
+        return factory;
+    }
+
+    private static Long asCatalogId(Object value){return value==null?null:Long.valueOf(value.toString());}
+
+    public void requireCatalog(String kind,Long id,Long expectedFactory) {
+        Long actual=catalogFactory(kind,id);
+        if(!actual.equals(expectedFactory))throw new ServiceException("不能引用其他工厂的资料",403);
+    }
+
     /**
      * 校验工厂访问权限，并锁定有效的工厂记录，保护当前事务中的后续业务操作。
      *

@@ -12,7 +12,7 @@ import com.ruoyi.common.exception.ServiceException;
  * 物料业务服务，负责业务校验、数据处理和相关持久化操作。
  */
 @Service
-public class MaterialService extends MasterService<MaterialRecord> {
+public class MaterialService extends FactoryCatalogService<MaterialRecord> {
     private final org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     public MaterialService(MaterialMapper mapper, FactoryScope scope, org.springframework.jdbc.core.JdbcTemplate jdbc) {
@@ -33,13 +33,13 @@ public class MaterialService extends MasterService<MaterialRecord> {
      */
     @Override
     protected void prepare(MaterialRecord row, MaterialRecord old) {
+        super.prepare(row,old);
         String type = MaterialTypes.require(row.getMaterialType());
         if (MaterialTypes.LEGACY.containsKey(row.getMaterialType())) {
-            if (row.getMetalTypeId() != null && !Long.valueOf(1).equals(row.getMetalTypeId()))
-                throw new ServiceException("旧物料类型仅适用于铱，请选择粉料、块料或旧料");
-            row.setMetalTypeId(1L);
+            throw new ServiceException("新物料请选择粉料、块料或旧料，并选择本厂金属");
         }
         row.setMaterialType(type);
+        scope.requireCatalog("metal",row.getMetalTypeId(),row.getFactoryId());
         if (row.getMetalTypeId() == null || row.getMetalTypeId() <= 0
                 || jdbc.queryForList("SELECT metal_type_id FROM metal_type WHERE metal_type_id=?", row.getMetalTypeId()).isEmpty())
             throw new ServiceException("请选择有效金属类型");

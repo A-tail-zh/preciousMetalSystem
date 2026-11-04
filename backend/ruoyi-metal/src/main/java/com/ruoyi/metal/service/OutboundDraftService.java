@@ -23,7 +23,7 @@ public class OutboundDraftService {
  Map<String,Object> inspect(Request r){return inspect(r,true);}
  Map<String,Object> inspectConfirmation(Request r){return inspect(r,false);}
  private Map<String,Object> inspect(Request r,boolean candidates){
-  OutboundSubmissionRules.validate(r,true);scope.check(r.factoryId());
+  OutboundSubmissionRules.validate(r,true);scope.check(r.factoryId());scope.requireCatalog("process",r.processId(),r.factoryId());
   var target=one("SELECT s.sequence_no,s.measurement_mode,s.weight_stage_closed,i.work_order_id,i.item_id,w.factory_id,w.status,s.process_id,s.process_role,s.output_stage,w.processing_policy_version,COALESCE(i.material_snapshot,i.product_snapshot) product_snapshot FROM metal_work_order_step s JOIN metal_work_order_item i ON i.item_id=s.item_id JOIN metal_work_order w ON w.work_order_id=i.work_order_id WHERE s.item_id=? AND s.process_id=? AND w.del_flag='0'",r.itemId(),r.processId());
   if(n(target.get("factory_id"))!=r.factoryId()||n(target.get("work_order_id"))!=r.workOrderId())throw new ServiceException("生产关联不属于当前工厂或工单",403);
   if(!Set.of("WAITING_MATERIAL","IN_PROGRESS").contains(target.get("status")))throw new ServiceException("请选择待领料或生产中的工单");
