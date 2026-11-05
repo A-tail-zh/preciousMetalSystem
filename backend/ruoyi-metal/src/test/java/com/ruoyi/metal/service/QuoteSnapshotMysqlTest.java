@@ -11,7 +11,7 @@ import org.springframework.transaction.interceptor.TransactionInterceptor;
 import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
 import com.ruoyi.metal.catalog.CalculationRequest;
 
-@EnabledIfEnvironmentVariable(named="METAL_FLOW_ISOLATED_JDBC_URL",matches="jdbc:mysql://(?:127\\.0\\.0\\.1|localhost):3321/(?:heavy_metal_flow|heavy_metal_factory_20261104)(?:\\?.*)?")
+@EnabledIfEnvironmentVariable(named="METAL_FLOW_ISOLATED_JDBC_URL",matches=WarehouseIntegrationEnvironment.URL_PATTERN)
 class QuoteSnapshotMysqlTest {
  @Test void independentTrialUsesOneRealMysqlSnapshotWhenAnotherConnectionChangesPi()throws Exception{
   var ds=WarehouseIntegrationEnvironment.dataSource();var base=new JdbcTemplate(ds);String table="test_qr_snapshot_"+System.getenv("METAL_FLOW_FACTORY_ID")+"_"+UUID.randomUUID().toString().substring(0,8);assertTrue(table.matches("test_qr_snapshot_[0-9]+_[a-f0-9]{8}"));boolean created=false;long factory=Long.parseLong(System.getenv("METAL_FLOW_FACTORY_ID"));long metal=base.queryForObject("SELECT metal_type_id FROM metal_type WHERE factory_id=? AND name='铱'",Long.class,factory);

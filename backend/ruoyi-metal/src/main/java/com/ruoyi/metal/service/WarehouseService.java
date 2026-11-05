@@ -920,7 +920,7 @@ public class WarehouseService {
             reference = number(stock.get("reference_id"));
             batchNo = str(stock.get("batch_no"));
         }
-        String effectiveMode=origin!=null?InventoryMeasurement.mode(origin):stock!=null?InventoryMeasurement.mode(stock):batch!=null?InventoryMeasurement.outputMode(jdbc,batch,category):"RAW".equals(category)?"WEIGHT":"PIECE";
+        String effectiveMode=origin!=null?InventoryMeasurement.mode(origin):stock!=null?InventoryMeasurement.mode(stock):batch!=null&&ProcessingPolicy.primaryOutput(input.type())?InventoryMeasurement.outputMode(jdbc,batch,category):"RAW".equals(category)?"WEIGHT":"PIECE";
         boolean newRaw="RAW".equals(category)&&(origin!=null?number(origin.get("measurement_policy_version"))>=3:stock!=null?number(stock.get("measurement_policy_version"))>=3:batch!=null&&MeasurementPolicy.configurable(jdbc,batch));
         boolean weightManaged="WEIGHT".equals(effectiveMode)&&("SEMI".equals(category)||newRaw);
         Long referenceQuantity=weightManaged?SemiMeasurementRules.reference(line.referenceQuantity()):null;

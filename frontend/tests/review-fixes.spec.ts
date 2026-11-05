@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test'
+import {test,expect} from './helpers/isolated-live-test'
 import {login,api} from '../../tools/local-test-client.mjs'
 
 test('credential requests and legacy credential cache are never persisted',async({page})=>{

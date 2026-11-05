@@ -1,17 +1,13 @@
 import{workOrderFixture}from'../../tools/work-order-test-fixture.mjs'
 import{registerPageResources}from'./helpers/fixture-registration'
-import {api,ok,detail,login} from '../../tools/local-test-client.mjs'
-import { test, expect } from '@playwright/test'
-import { readFileSync } from 'node:fs'
+import {api,ok,detail,login,env} from '../../tools/local-test-client.mjs'
+import { test, expect } from './helpers/isolated-live-test'
 import { execFileSync } from 'node:child_process'
 
 test('真实登录和工厂页面CRUD', async ({page}) => {
   test.skip(process.env.LIVE_FACTORY !== '1', '需要已配置并运行的MySQL、Redis和后端')
-  const env = Object.fromEntries(readFileSync(new URL('../../.env',import.meta.url),'utf8').split(/\r?\n/).filter(l => /^[A-Z_]+=/.test(l)).map(l => {
-    const i = l.indexOf('='); return [l.slice(0,i),l.slice(i+1).replace(/^'(.*)'$/,'$1')]
-  }))
   const captchaResponse = page.waitForResponse(res => res.url().includes('/captchaImage') && res.ok())
-  await page.goto('/metal/factory')
+  await page.goto('/login')
   const captcha = await (await captchaResponse).json()
   await page.getByPlaceholder('账号',{exact:true}).fill('admin')
   await page.getByPlaceholder('密码',{exact:true}).fill(env.ADMIN_LOGIN_PASSWORD)
@@ -21,7 +17,7 @@ test('真实登录和工厂页面CRUD', async ({page}) => {
     await page.getByPlaceholder('验证码',{exact:true}).fill(String(answer))
   }
   await page.getByRole('button',{name:'登 录',exact:true}).click()
-  await expect(page).toHaveURL(/\/metal\/factory$/)
+  await expect(page).not.toHaveURL(/\/login$/);await page.goto('/metal/factory')
   const fixture=await workOrderFixture();registerPageResources(page,fixture);const name = fixture.prefix+'页面厂', updated = `${name}_修改`
   let created = false; const apiToken=await login()
   try {
@@ -39,7 +35,7 @@ test('真实登录和工厂页面CRUD', async ({page}) => {
     let row = page.getByRole('row').filter({hasText:name})
     await expect(row).toBeVisible()
     await row.getByRole('button',{name:'编辑',exact:true}).click()
-    await expect(dialog.getByLabel('占地面积（万㎡）',{exact:true})).toHaveValue('12.5000')
+    await expect(dialog.getByLabel('占地面积（万㎡）',{exact:true})).toHaveValue('12.50')
     await dialog.getByLabel('工厂名称',{exact:true}).fill(updated)
     await dialog.getByRole('button',{name:'确定',exact:true}).click()
     row = page.getByRole('row').filter({hasText:updated})

@@ -10,7 +10,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import com.ruoyi.metal.security.FactoryScope;
 
-@EnabledIfEnvironmentVariable(named="METAL_FLOW_ISOLATED_JDBC_URL",matches="jdbc:mysql://(?:127\\.0\\.0\\.1|localhost):3321/(?:heavy_metal_flow|heavy_metal_factory_20261104)(?:\\?.*)?")
+@EnabledIfEnvironmentVariable(named="METAL_FLOW_ISOLATED_JDBC_URL",matches=WarehouseIntegrationEnvironment.URL_PATTERN)
 class AcidWashReservationOptionsTest {
  @Test void optionsKeepBookReservedAndAvailableSeparateAndIgnoreReleasedHolds()throws Exception{
   try(var connection=WarehouseIntegrationEnvironment.dataSource().getConnection()){

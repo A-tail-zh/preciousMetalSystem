@@ -1,4 +1,5 @@
-import {test,expect,type Page} from '@playwright/test'
+import {assertRegisteredIsolation} from '../../tools/isolated-test-environment.mjs'
+import {test,expect,type Page} from './helpers/isolated-live-test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -11,11 +12,13 @@ import {assertEnvironment,assertFixtureOwnership} from '../../tools/test-fixture
 test('real warning handler persists across reopen, refresh and account switch',async({page,baseURL})=>{
  test.skip(process.env.LIVE_WARNING_HANDLER!=='1','需独立预警验收环境')
  test.setTimeout(180000)
+ if(process.env.TEST_ISOLATED_RUN==='1')assertRegisteredIsolation();else{
  assert.equal(process.env.TEST_MYSQL_PORT,'3321')
  assert.match(process.env.TEST_DB_SCHEMA??'',/^heavy_metal_warning_20261103_[a-f0-9]{8}$/)
  assert.equal(process.env.TEST_API_BASE_URL,'http://127.0.0.1:8097')
  assert.equal(process.env.TEST_REDIS_PORT,'6397')
  assert.equal(baseURL,'http://127.0.0.1:5187')
+ }
  const evidence=path.resolve('../.runtime/warning-handler-live-20261103')
  fs.mkdirSync(evidence,{recursive:true})
  const checks:string[]=[],errors:string[]=[]
@@ -52,13 +55,13 @@ test('real warning handler persists across reopen, refresh and account switch',a
    await page.getByPlaceholder('账号',{exact:true}).fill(phone)
    await page.getByPlaceholder('密码',{exact:true}).fill(f.password)
    if(captcha.captchaEnabled){
-    const code=JSON.parse(execFileSync('D:/javaenv/Redis-x64-3.0.504/redis-cli.exe',['-h','127.0.0.1','-p','6397','--raw','get','captcha_codes:'+captcha.uuid],{encoding:'utf8'}).trim())
+    const code=JSON.parse(execFileSync('D:/javaenv/Redis-x64-3.0.504/redis-cli.exe',['-h','127.0.0.1','-p',process.env.TEST_REDIS_PORT||'6397','--raw','get','captcha_codes:'+captcha.uuid],{encoding:'utf8'}).trim())
     await page.getByPlaceholder('验证码',{exact:true}).fill(String(code))
    }
    const loginResponse=page.waitForResponse(response=>new URL(response.url()).pathname==='/dev-api/login')
    await page.getByRole('button',{name:/^登\s*录$/}).click()
    const result=ok(await (await loginResponse).json())
-   await expect(page).toHaveURL(/\/metal\/warning-record/)
+   await expect(page.getByRole('link',{name:'预警记录',exact:true})).toBeVisible();await page.getByRole('link',{name:'预警记录',exact:true}).click();await expect(page.getByRole('heading',{name:'预警记录',exact:true,level:1})).toBeVisible()
    return result.token as string
   }
   const open=async()=>{

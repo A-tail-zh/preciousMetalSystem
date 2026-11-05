@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test'
+import {test,expect} from './helpers/isolated-live-test'
 test('收货单位未填写时显示行客户，保留明确填写值且不修改原始数据',async({page})=>{
  await page.goto('/index')
  const result=await page.evaluate(async()=>{

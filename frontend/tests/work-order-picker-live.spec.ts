@@ -1,4 +1,4 @@
-import{test,expect}from'@playwright/test'
+import{test,expect}from'./helpers/isolated-live-test'
 import{workOrderFixture}from'../../tools/work-order-test-fixture.mjs'
 test('工单底部时间面板不被表格或弹窗裁剪',async({page,context})=>{
  test.skip(process.env.LIVE_WORK_ORDER!=='1','需要本地工单服务');test.setTimeout(60000)

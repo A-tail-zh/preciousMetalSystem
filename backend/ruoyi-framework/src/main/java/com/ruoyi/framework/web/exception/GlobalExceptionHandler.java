@@ -16,6 +16,7 @@ import com.ruoyi.common.core.domain.AjaxResult;
 import com.ruoyi.common.core.text.Convert;
 import com.ruoyi.common.exception.DemoModeException;
 import com.ruoyi.common.exception.ServiceException;
+import com.ruoyi.common.exception.user.UserException;
 import com.ruoyi.common.utils.StringUtils;
 import com.ruoyi.common.utils.html.EscapeUtil;
 
@@ -88,6 +89,13 @@ public class GlobalExceptionHandler
         }
         log.error("请求参数类型不匹配'{}',发生系统异常.", requestURI, e);
         return InputValidationErrors.response(java.util.List.of(InputValidationErrors.field(e.getName(),"TypeMismatch",InputValidationErrors.label(e.getName())+"格式不正确")));
+    }
+
+    @ExceptionHandler(UserException.class)
+    public AjaxResult handleUserException(UserException e)
+    {
+        log.warn("登录校验未通过：{}", e.getCode());
+        return AjaxResult.error(e.getMessage());
     }
 
     /**

@@ -1,4 +1,4 @@
-import {test,expect,type Page} from '@playwright/test'
+import {test,expect,type Page} from './helpers/isolated-live-test'
 import {randomInt,randomBytes} from 'node:crypto'
 import {api,login,loginResponse,ok,detail} from '../../tools/local-test-client.mjs'
 

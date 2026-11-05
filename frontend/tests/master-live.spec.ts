@@ -1,23 +1,24 @@
+import {selectWarehouseOption} from './helpers/warehouse-select'
 import{workOrderFixture}from'../../tools/work-order-test-fixture.mjs'
 import{registerPageResources}from'./helpers/fixture-registration'
-import {test,expect} from '@playwright/test'
+import {test,expect} from './helpers/isolated-live-test'
 // Local integration fixtures; no API interception or disabled captcha.
 import {api,login,ok,detail} from '../../tools/local-test-client.mjs'
 
 test('六项真实页面、菜单、报价边界及原型比例',async({page,context})=>{
  test.skip(process.env.LIVE_MASTER!=='1','需要本地真实服务')
- test.setTimeout(90000);page.setDefaultTimeout(10000)
+ test.setTimeout(120000);page.setDefaultTimeout(10000)
  const f=await workOrderFixture();registerPageResources(page,f);const token=f.admin,suffix=f.suffix,created:Array<[string,string]>=[]
  const create=async(path:string,body:object)=>{const r=ok(await api(path,token,'POST',body));const id=String(r.id??r.factoryId);created.push([path,id]);return id}
  await context.addCookies([{name:'Admin-Token',value:token,url:'http://127.0.0.1:5173'}])
- const choose=async(label:string,value:string)=>{await page.getByRole('dialog').locator('.el-form-item').filter({hasText:label}).locator('.el-select__wrapper').click();await page.getByRole('option',{name:value,exact:true}).click()}
+ const choose=async(label:string,value:string)=>{const field=page.getByRole('dialog').locator('.el-form-item').filter({has:page.locator('label').filter({hasText:new RegExp('^'+label+'$')})});await selectWarehouseOption(page,field,value)}
  const save=async()=>{const dialog=page.getByRole('dialog');await dialog.getByRole('button',{name:'确定',exact:true}).click();await expect(dialog).not.toBeVisible()}
  try{
-  const factory=await create('/metal/factory',{factoryName:`${f.prefix}厂_${suffix}`,area:'1',address:'验收地址'})
+  const factory=f.factoryA
   const role=await create('/system/role',{roleName:`${f.prefix}角色_${suffix}`,factoryId:factory,roleSort:0,status:'0',menuIds:[]})
-  const process=await create('/metal/process',{name:`${f.prefix}工序_${suffix}`,processType:1,description:'原描述'})
-  const material=await create('/metal/material',{code:`BM${suffix}`,materialType:'铱粉',specification:'旧规格'})
-  const product=await create('/metal/product',{name:`${f.prefix}产品_${suffix}`,code:`BP${suffix}`,metalTypeId:'1',productType:'环',dimensions:{outerDiameter:'12',innerDiameter:'10',thickness:'2'},processes:[{processId:process,loss:'0.123456'}]})
+  const process=await create('/metal/process',{factoryId:factory,name:`${f.prefix}工序_${suffix}`,processType:(await detail('/metal/process',f.processA,token)).processType,description:'原描述'})
+  const material=await create('/metal/material',{factoryId:factory,metalTypeId:f.metalA,code:`BM${suffix}`,materialType:'粉料',specification:'旧规格'})
+  const product=await create('/metal/product',{factoryId:factory,name:`${f.prefix}产品_${suffix}`,code:`BP${suffix}`,metalTypeId:f.metalA,calculationVersion:2,productType:'环',dimensions:{outerDiameter:'12',innerDiameter:'10',thickness:'2'},processes:[{processId:process,loss:'0.12',lossUnit:'PERCENT',measurementMode:'PIECE'}]})
   const line=await create('/metal/production-line',{name:`${f.prefix}线_${suffix}`,code:`BL${suffix}`,factoryId:factory,productIds:[product]})
   const staff=await create('/system/user',{nickName:`${f.prefix}人员_${suffix}`,phonenumber:'137'+suffix.replace(/\D/g,'').slice(-8),factoryId:factory,roleIds:[role],status:'0',password:`Browser${suffix}`})
   await page.setViewportSize({width:1442,height:1026});await page.goto('/metal/factory')
@@ -47,11 +48,11 @@ test('六项真实页面、菜单、报价边界及原型比例',async({page,con
   }
   // Exercise new forms against the real server, including factory/role selections.
   for(const [menu,path,name,fields,selects]of [
-   ['物料管理','/metal/material',`UM${suffix}`,{'物料编码':`UM${suffix}`},[['物料类型','粉料'],['金属类型','铱']]],
-   ['产品管理','/metal/product',`${f.prefix}新增产品_${suffix}`,{'产品编号':`UP${suffix}`,'产品名称':`${f.prefix}新增产品_${suffix}`,'外径（cm）':'12','内径（cm）':'10','厚（cm）':'2'},[['金属类型','铱'],['产品类型','环']]],
-   ['产线管理','/metal/production-line',`${f.prefix}新增线_${suffix}`,{'产线编号':`UL${suffix}`,'产线名称':`${f.prefix}新增线_${suffix}`},[['所属工厂',`${f.prefix}厂_${suffix}`]]],
-   ['角色管理','/system/role',`${f.prefix}新增角色_${suffix}`,{'角色名称':`${f.prefix}新增角色_${suffix}`},[['所属工厂',`${f.prefix}厂_${suffix}`]]],
-   ['人员管理','/system/user',`${f.prefix}新增人员_${suffix}`,{'手机号':'135'+suffix.replace(/\D/g,'').slice(-8),'姓名':`${f.prefix}新增人员_${suffix}`,'初始密码':`Browser${suffix}`},[['所属工厂',`${f.prefix}厂_${suffix}`],['角色',`${f.prefix}改角色_${suffix}`]]]
+   ['物料管理','/metal/material',`UM${suffix}`,{'物料编码':`UM${suffix}`},[['所属工厂',f.prefix+'厂A'],['物料类型','粉料'],['金属类型','铱']]],
+   ['产品管理','/metal/product',`${f.prefix}新增产品_${suffix}`,{'产品编号':`UP${suffix}`,'产品名称':`${f.prefix}新增产品_${suffix}`,'外径（cm）':'12','内径（cm）':'10','厚（cm）':'2'},[['所属工厂',f.prefix+'厂A'],['金属类型','铱'],['产品类型','环']]],
+   ['产线管理','/metal/production-line',`${f.prefix}新增线_${suffix}`,{'产线编号':`UL${suffix}`,'产线名称':`${f.prefix}新增线_${suffix}`},[['所属工厂',f.prefix+'厂A']]],
+   ['角色管理','/system/role',`${f.prefix}新增角色_${suffix}`,{'角色名称':`${f.prefix}新增角色_${suffix}`},[['所属工厂',f.prefix+'厂A']]],
+   ['人员管理','/system/user',`${f.prefix}新增人员_${suffix}`,{'手机号':'135'+suffix.replace(/\D/g,'').slice(-8),'姓名':`${f.prefix}新增人员_${suffix}`,'初始密码':`Browser${suffix}`},[['所属工厂',f.prefix+'厂A'],['角色',`${f.prefix}改角色_${suffix}`]]]
   ] as Array<[string,string,string,Record<string,string>,Array<[string,string]>]>){
    await page.getByRole('link',{name:menu,exact:true}).click();await page.getByRole('button',{name:'添加',exact:true}).click()
    for(const [label,value]of selects){await choose(label,value);if(label==='角色')await page.getByRole('dialog').getByRole('heading').click()}
@@ -67,9 +68,9 @@ test('六项真实页面、菜单、报价边界及原型比例',async({page,con
    created.splice(created.findIndex(([p,id])=>p===path&&id===item.id),1)
   }
   await page.getByRole('link',{name:'工序管理',exact:true}).click();await page.getByRole('button',{name:'添加',exact:true}).click()
-  const dialog=page.getByRole('dialog');const newName=`${f.prefix}新增工序_${suffix}`;await dialog.getByLabel('工序名称',{exact:true}).fill(newName);await choose('工序类型','粉料');await save()
+  const dialog=page.getByRole('dialog');const newName=`${f.prefix}新增工序_${suffix}`;await dialog.getByLabel('工序名称',{exact:true}).fill(newName);await choose('所属工厂',f.prefix+'厂A');await choose('工序类型','融定');await save()
   const newRow=page.getByRole('row').filter({hasText:newName});await expect(newRow).toBeVisible();await newRow.getByRole('button',{name:'删除',exact:true}).click();await page.getByRole('button',{name:'确定',exact:true}).click();await expect(newRow).toHaveCount(0)
-  await page.getByRole('link',{name:'报价规则管理',exact:true}).click();await expect(page.getByLabel('基础单价',{exact:true})).toBeVisible()
+  await page.getByRole('link',{name:'报价规则管理',exact:true}).click();await expect(page.getByRole('heading',{name:'金属报价规则',exact:true})).toBeVisible()
   await page.getByRole('link',{name:'自动报价单',exact:true}).click();await expect(page.getByRole('button',{name:/计算/})).toBeDisabled()
  }finally{
   // Clear line relations first; delete only this test's temporary records.

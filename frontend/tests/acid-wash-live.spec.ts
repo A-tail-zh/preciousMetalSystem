@@ -1,9 +1,10 @@
-import {test,expect} from '@playwright/test'
+import {assertRegisteredIsolation} from '../../tools/isolated-test-environment.mjs'
+import {test,expect} from './helpers/isolated-live-test'
 import {warehouseFixture} from '../../tools/warehouse-test-fixture.mjs'
 import {sql} from '../../tools/local-test-client.mjs'
 
 test('legacy acid entry is read-only for new starts at all business widths',async({page})=>{
- test.setTimeout(120000);expect(process.env.TEST_MYSQL_PORT).toBe('3320');expect(process.env.TEST_API_BASE_URL).toBe('http://127.0.0.1:8090');expect(sql('SELECT @@port')).toBe('3320')
+ test.setTimeout(120000);if(process.env.TEST_ISOLATED_RUN==='1')assertRegisteredIsolation();else{expect(process.env.TEST_MYSQL_PORT).toBe('3320');expect(process.env.TEST_API_BASE_URL).toBe('http://127.0.0.1:8090')}expect(sql('SELECT @@port')).toBe(process.env.TEST_MYSQL_PORT)
  const f=await warehouseFixture()
  try{
   await page.context().addCookies([{name:'Admin-Token',value:f.admin,url:'http://127.0.0.1:5180'}]);await page.goto('/metal/work-order')

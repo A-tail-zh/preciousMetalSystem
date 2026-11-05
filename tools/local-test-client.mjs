@@ -1,8 +1,10 @@
 import {readFileSync} from 'node:fs'
 import {execFileSync} from 'node:child_process'
 import assert from 'node:assert/strict'
+import {assertRegisteredIsolation,guardIsolatedFetch} from './isolated-test-environment.mjs'
+if(process.env.TEST_ISOLATED_RUN==='1')globalThis.fetch=guardIsolatedFetch(globalThis.fetch,assertRegisteredIsolation());
 export const env=Object.fromEntries(readFileSync(new URL('../.env',import.meta.url),'utf8').split(/\r?\n/).filter(l=>/^[A-Z_]+=/.test(l)).map(l=>{const i=l.indexOf('=');return[l.slice(0,i),l.slice(i+1).replace(/^'(.*)'$/,'$1')]}))
-for(const [key,value]of Object.entries({MYSQL_PORT:process.env.TEST_MYSQL_PORT,MYSQL_USER:process.env.TEST_MYSQL_USER,MYSQL_PASSWORD:process.env.TEST_MYSQL_PASSWORD,REDIS_PORT:process.env.TEST_REDIS_PORT}))if(value!==undefined)env[key]=value;
+for(const [key,value]of Object.entries({MYSQL_PORT:process.env.TEST_MYSQL_PORT,MYSQL_USER:process.env.TEST_MYSQL_USER,MYSQL_PASSWORD:process.env.TEST_MYSQL_PASSWORD,REDIS_PORT:process.env.TEST_REDIS_PORT,ADMIN_LOGIN_PASSWORD:process.env.TEST_ADMIN_LOGIN_PASSWORD}))if(value!==undefined)env[key]=value;
 const schema=process.env.TEST_DB_SCHEMA||'heavy_metal';if(!/^[a-zA-Z0-9_]+$/.test(schema))throw Error('invalid schema');
 export async function api(path,token,method='GET',body){const response=await fetch((process.env.TEST_API_BASE_URL||'http://127.0.0.1:8080')+path,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:body?JSON.stringify(body):undefined});return response.json()}
 export function sql(query){return execFileSync('D:/mysql8.4/mysql-8.4.11-winx64/bin/mysql.exe',['--no-defaults','--no-login-paths','--default-character-set=utf8mb4','--protocol=TCP','-h','127.0.0.1','-P',env.MYSQL_PORT,'-u',env.MYSQL_USER,'-N','-B','--raw',schema,'-e',query],{encoding:'utf8',env:{...process.env,MYSQL_PWD:env.MYSQL_PASSWORD}}).trim()}

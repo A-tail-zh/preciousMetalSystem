@@ -8,7 +8,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
-@EnabledIfEnvironmentVariable(named="METAL_FLOW_ISOLATED_JDBC_URL",matches="jdbc:mysql://(?:127\\.0\\.0\\.1|localhost):3321/(?:heavy_metal_flow|heavy_metal_factory_20261104)(?:\\?.*)?")
+@EnabledIfEnvironmentVariable(named="METAL_FLOW_ISOLATED_JDBC_URL",matches=WarehouseIntegrationEnvironment.URL_PATTERN)
 class WarehousePendingReferenceConcurrencyTest {
  @Test void pendingReferenceCommittedDuringMaterialLockWaitIsSeenDespiteAnEarlierSnapshot()throws Exception{
   var ds=WarehouseIntegrationEnvironment.dataSource();long factory=Long.parseLong(System.getenv("METAL_FLOW_FACTORY_ID"));var base=new JdbcTemplate(ds);String suffix=System.getenv("METAL_FLOW_FIXTURE_PREFIX").substring("工单验收_".length());long material=base.queryForObject("SELECT material_id FROM metal_material WHERE material_code=? AND del_flag='0'",Long.class,"WH_M2_"+suffix);assertFalse(WarehouseReferences.materialReferenced(base,material));

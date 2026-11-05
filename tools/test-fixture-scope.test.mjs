@@ -5,5 +5,11 @@ test('check actual SQL schema and port before cleanup',()=>{assert.throws(()=>as
 test('numeric factory collision cannot authorize warehouse cleanup',()=>{const queries=[];assert.throws(()=>assertFixtureOwnership(prefix,{factories:['7']},q=>{queries.push(q);return'真实业务工厂'}),/ownership/);assert(queries.every(q=>q.startsWith('SELECT ')))});
 test('all recorded resources must belong to prefix; absent already-cleaned rows allowed',()=>{assert.doesNotThrow(()=>assertFixtureOwnership(prefix,{factories:['7'],materials:['8'],users:['9']},q=>q.includes('material')?'WH_M1_1790000000000_ab12cd':q.includes('sys_user')?'':prefix+'厂'));assert.throws(()=>assertFixtureOwnership(prefix,{users:['9']},()=> '其他人员'),/ownership/)});
 test('malformed resource and manifest fields rejected',()=>{assert.throws(()=>assertFixtureOwnership(prefix,{unknown:['7']},()=>''),/resource/);assert.throws(()=>assertFixtureOwnership(prefix,{factories:['7;DELETE']},()=>''),/resource/)});
+test('ordinary metal names require an explicitly owned factory',()=>{
+ const query=q=>q.includes('SELECT name')?'铱':q.includes('SELECT factory_id')?'7':prefix+'厂A';
+ assert.doesNotThrow(()=>assertFixtureOwnership(prefix,{factories:['7'],metalTypes:['8']},query));
+ assert.throws(()=>assertFixtureOwnership(prefix,{factories:['9'],metalTypes:['8']},query),/ownership/);
+ assert.throws(()=>assertFixtureOwnership(prefix,{factories:['7'],metalTypes:['8']},q=>q.includes('SELECT factory_name')?'业务工厂':query(q)),/ownership/);
+});
 
 test('recovery discovers a committed resource whose response was lost',()=>{const made={factories:[],lines:[],products:[],processes:[],roles:[],users:[],materials:[]};discoverFixtureResources(prefix,made,q=>q.includes('metal_factory')?'77':'');assert.deepEqual(made.factories,['77']);assert.throws(()=>discoverFixtureResources("foreign",made,()=>''),/prefix/)});

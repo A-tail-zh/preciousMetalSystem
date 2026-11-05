@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from './helpers/isolated-live-test';
 import {warehouseFixture} from '../../tools/warehouse-test-fixture.mjs';
 import {api,ok,detail,loginResponse} from '../../tools/local-test-client.mjs';
 

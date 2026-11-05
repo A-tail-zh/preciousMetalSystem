@@ -12,6 +12,8 @@ export async function warehouseFlowFixture(){
   const phone='135'+String(Date.now()).slice(-8);
   const processorId=String(ok(await api('/system/user',f.admin,'POST',{phonenumber:phone,nickName:f.prefix+'加工人',factoryId:f.factoryA,roleIds:[f.roleA],status:'0',password:f.password})).id);f.made.users.push(processorId);
   const keeper=await login(f.phoneA,f.password),processor=await login(phone,f.password);
+  // This flow starts with raw material and finishes in one smelting step.
+  const melting=await detail('/metal/process',f.processA,f.admin),process=await detail('/metal/process',f.processB,f.admin);ok(await api('/metal/process',f.admin,'PUT',{...process,processType:melting.processType}));const product=await detail('/metal/product',f.productB,f.admin);ok(await api('/metal/product',f.admin,'PUT',{...product,processes:[{processId:f.processB,loss:'0.3',lossUnit:'PERCENT',measurementMode:'PIECE'}]}));
   const body=f.body();body.items=[{productId:f.productB,quantity:10,plans:[{processId:f.processB,startTime:'2026-11-03 09:00:00',endTime:'2026-11-03 10:00:00'}]}];
   const workOrderId=await f.createOrder(body),work=await detail('/metal/work-order',workOrderId,f.admin),item=work.items[0];
   const batchId=String(ok(await api('/metal/process-batch',f.admin,'POST',{requestId:randomUUID(),workOrderId,itemId:item.id,processId:f.processB,plannedQuantity:10})).id);

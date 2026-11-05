@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test'
+import {test,expect} from './helpers/isolated-live-test'
 import {uiIdentityFixture} from '../../tools/ui-identity-fixture.mjs'
 import {login,api,ok} from '../../tools/local-test-client.mjs'
 test('数据看板默认首页、演示角色登录和后台入口',async({page,context})=>{

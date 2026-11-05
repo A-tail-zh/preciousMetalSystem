@@ -5,7 +5,10 @@ export function assertEnvironment(saved,query){const current=fixtureEnvironment(
 export function assertFixtureOwnership(prefix,made,query){
  if(!/^工单验收_\d+_[a-f0-9]{6}$/.test(prefix))throw Error('invalid fixture prefix');
  const suffix=prefix.slice('工单验收_'.length);
- for(const [group,ids]of Object.entries(made)){if(!tables[group]||!Array.isArray(ids)||ids.some(id=>!/^\d+$/.test(String(id))))throw Error('invalid registry resource');const [table,key,name]=tables[group];for(const id of ids){const label=query(`SELECT ${name} FROM ${table} WHERE ${key}=${id}`);if(label&&(group==='materials'?!label.endsWith(suffix):!label.startsWith(prefix)))throw Error('fixture ownership mismatch: '+group+'/'+id);}}
+ for(const [group,ids]of Object.entries(made)){if(!tables[group]||!Array.isArray(ids)||ids.some(id=>!/^\d+$/.test(String(id))))throw Error('invalid registry resource');const [table,key,name]=tables[group];for(const id of ids){const label=query(`SELECT ${name} FROM ${table} WHERE ${key}=${id}`);if(!label)continue;
+  if(group==='metalTypes'&&!label.startsWith(prefix)){const factory=query(`SELECT factory_id FROM metal_type WHERE metal_type_id=${id}`);if(!/^\d+$/.test(factory)||!made.factories?.map(String).includes(factory)||!query(`SELECT factory_name FROM metal_factory WHERE factory_id=${factory}`).startsWith(prefix))throw Error('fixture ownership mismatch: '+group+'/'+id)}
+  else if(group==='materials'?!label.endsWith(suffix):!label.startsWith(prefix))throw Error('fixture ownership mismatch: '+group+'/'+id);
+ }}
 }
 export function assertWarehouseOwnership(f,query){assertFixtureOwnership(f.prefix,{factories:[f.factoryA,f.factoryB]},query)}
 

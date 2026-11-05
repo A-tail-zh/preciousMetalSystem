@@ -1,5 +1,5 @@
 import {warehouseFixture} from '../../tools/warehouse-test-fixture.mjs'
-import {test,expect} from '@playwright/test'
+import {test,expect} from './helpers/isolated-live-test'
 import {login,api,detail,ok} from '../../tools/local-test-client.mjs'
 test('read-only smoke across main modules and work report details',async({page,context})=>{
  test.setTimeout(90000)
@@ -12,7 +12,7 @@ test('read-only smoke across main modules and work report details',async({page,c
   const target={id:f.wo};
   await page.goto('/metal/work-order?id='+target.id)
   const view=page.locator('.reports .el-table__body .el-table__row').first().getByRole('button',{name:'查看',exact:true});await view.click()
-  const dialog=page.getByRole('dialog',{name:'工序消耗明细',exact:true});await expect(dialog).toBeVisible();await expect(dialog.getByText('仅统计已结算批次',{exact:true})).toBeVisible();await expect(dialog.locator('.consumption-steps .el-table__row').first()).toBeVisible()
-  await dialog.getByRole('button',{name:'关闭',exact:true}).click();await expect(dialog).not.toBeVisible();expect(errors).toEqual([])
+  const dialog=page.getByRole('dialog',{name:'查看报工',exact:true});await expect(dialog).toBeVisible();await expect(dialog.locator('.report-summary')).toContainText('实际损耗：5.00 g');await expect(dialog).toContainText('本批完成：5 件');await expect(dialog.locator('.material-report .el-table__row').first()).toContainText('WH_M1_'+f.suffix)
+  await dialog.getByRole('button',{name:'确认',exact:true}).click();await expect(dialog).not.toBeVisible();expect(errors).toEqual([])
  }finally{await f.cleanup()}
 })

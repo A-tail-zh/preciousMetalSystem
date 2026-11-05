@@ -1,6 +1,6 @@
 package com.ruoyi.metal.service;
 import java.util.*;import java.math.BigDecimal;import org.junit.jupiter.api.Test;import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;import org.springframework.jdbc.core.JdbcTemplate;import org.springframework.jdbc.datasource.*;import org.springframework.transaction.support.TransactionTemplate;import static org.junit.jupiter.api.Assertions.*;
-@EnabledIfEnvironmentVariable(named="METAL_FLOW_ISOLATED_JDBC_URL",matches=".*(3310/heavy_metal_plan_upgrade_20261022|3321/(?:heavy_metal_flow|heavy_metal_factory_20261104)).*")
+@EnabledIfEnvironmentVariable(named="METAL_FLOW_ISOLATED_JDBC_URL",matches=WarehouseIntegrationEnvironment.URL_PATTERN)
 class WeightReferenceReversalIntegrationTest {
  @Test void completeReversalRestoresReferenceAcrossMultipleLedgers()throws Exception{verifyReversal(false,false);}
  @Test void outOfOrderReversalCannotRestoreAnObsoleteCompleteReferenceSnapshot()throws Exception{verifyReversal(true,false);}
