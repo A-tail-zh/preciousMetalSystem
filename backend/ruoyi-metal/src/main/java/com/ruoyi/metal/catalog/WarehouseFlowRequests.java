@@ -28,10 +28,19 @@ public final class WarehouseFlowRequests {
     public record HandoverDocument(@NotBlank String type,@NotNull @Positive Long warehouseId,
                                   @NotNull @Positive Long keeperId,@Positive Long reviewerId,
                                   @NotEmpty @Size(max=1000) List<@NotNull @Valid Line> lines) {}
+    public record Wip(@NotBlank @Size(max=160) String groupKey,
+                      @NotNull @DecimalMin("0") @Digits(integer=14,fraction=2) BigDecimal remainingWeight) {}
     public record Handover(@NotBlank String requestId,@NotNull @Min(0) Integer version,
                            @NotNull LocalDate orderDate,@NotNull Boolean physicalChecked,
                            @NotBlank @Size(max=16) String residualMode,@Size(max=500) String reason,
-                           @NotEmpty @Size(max=1000) List<@NotNull @Valid HandoverDocument> documents) {}
+                           @NotEmpty @Size(max=1000) List<@NotNull @Valid HandoverDocument> documents,
+                           @Size(max=1000) List<@NotNull @Valid Wip> wipBalances,
+                           @Positive Long flowId) {
+        public Handover(String requestId,Integer version,LocalDate orderDate,Boolean physicalChecked,
+                        String residualMode,String reason,List<HandoverDocument> documents) {
+            this(requestId,version,orderDate,physicalChecked,residualMode,reason,documents,null,null);
+        }
+    }
     public record Closeout(@NotBlank String requestId,@NotNull @Min(0) Integer version,
                            @NotBlank String mode,@NotNull @Positive Long keeperId,
                            @Positive Long offsetWorkOrderId,

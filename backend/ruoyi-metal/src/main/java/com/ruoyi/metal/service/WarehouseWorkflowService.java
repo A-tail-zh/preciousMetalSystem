@@ -29,8 +29,8 @@ public class WarehouseWorkflowService {
         this.jdbc=jdbc;this.scope=scope;this.warehouse=warehouse;this.imports=imports;this.drafts=drafts;
     }
     private static final tools.jackson.databind.json.JsonMapper FLOW_JSON=tools.jackson.databind.json.JsonMapper.builder().build();
-    static String json(Object value){return FLOW_JSON.writeValueAsString(value).replace(",\"powderOrigin\":null", "").replace(",\"pieceQuantities\":null", "").replace(",\"batchAction\":null", "").replace(",\"plannedQuantity\":null", "");}
-    static long n(Object value){return value==null?0:Long.parseLong(value.toString());}
+    static String json(Object value){return FLOW_JSON.writeValueAsString(value).replace(",\"powderOrigin\":null", "").replace(",\"pieceQuantities\":null", "").replace(",\"batchAction\":null", "").replace(",\"plannedQuantity\":null", "").replace(",\"wipBalances\":null", "").replace(",\"flowId\":null", "");}
+    static long n(Object value){return value==null?0:new BigDecimal(value.toString()).longValueExact();}
     static BigDecimal d(Object value){return value==null?BigDecimal.ZERO:new BigDecimal(value.toString());}
     private static Long id(Object value){return value==null?null:Long.valueOf(value.toString());}
     private static ServiceException fail(String message){return new ServiceException(message);}
@@ -66,6 +66,7 @@ public class WarehouseWorkflowService {
     public Map<String,Object> detail(long flow){
         readPermit();var r=root(flow,false);readable(flow);var result=warehouse.clean(r);
         result.remove("requestHash");result.remove("planJson");result.put("id",Long.toString(flow));
+        if(PartialHandoverLedger.partial(r)&&"HANDOVER".equals(r.get("kind")))result.put("wipAllocations",warehouse.cleaned(jdbc.queryForList("SELECT w.group_key,SUM(a.allocated_weight) allocated_weight,SUM(a.after_weight) after_weight FROM metal_handover_allocation a JOIN metal_batch_wip_balance w ON w.source_line_id=a.source_line_id WHERE a.flow_id=? AND a.voided=FALSE GROUP BY w.group_key",flow)));
         var data=new ArrayList<Map<String,Object>>();var history=new ArrayList<Map<String,Object>>();
         var modeStocks=InventoryMeasurement.enrich(jdbc,jdbc.queryForList("SELECT l.flow_line_id mode_flow_line_id,i.* FROM metal_warehouse_flow_line l JOIN metal_warehouse_flow_group g ON g.group_id=l.group_id LEFT JOIN metal_warehouse_order_line source ON source.line_id=l.source_line_id JOIN metal_inventory i ON i.inventory_id=COALESCE(l.inventory_id,source.inventory_id) WHERE g.flow_id=? ORDER BY l.flow_line_id",flow).stream().map(row->(Map<String,Object>)new LinkedHashMap<String,Object>(row)).toList());
         var stocksByLine=new HashMap<Long,Map<String,Object>>();for(var stock:modeStocks)stocksByLine.put(n(stock.get("mode_flow_line_id")),stock);
@@ -132,7 +133,7 @@ public class WarehouseWorkflowService {
         return rows.size()==1&&!WarehouseFlowRules.POLICY.equals(rows.get(0).get("completion_policy"));
     }
     @Transactional(readOnly=true)
-    public List<Map<String,Object>> handoverBatches(long factory){readPermit();scope.check(factory);return warehouse.cleaned(jdbc.queryForList("SELECT b.*,w.order_no,w.customer,w.customer_id,COALESCE(i.material_snapshot,i.product_snapshot) product_snapshot,w.task_type,i.material_id,i.planned_input_weight,s.process_name FROM metal_process_batch b JOIN metal_work_order w ON w.work_order_id=b.work_order_id JOIN metal_work_order_item i ON i.item_id=b.item_id JOIN metal_work_order_step s ON s.item_id=b.item_id AND s.process_id=b.process_id WHERE b.factory_id=? AND b.status='OPEN' AND b.completion_policy=? AND EXISTS(SELECT 1 FROM metal_warehouse_order o WHERE o.batch_id=b.batch_id AND o.status='POSTED' AND o.type='PRODUCTION_OUT' AND o.recipient_id=? AND o.confirmed_by=?) ORDER BY b.batch_id",factory,WarehouseFlowRules.POLICY,SecurityUtils.getUserId(),SecurityUtils.getUserId()));}
+    public List<Map<String,Object>> handoverBatches(long factory){readPermit();scope.check(factory);return warehouse.cleaned(jdbc.queryForList("SELECT b.*,w.order_no,w.customer,w.customer_id,COALESCE(i.material_snapshot,i.product_snapshot) product_snapshot,w.task_type,i.material_id,i.planned_input_weight,s.process_name FROM metal_process_batch b JOIN metal_work_order w ON w.work_order_id=b.work_order_id JOIN metal_work_order_item i ON i.item_id=b.item_id JOIN metal_work_order_step s ON s.item_id=b.item_id AND s.process_id=b.process_id WHERE b.factory_id=? AND b.status='OPEN' AND EXISTS(SELECT 1 FROM metal_warehouse_order o WHERE o.batch_id=b.batch_id AND o.status='POSTED' AND o.type='PRODUCTION_OUT' AND o.recipient_id=? AND o.confirmed_by=?) ORDER BY b.batch_id",factory,SecurityUtils.getUserId(),SecurityUtils.getUserId()));}
     private Map<String,Object> submissionResult(Map<String,Object> result){
         var out=new LinkedHashMap<String,Object>();out.put("flowId",result.get("id"));out.put("flow",result);out.put("batchId",result.get("batchId"));out.put("status",result.get("status"));out.put("nextAction","CONFIRM");
         if(result.containsKey("reused"))out.put("reused",result.get("reused"));
@@ -161,7 +162,9 @@ public class WarehouseWorkflowService {
             var planning=new ContinuousBatchPlanning(jdbc,scope);
             if(batchPlan!=null&&"NEW".equals(batchPlan.batchAction())){
                 drafts.requireValid(drafts.inspect(batchPlan));
-                int quantity=planning.newQuantity(factory,first.workOrderId(),first.itemId(),first.processId(),batchPlan.plannedQuantity());
+                Integer autoQuantity=batchPlan.plannedQuantity();
+                if(autoQuantity==null){var selectedStocks=new ArrayList<Map<String,Object>>();for(var doc:documents)for(var line:doc.lines())selectedStocks.add(one("SELECT * FROM metal_inventory WHERE inventory_id=?",line.inventoryId()));InventoryMeasurement.enrich(jdbc,selectedStocks);int i=0;long count=0;for(var doc:documents)for(var line:doc.lines()){var stock=selectedStocks.get(i++);if(!InventoryMeasurement.weight(stock))count+=line.quantity()==null?0:line.quantity();}if(count>0&&!"WEIGHT".equals(one("SELECT measurement_mode FROM metal_work_order_step WHERE item_id=? AND process_id=?",first.itemId(),first.processId()).get("measurement_mode")))autoQuantity=Math.toIntExact(count);}
+                int quantity=planning.newQuantity(factory,first.workOrderId(),first.itemId(),first.processId(),autoQuantity);
                 batch=Long.valueOf(warehouse.createBatch(new Batch(child(request,1001),first.workOrderId(),first.itemId(),first.processId(),quantity)));created=true;
             }else{
                 var selected=planning.select(first.itemId(),first.processId(),batch,first.batchVersion(),batchPlan==null?null:batchPlan.batchAction());
@@ -185,6 +188,11 @@ public class WarehouseWorkflowService {
         if(pieces>n(batch.get("planned_quantity")))throw fail("全部加工人员申报产出件数合计超过本批计划，请核对各人实际产出");
         String returnedTypes=MeasurementPolicy.configurable(jdbc,batch)?"g.type IN ('RAW_RETURN','SEMI_RETURN')":"g.type='SEMI_RETURN'";
         long returning=jdbc.queryForObject("SELECT COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(l.line_json,'$.quantity')) AS UNSIGNED)),0) FROM metal_warehouse_flow_line l JOIN metal_warehouse_flow_group g ON g.group_id=l.group_id WHERE g.flow_id=? AND g.status<>'SUPERSEDED' AND "+returnedTypes,Long.class,flow);
+        if(PartialHandoverLedger.partial(batch)) {
+            long prior=jdbc.queryForObject("SELECT COALESCE(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(l.line_json,'$.quantity')) AS UNSIGNED)),0) FROM metal_warehouse_flow f JOIN metal_warehouse_flow_group g ON g.flow_id=f.flow_id AND g.status<>'SUPERSEDED' JOIN metal_warehouse_flow_line l ON l.group_id=g.group_id WHERE f.batch_id=? AND f.flow_id<>? AND f.kind='HANDOVER' AND f.status NOT IN ('VOID','CANCELLED') AND (g.type IN ('SEMI_IN','FINISHED_IN','RAW_PROCESS_IN') OR "+returnedTypes+")",Long.class,batch.get("batch_id"),flow);
+            pieces+=prior;
+            if(pieces+returning>n(batch.get("planned_quantity")))throw fail("已验收、待验收及本次交接合计超过本批计划件数");
+        }
         WarehouseService.validateDownstreamOutput(jdbc,batch,pieces+returning);
     }
 
@@ -236,7 +244,7 @@ public class WarehouseWorkflowService {
         for(var group:groups(flow)){var o=order(group);boolean outbound=Set.of("PRODUCTION_OUT","SEMI_OUT","PRODUCT_OUT","EXCHANGE_OUT","OWNERSHIP_OUT","RESIDUAL_STORAGE").contains(o.type());
             for(var row:lines(n(group.get("group_id")))){var l=JSON.parseObject(row.get("line_json").toString(),Line.class);
                 if(outbound){var stock=inventory("SELECT * FROM metal_inventory WHERE inventory_id=? AND del_flag='0' FOR UPDATE",l.inventoryId());if(n(stock.get("factory_id"))!=n(root.get("factory_id"))||n(stock.get("warehouse_id"))!=o.warehouseId())throw new ServiceException("库存不属于所选工厂或仓库",403);
-                    scope.requireCatalog("RAW".equals(stock.get("category"))?"material":"product",n(stock.get("reference_id")),o.factoryId());MaterialOwnership.inherit(l.materialOwnership(),stock);if("CUSTOMER_RETURN".equals(root.get("kind"))&&(!"CUSTOMER".equals(MaterialOwnership.of(stock))||stock.get("customer_id")==null))throw fail("返还客户必须使用已明确关联客户的原料，不能使用厂料或未核对材料");if(stock.get("origin_batch_id")!=null&&!"SETTLED".equals(one("SELECT status FROM metal_process_batch WHERE batch_id=?",stock.get("origin_batch_id")).get("status")))throw fail("半成品或成品来源批次尚未结算");
+                    scope.requireCatalog("RAW".equals(stock.get("category"))?"material":"product",n(stock.get("reference_id")),o.factoryId());MaterialOwnership.inherit(l.materialOwnership(),stock);if("CUSTOMER_RETURN".equals(root.get("kind"))&&(!"CUSTOMER".equals(MaterialOwnership.of(stock))||stock.get("customer_id")==null))throw fail("返还客户必须使用已明确关联客户的原料，不能使用厂料或未核对材料");if(stock.get("origin_batch_id")!=null&&!HandoverSource.outboundReady(jdbc,stock,one("SELECT status,handover_policy_version FROM metal_process_batch WHERE batch_id=?",stock.get("origin_batch_id")),o.type()))throw fail("半成品或成品来源批次尚未结算");
                     if(stock.get("origin_acid_wash_id")!=null&&!"SETTLED".equals(one("SELECT status FROM metal_acid_wash_batch WHERE acid_wash_id=?",stock.get("origin_acid_wash_id")).get("status")))throw fail("酸洗金属料尚未结算");
                     if(!"PRODUCTION_OUT".equals(o.type()))new SemiFlowService(jdbc,scope).guardStock(l.inventoryId());
                     if("PRODUCTION_OUT".equals(o.type())){var target=one("SELECT * FROM metal_process_batch WHERE batch_id=?",o.batchId());ProcessingInputService.require(jdbc,stock,target);ProcessingInputService.capacity(jdbc,stock,target,l.netWeight(),null);}
@@ -311,6 +319,7 @@ public class WarehouseWorkflowService {
     }
 
     private void reopenSupplementRecipients(long batch,long outboundFlow){
+        if(PartialHandoverLedger.partial(one("SELECT handover_policy_version FROM metal_process_batch WHERE batch_id=?",batch)))return;
         for(var handover:jdbc.queryForList("SELECT flow_id FROM metal_warehouse_flow WHERE batch_id=? AND kind='HANDOVER' AND status NOT IN ('VOID','CANCELLED','POSTED')",batch)){
             long flow=n(handover.get("flow_id"));
             // Additional physical material invalidates the recipient's earlier mass declaration, not other batches.
@@ -334,6 +343,10 @@ public class WarehouseWorkflowService {
     public Map<String,Object> cancel(long flow,Change input){
         var r=root(flow,true);permit("metal:warehouse-order:"+("HANDOVER".equals(r.get("kind"))||r.get("closeout_id")!=null?"handover":"add"));String fingerprint=hash(List.of(flow,input));if(replay(input.requestId(),"CANCEL",fingerprint,flow)!=null)return detail(flow);pending(r);version(r,input.version());
         if(n(r.get("request_actor"))!=SecurityUtils.getUserId())throw new ServiceException("仅申请创建人可以取消",403);if(input.reason()==null||input.reason().isBlank())throw fail("请填写取消原因");
+        if(PartialHandoverLedger.partial(r)&&"HANDOVER".equals(r.get("kind"))) {
+            new PartialHandoverLedger(jdbc).release(flow);
+            jdbc.update("UPDATE metal_process_batch SET version=version+1 WHERE batch_id=?",r.get("batch_id"));
+        }
         jdbc.update("UPDATE metal_stock_reservation SET status='RELEASED' WHERE flow_id=? AND status IN ('ACTIVE','VALIDATING')",flow);
         jdbc.update("UPDATE metal_warehouse_order SET status='CANCELLED',version=version+1 WHERE warehouse_flow_id=? AND status IN ('WAITING_OUT','WAITING_IN','RETURNED')",flow);
         jdbc.update("UPDATE metal_warehouse_flow SET status='CANCELLED',version=version+1,reason=? WHERE flow_id=?",input.reason(),flow);
@@ -424,7 +437,7 @@ public class WarehouseWorkflowService {
         if(replayFlow!=0)remember(replayFlow,input.requestId(),"CLOSEOUT_REVERSE",fingerprint);
         return closeoutContext(work);
     }
-    private List<Map<String,Object>> processingSources(long batch){return InventoryMeasurement.enrich(jdbc,jdbc.queryForList("SELECT l.*,o.order_no,o.warehouse_id,o.warehouse_name,o.recipient_id,o.confirmed_by,o.confirmed_at FROM metal_warehouse_order_line l JOIN metal_warehouse_order o ON o.order_id=l.order_id WHERE o.batch_id=? AND o.type='PRODUCTION_OUT' AND o.status='POSTED' ORDER BY l.line_id",batch).stream().map(row->(Map<String,Object>)new LinkedHashMap<String,Object>(row)).toList());}
+    private List<Map<String,Object>> processingSources(long batch){return InventoryMeasurement.enrich(jdbc,jdbc.queryForList("SELECT l.*,o.order_no,o.warehouse_id,o.warehouse_name,o.recipient_id,o.confirmed_by,o.confirmed_at,COALESCE(i.metal_type_id_snapshot,m.metal_type_id,p.metal_type_id) input_metal_type_id FROM metal_warehouse_order_line l JOIN metal_warehouse_order o ON o.order_id=l.order_id LEFT JOIN metal_inventory i ON i.inventory_id=l.inventory_id LEFT JOIN metal_material m ON l.category='RAW' AND m.material_id=l.reference_id LEFT JOIN metal_product p ON l.category<>'RAW' AND p.product_id=l.reference_id WHERE o.batch_id=? AND o.type='PRODUCTION_OUT' AND o.status='POSTED' ORDER BY l.line_id",batch).stream().map(row->(Map<String,Object>)new LinkedHashMap<String,Object>(row)).toList());}
     private Map<String,Object> processingBatch(long batch,boolean lock){String query="SELECT b.*,w.customer_id,w.customer_snapshot,w.customer,w.processing_type,w.task_type,i.product_id,i.material_id,i.planned_input_weight,COALESCE(i.material_snapshot,i.product_snapshot) product_snapshot FROM metal_process_batch b JOIN metal_work_order w ON w.work_order_id=b.work_order_id AND w.del_flag='0' JOIN metal_work_order_item i ON i.item_id=b.item_id WHERE b.batch_id=?";var b=one(query,batch);scope.check(n(b.get("factory_id")));if(lock){scope.lockFactories(List.of(n(b.get("factory_id"))));b=one(query+" FOR UPDATE",batch);}return b;}
 
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
@@ -434,21 +447,34 @@ public class WarehouseWorkflowService {
         var roots=jdbc.queryForList("SELECT flow_id FROM metal_warehouse_flow WHERE batch_id=? AND kind='HANDOVER' AND status NOT IN ('VOID','CANCELLED')",batch);
         var result=warehouse.clean(b);warehouse.batchMeasurement(result,b);result.remove("customerSnapshot");result.put("batchId",Long.toString(batch));result.put("product",JSON.parseObject(b.get("product_snapshot").toString()));result.put("canSubmit",participant&&"OPEN".equals(b.get("status"))&&WarehouseFlowRules.POLICY.equals(b.get("completion_policy")));
         long last=jdbc.queryForObject("SELECT MAX(sequence_no) FROM metal_work_order_step WHERE item_id=?",Long.class,b.get("item_id"));result.put("outputType",ProcessingPolicy.outputType(b,n(b.get("sequence_no")),last));
-        result.put("sources",warehouse.cleaned(sources));if(!roots.isEmpty()){var flow=detail(n(roots.get(0).get("flow_id")));result.put("flow",flow);result.put("flowId",flow.get("id"));result.put("version",flow.get("version"));}return result;
+        var ledger=new PartialHandoverLedger(jdbc);boolean partial=PartialHandoverLedger.partial(b),convertible=!partial&&ledger.convertible(b);
+        result.put("partialHandover",partial||convertible);result.put("canConvert",convertible);
+        result.put("canSubmit",participant&&"OPEN".equals(b.get("status"))&&(partial||convertible||WarehouseFlowRules.POLICY.equals(b.get("completion_policy"))));
+        if(!partial&&!convertible)result.put("conversionBlockedReason",WarehouseFlowRules.POLICY.equals(b.get("completion_policy"))?"此记录已有旧版交接，请先沿用原流程完成这份交接验收；后续加工任务再采用分次交接。":"此历史记录已有交接、产出、报工或缺少可核对的真实领料及金属来源，请沿用原流程处理，系统不会自动归并");
+        if(partial||convertible){
+            result.put("wipGroups",ledger.groups(ledger.balances(b,sources,actor,false)));
+            var quantities=one("SELECT COALESCE(SUM(CASE WHEN f.status='POSTED' THEN JSON_UNQUOTE(JSON_EXTRACT(l.line_json,'$.quantity')) ELSE 0 END),0) accepted,COALESCE(SUM(CASE WHEN f.status<>'POSTED' THEN JSON_UNQUOTE(JSON_EXTRACT(l.line_json,'$.quantity')) ELSE 0 END),0) pending FROM metal_warehouse_flow f JOIN metal_warehouse_flow_group g ON g.flow_id=f.flow_id AND g.status<>'SUPERSEDED' JOIN metal_warehouse_flow_line l ON l.group_id=g.group_id WHERE f.batch_id=? AND f.kind='HANDOVER' AND f.status NOT IN ('VOID','CANCELLED') AND g.type IN ('SEMI_IN','FINISHED_IN','RAW_PROCESS_IN')",batch);
+            result.put("acceptedQuantity",n(quantities.get("accepted")));result.put("pendingQuantity",n(quantities.get("pending")));result.put("remainingQuantity",Math.max(0,n(b.get("planned_quantity"))-n(quantities.get("accepted"))-n(quantities.get("pending"))));
+            result.put("handovers",warehouse.cleaned(jdbc.queryForList("SELECT flow_id id,segment_no,status,version,request_actor FROM metal_warehouse_flow WHERE batch_id=? AND kind='HANDOVER' ORDER BY segment_no,flow_id",batch)));
+        }
+        result.put("sources",warehouse.cleaned(sources));if(!partial&&!convertible&&!roots.isEmpty()){if(roots.size()!=1)throw fail("存在多份历史交接，不能自动选择，请核对具体记录");var flow=detail(n(roots.get(0).get("flow_id")));result.put("flow",flow);result.put("flowId",flow.get("id"));result.put("version",flow.get("version"));}return result;
     }
 
     public Map<String,Object> handover(long batch,Handover input){
         permit("metal:warehouse-order:handover");var b=processingBatch(batch,true);String fingerprint=hash(List.of(batch,input));Long played=replay(input.requestId(),"HANDOVER",fingerprint,0);if(played!=null)return detail(played);
+        var ledger=new PartialHandoverLedger(jdbc);if(input.wipBalances()!=null)ledger.upgrade(b);boolean partial=PartialHandoverLedger.partial(b);
         if(!"OPEN".equals(b.get("status"))||!WarehouseFlowRules.POLICY.equals(b.get("completion_policy")))throw fail("本批次不属于待交接的新加工策略，历史批次请沿用原流程");
         if(!Boolean.TRUE.equals(input.physicalChecked()))throw fail("请核对全部产出及余料，或明确确认无余料");
         if(!Set.of("NONE","RETURNED").contains(input.residualMode()))throw fail("请选择全部余料或无余料确认");
         var sources=processingSources(batch);long actor=SecurityUtils.getUserId();var own=sources.stream().filter(s->n(s.get("recipient_id"))==actor&&n(s.get("confirmed_by"))==actor).toList();if(own.isEmpty())throw new ServiceException("只能由实际领料人使用本人账号提交加工交接",403);
-        var existing=jdbc.queryForList("SELECT * FROM metal_warehouse_flow WHERE batch_id=? AND kind='HANDOVER' AND status NOT IN ('VOID','CANCELLED') FOR UPDATE",batch);long flow;
+        var existing=partial?(input.flowId()==null?List.<Map<String,Object>>of():jdbc.queryForList("SELECT * FROM metal_warehouse_flow WHERE batch_id=? AND flow_id=? AND kind='HANDOVER' AND handover_policy_version=2 FOR UPDATE",batch,input.flowId())):jdbc.queryForList("SELECT * FROM metal_warehouse_flow WHERE batch_id=? AND kind='HANDOVER' AND status NOT IN ('VOID','CANCELLED') FOR UPDATE",batch);long flow;
+        if(input.flowId()!=null&&existing.isEmpty())throw fail("指定交接分段不存在或不属于本加工记录");
         if(existing.isEmpty()){
-            if(input.version()!=n(b.get("version")))throw new ServiceException("加工批次版本已变化，请重新加载",409);WarehouseReservations.batch(jdbc,batch,0);
-            flow=insert("INSERT INTO metal_warehouse_flow(request_id,request_hash,request_actor,factory_id,kind,stage,status,work_order_id,batch_id,plan_json) VALUES(?,?,?,?,?,?,?,?,?,?)",input.requestId(),fingerprint,actor,b.get("factory_id"),"HANDOVER","PROCESSORS","COLLECTING",b.get("work_order_id"),batch,json(input));
-            var people=new TreeSet<Long>();for(var s:sources){if(s.get("confirmed_by")==null||n(s.get("confirmed_by"))!=n(s.get("recipient_id")))throw fail("存在未由指定人员真实确认的领料记录，请核对");people.add(n(s.get("recipient_id")));}for(long person:people)jdbc.update("INSERT INTO metal_warehouse_flow_processor(flow_id,actor_id) VALUES(?,?)",flow,person);
-        }else{var r=existing.get(0);flow=n(r.get("flow_id"));pending(r);version(r,input.version());WarehouseReservations.batch(jdbc,batch,flow);}
+            if(input.version()!=n(b.get("version")))throw new ServiceException("加工批次版本已变化，请重新加载",409);if(!partial)WarehouseReservations.batch(jdbc,batch,0);
+            Integer segment=partial?jdbc.queryForObject("SELECT COALESCE(MAX(segment_no),0)+1 FROM metal_warehouse_flow WHERE batch_id=?",Integer.class,batch):null;
+            flow=insert("INSERT INTO metal_warehouse_flow(request_id,request_hash,request_actor,factory_id,kind,stage,status,work_order_id,batch_id,plan_json,handover_policy_version,segment_no) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",input.requestId(),fingerprint,actor,b.get("factory_id"),"HANDOVER","PROCESSORS","COLLECTING",b.get("work_order_id"),batch,json(input),partial?2:1,segment);
+            var people=new TreeSet<Long>();for(var s:partial?own:sources){if(s.get("confirmed_by")==null||n(s.get("confirmed_by"))!=n(s.get("recipient_id")))throw fail("存在未由指定人员真实确认的领料记录，请核对");people.add(n(s.get("recipient_id")));}for(long person:people)jdbc.update("INSERT INTO metal_warehouse_flow_processor(flow_id,actor_id) VALUES(?,?)",flow,person);
+        }else{var r=existing.get(0);flow=n(r.get("flow_id"));pending(r);version(r,input.version());if(partial){if(n(r.get("request_actor"))!=actor)throw new ServiceException("只能修订本人提交的交接分段",403);ledger.release(flow);}else WarehouseReservations.batch(jdbc,batch,flow);}
         if(input.documents().stream().mapToInt(x->x.lines().size()).sum()>1000)throw fail("本次交接最多1000条明细");
         boolean last=n(b.get("sequence_no"))==n(one("SELECT MAX(sequence_no) last_sequence FROM metal_work_order_step WHERE item_id=?",b.get("item_id")).get("last_sequence"));String outputType=ProcessingPolicy.outputType(b,n(b.get("sequence_no")),last?n(b.get("sequence_no")):n(b.get("sequence_no"))+1);
         BigDecimal output=BigDecimal.ZERO,returned=BigDecimal.ZERO;boolean hasReturn=false;var sourceWeights=new HashMap<Long,BigDecimal>();var sourcePieces=new HashMap<Long,Long>();var ownerReturns=new HashMap<String,BigDecimal>();var ownerIssued=new HashMap<String,BigDecimal>();for(var s:own)ownerIssued.merge(MaterialOwnership.of(s),d(s.get("net_weight")),BigDecimal::add);
@@ -467,11 +493,15 @@ public class WarehouseWorkflowService {
         if("NONE".equals(input.residualMode())&&hasReturn||"RETURNED".equals(input.residualMode())&&!hasReturn)throw fail("余料确认方式与清单不一致");
         for(var e:ownerReturns.entrySet())if(e.getValue().compareTo(ownerIssued.getOrDefault(e.getKey(),BigDecimal.ZERO))>0)throw fail("该归属余料超过本人领入的相应客户料或厂料，不能改变材料归属");
         BigDecimal issued=own.stream().map(s->d(s.get("net_weight"))).reduce(BigDecimal.ZERO,BigDecimal::add);if(output.add(returned).compareTo(issued)>0)throw fail("本人加工产出和余料合计超过实际领入重量");
+        if(partial&&output.signum()==0&&jdbc.queryForObject("SELECT COUNT(*) FROM metal_warehouse_flow f JOIN metal_warehouse_flow_group g ON g.flow_id=f.flow_id AND g.status<>'SUPERSEDED' JOIN metal_warehouse_flow_line l ON l.group_id=g.group_id WHERE f.batch_id=? AND f.flow_id<>? AND f.kind='HANDOVER' AND f.status NOT IN ('VOID','CANCELLED') AND g.type IN ('SEMI_IN','FINISHED_IN','RAW_PROCESS_IN') AND l.processor_weight>0",Long.class,batch,flow)==0)throw fail("仅还料交接须已有真实产出申报；未加工的领料请按撤回流程处理");
+        if(partial)ledger.allocate(flow,b,sources,actor,input,output.add(returned));
         var oldGroups=groups(flow);for(var g:oldGroups)if(n(g.get("processor_id"))==actor){jdbc.update("UPDATE metal_warehouse_flow_group SET status='SUPERSEDED' WHERE group_id=?",g.get("group_id"));jdbc.update("UPDATE metal_warehouse_order SET status='RETURNED',version=version+1 WHERE order_id=? AND status IN ('WAITING_IN','RETURNED')",g.get("order_id"));}
         jdbc.update("UPDATE metal_warehouse_flow SET revision=revision+1,version=version+1,status='COLLECTING',stage='PROCESSORS' WHERE flow_id=?",flow);
-        jdbc.update("UPDATE metal_warehouse_flow_group SET status='WAITING',confirmed_by=NULL,confirmed_at=NULL WHERE flow_id=? AND status<>'SUPERSEDED'",flow);
-        jdbc.update("UPDATE metal_warehouse_order o JOIN metal_warehouse_flow_group g ON g.order_id=o.order_id SET o.status='WAITING_IN',o.confirmed_by=NULL,o.confirmed_at=NULL,o.version=o.version+1 WHERE g.flow_id=? AND g.status<>'SUPERSEDED' AND o.status IN ('WAITING_IN','RETURNED')",flow);
-        jdbc.update("UPDATE metal_warehouse_flow_line l JOIN metal_warehouse_flow_group g ON g.group_id=l.group_id SET l.actual_weight=NULL,l.difference_reason=NULL WHERE g.flow_id=? AND g.status<>'SUPERSEDED'",flow);
+        if(!partial){
+            jdbc.update("UPDATE metal_warehouse_flow_group SET status='WAITING',confirmed_by=NULL,confirmed_at=NULL WHERE flow_id=? AND status<>'SUPERSEDED'",flow);
+            jdbc.update("UPDATE metal_warehouse_flow_group g FORCE INDEX (idx_flow_group_revision) STRAIGHT_JOIN metal_warehouse_order o ON o.order_id=g.order_id SET o.status='WAITING_IN',o.confirmed_by=NULL,o.confirmed_at=NULL,o.version=o.version+1 WHERE g.flow_id=? AND g.status<>'SUPERSEDED' AND o.status IN ('WAITING_IN','RETURNED')",flow);
+            jdbc.update("UPDATE metal_warehouse_flow_group g FORCE INDEX (idx_flow_group_revision) STRAIGHT_JOIN metal_warehouse_flow_line l ON l.group_id=g.group_id SET l.actual_weight=NULL,l.difference_reason=NULL WHERE g.flow_id=? AND g.status<>'SUPERSEDED'",flow);
+        }
         int index=0;for(var document:input.documents()){
             // Separate source orders retain the existing raw-return provenance rule.
             var split=new LinkedHashMap<Long,List<Line>>();for(var line:document.lines()){long source=0;if(Set.of("RAW_RETURN","SEMI_RETURN").contains(document.type()))source=n(one("SELECT order_id FROM metal_warehouse_order_line WHERE line_id=?",line.sourceLineId()).get("order_id"));split.computeIfAbsent(source,k->new ArrayList<>()).add(WarehousePrecision.line(line));}
@@ -481,7 +511,7 @@ public class WarehouseWorkflowService {
         validateHandoverPieces(jdbc,b,flow);
         if(jdbc.queryForObject("SELECT COUNT(*) FROM metal_warehouse_flow_processor WHERE flow_id=? AND submitted=FALSE",Long.class,flow)==0){
             var sums=one("SELECT COALESCE(SUM(CASE WHEN g.type IN ('SEMI_IN','FINISHED_IN','RAW_PROCESS_IN') THEN l.processor_weight ELSE 0 END),0) output,COALESCE(SUM(CASE WHEN g.type IN ('RAW_RETURN','SEMI_RETURN','PROCESS_RAW_RETURN') THEN l.processor_weight ELSE 0 END),0) returned FROM metal_warehouse_flow_line l JOIN metal_warehouse_flow_group g ON g.group_id=l.group_id WHERE g.flow_id=? AND g.status<>'SUPERSEDED'",flow);
-            BigDecimal allIssued=sources.stream().map(s->d(s.get("net_weight"))).reduce(BigDecimal.ZERO,BigDecimal::add);WarehouseFlowRules.mass(allIssued,d(sums.get("output")),d(sums.get("returned")),d(sums.get("output")).add(d(sums.get("returned"))));
+            BigDecimal allIssued=partial?d(one("SELECT SUM(allocated_weight) weight FROM metal_handover_allocation WHERE flow_id=? AND voided=FALSE",flow).get("weight")):sources.stream().map(s->d(s.get("net_weight"))).reduce(BigDecimal.ZERO,BigDecimal::add);WarehouseFlowRules.mass(allIssued,d(sums.get("output")),d(sums.get("returned")),d(sums.get("output")).add(d(sums.get("returned"))),partial);
             jdbc.update("UPDATE metal_warehouse_flow SET stage='KEEPER',status='WAITING' WHERE flow_id=?",flow);
         }
         event(flow,"HANDOVER",input);remember(flow,input.requestId(),"HANDOVER",fingerprint);return detail(flow);

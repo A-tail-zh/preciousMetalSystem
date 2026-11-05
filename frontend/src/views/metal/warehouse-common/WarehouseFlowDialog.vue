@@ -9,7 +9,7 @@
    <template v-else>
     <div v-if="rawInbound" class="receipt-heading"><el-tag :type="info.status==='POSTED'?'success':pending?'warning':'info'">{{receiptStatus}}</el-tag><span>各仓由指定仓管员验收，全部仓库完成后统一入库。</span></div>
     <p v-else>{{kinds[info.kind]||info.kind}} · {{stateNames[info.status]||info.status}} · {{stages[info.stage]||info.stage}}</p>
-    <p v-if="info.kind==='HANDOVER'">加工人员与库管称重分别保留；每行有差异必须说明。全部仓库验收后一次入库并结算。</p>
+    <p v-if="info.kind==='HANDOVER'">加工人员与库管称重分别保留；每行有差异必须说明。{{info.handoverPolicyVersion===2?'本次交接的全部指定仓库验收后，本段产出独立入库；其余在制继续加工。':'全部仓库验收后一次入库并结算。'}}</p>
     <p v-if="info.kind==='OFFSET'">仅转移客户料与厂料归属，不改变实物总量，不登记欠料结清。</p>
     <p v-if="!rawInbound&&info.processors?.length">加工申报：<span v-for="p in info.processors" :key="p.actorId">{{p.name}}（{{p.submitted?'已提交':'待本人提交'}}） </span></p>
     <section v-for="group in info.groups" :key="group.id" class="flow-group">
@@ -22,7 +22,7 @@
       <el-table-column v-if="rawInbound" label="归属" min-width="150"><template #default="{row}">{{ownership(row)}}</template></el-table-column>
       <el-table-column :label="rawInbound?'申报净重（g）':info.kind==='HANDOVER'?'加工人员净重（g）':'计划净重（g）'" min-width="150"><template #default="{row}"><BusinessDecimalInput v-if="editing" v-model="row.editPlan" :disabled="busy||uncertain"/><span v-else>{{decimalText(row.processorWeight??row.plannedWeight)}}</span></template></el-table-column>
       <el-table-column v-if="group.lines.some(showQuantity)" label="数量 / 参考" min-width="125"><template #default="{row}"><template v-if="showQuantity(row)"><el-input v-if="pieceLine(row)&&(editing||canConfirm(group))" v-model="row.editQuantity" aria-label="实物件数" inputmode="numeric" :disabled="busy||needsReload||uncertain"/><span v-else>{{pieceLine(row)?row.line.quantity:'参考：'+(row.line.referenceQuantity??'未记录')}}</span></template></template></el-table-column>
-      <el-table-column :label="info.stage==='RECIPIENT'?'实际领入净重（g）':'库管实收净重（g）'" min-width="165"><template #default="{row}"><BusinessDecimalInput v-if="canConfirm(group)&&!editing" v-model="row.editWeight" :disabled="busy||needsReload||uncertain"/><span v-else>{{row.actualWeight==null?'待确认':decimalText(row.actualWeight)}}</span></template></el-table-column>
+      <el-table-column :label="info.stage==='RECIPIENT'?'实际领入净重（g）':'库管实收净重（g）'" min-width="165"><template #default="{row}"><BusinessDecimalInput v-if="canConfirm(group)&&!editing" v-model="row.editWeight" :aria-label="info.stage==='RECIPIENT'?'实际领入净重（g）':'库管实收净重（g）'" :disabled="busy||needsReload||uncertain"/><span v-else>{{row.actualWeight==null?'待确认':decimalText(row.actualWeight)}}</span></template></el-table-column>
       <el-table-column label="逐条差异原因" min-width="210"><template #default="{row}"><el-input v-if="canConfirm(group)&&!editing" v-model="row.editReason" maxlength="500" :disabled="busy||needsReload||uncertain" placeholder="重量不同必须填写"/><span v-else>{{row.differenceReason||'—'}}</span></template></el-table-column>
      </el-table>
      <details v-if="group.lines.some((l:Row)=>l.line.grossWeight!=null||l.line.impurity!=null)"><summary>{{rawInbound?'原始申报称重依据':'原始计划称重依据'}}</summary><p v-for="line in group.lines" :key="line.id">{{line.line.code||line.stock?.code||line.id}}：{{rawInbound?'申报':'计划'}}毛重 {{weightEvidence(line.line.grossWeight)}}，杂质 {{weightEvidence(line.line.impurity)}}，净重 {{weightEvidence(line.plannedWeight)}}。</p></details>
@@ -38,10 +38,10 @@
    <el-button :disabled="busy||uncertain" @click="visible=false">关闭</el-button><el-button v-if="info" :disabled="busy||uncertain" @click="reload(info.id)">重新加载</el-button>
    <template v-if="info&&pending&&!needsReload">
     <el-button v-if="canReject&&!editing&&(!rawInbound||info.status!=='RETURNED'&&(!actionMode||actionMode==='reject'))" :disabled="busy||uncertain" type="warning" @click="action('reject')">{{rawInbound&&actionMode==='reject'?'确认退回修订':'退回修订'}}</el-button>
-    <el-button v-if="canRevise&&(!rawInbound||!actionMode)" :disabled="busy||uncertain" @click="editing?revise():editing=true">{{editing?'保存修订':rawInbound?'修订申报明细':'修订计划明细'}}</el-button>
+    <el-button v-if="info.kind==='HANDOVER'&&info.handoverPolicyVersion===2&&String(info.requestActor)===String(user.id)&&permission.has('metal:warehouse-order:handover')" :disabled="busy||uncertain" @click="visible=false;emit('handover',info)">修订本次交接</el-button><el-button v-if="canRevise&&(!rawInbound||!actionMode)" :disabled="busy||uncertain" @click="editing?revise():editing=true">{{editing?'保存修订':rawInbound?'修订申报明细':'修订计划明细'}}</el-button>
     <el-button v-if="String(info.requestActor)===String(user.id)&&permission.has('metal:warehouse-order:'+ (info.kind==='HANDOVER'||info.closeoutId?'handover':'add'))&&(!rawInbound||!editing&&(!actionMode||actionMode==='cancel'))" :disabled="busy||uncertain" type="danger" @click="action('cancel')">{{rawInbound&&actionMode==='cancel'?'确认取消申请':'取消申请'}}</el-button>
    </template>
-   <el-button v-if="info?.status==='POSTED'&&!info.batchId&&!info.closeoutId&&permission.has('metal:warehouse-order:reverse')" :disabled="busy||needsReload||uncertain" type="danger" @click="action('reverse')">{{rawInbound&&actionMode==='reverse'?'确认整体冲销':'整体冲销'}}</el-button>
+   <el-button v-if="info?.status==='POSTED'&&(!info.batchId||info.kind==='HANDOVER'&&info.handoverPolicyVersion===2)&&!info.closeoutId&&permission.has('metal:warehouse-order:reverse')" :disabled="busy||needsReload||uncertain" type="danger" @click="action('reverse')">{{info.handoverPolicyVersion===2&&info.kind==='HANDOVER'?'冲销本次交接':rawInbound&&actionMode==='reverse'?'确认整体冲销':'整体冲销'}}</el-button>
    <el-button v-if="rawInbound&&(actionMode||editing)" :disabled="busy||uncertain" @click="actionMode='';editing=false">返回验收详情</el-button>
   </template>
  </el-dialog>
@@ -60,7 +60,7 @@ import {decimalText} from '@/utils/business-decimal'
 import {createUUID} from '@/utils/uuid'
 import {getToken} from '@/utils/auth'
 import {useInventoryRefresh} from '@/composables/useInventoryRefresh'
-const emit=defineEmits<{saved:[]}>(),user=useUserStore(),permission=useActionPermission()
+const emit=defineEmits<{saved:[];handover:[Row]}>(),user=useUserStore(),permission=useActionPermission()
 const visible=ref(false),loading=ref(false),busy=ref(false),info=ref<Row>(),records=ref<Row[]>([]),factories=ref<Row[]>([]),factoryId=ref(''),reason=ref(''),error=ref(''),needsReload=ref(false),editing=ref(false),actionMode=ref('')
 const kinds:Record<string,string>={OUTBOUND:'出库实领',RAW_INBOUND:'原料入库',HANDOVER:'加工交接',PRODUCT_RETURN:'成品退回',CUSTOMER_RETURN:'返还客户',STORAGE:'客户余料代存',OFFSET:'客户余料抵料'},stages:Record<string,string>={RECIPIENT:'待指定领用人',PROCESSORS:'待加工人员完整申报',KEEPER:'待指定库管',DONE:'已完成'}
 const identity=()=>JSON.stringify([user.token,String(user.id),[...user.permissions].sort()]);let openedIdentity=''

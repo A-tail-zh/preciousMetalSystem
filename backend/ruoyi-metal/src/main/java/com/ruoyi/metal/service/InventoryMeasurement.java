@@ -20,6 +20,7 @@ public final class InventoryMeasurement {
     }
 
     public static List<Map<String,Object>> enrich(JdbcTemplate jdbc, List<Map<String,Object>> rows) {
+        HandoverSource.enrich(jdbc,rows);
         var stockIds = new TreeSet<Long>();
         var raw = new ArrayList<Map<String,Object>>();
         for (var row : rows) {

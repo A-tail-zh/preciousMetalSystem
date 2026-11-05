@@ -8,7 +8,7 @@ test('multiple warehouses create independent tabs and hide preallocated number',
 
 async function pick(page:Page,d:any,label:string,name:string){const f=d.locator('.order-header-form>.el-form-item').filter({has:page.locator('label').filter({hasText:new RegExp('^'+label+'$')})});await f.locator('.el-select__wrapper').click();const id=await f.getByRole('combobox').getAttribute('aria-controls');await page.locator('[id="'+id+'"]').getByRole('option',{name:name==='仓储员'?/仓储员/:name,exact:name!=='仓储员'}).click();await page.keyboard.press('Escape')}
 
-async function ready(page:Page,existingBatch=false){const d=await setup(page,existingBatch);await pick(page,d,'生产工单','生产一单');await pick(page,d,'产品明细','产品 1');await pick(page,d,'工序','首道');if(!existingBatch)await d.getByPlaceholder('填写本批件数，不是整单剩余件数').fill('8');await pick(page,d,'仓库/库房','仓库一');await pick(page,d,'仓库/库房','仓库二');await pick(page,d,'领用人','仓储员');await pick(page,d,'仓管员','仓储员');return d}
+async function ready(page:Page,existingBatch=false){const d=await setup(page,existingBatch);if(existingBatch)await page.evaluate(async()=>{const owner=(document.querySelector('.warehouse-page') as any).__vueParentComponent;await owner.setupState.orderForm.openSupplement({factoryId:'1',workOrderId:'21',itemId:'31',processId:'51',batchId:'71',batchVersion:3})});await pick(page,d,'生产工单','生产一单');await pick(page,d,'产品明细','产品 1');await pick(page,d,'工序','首道');await pick(page,d,'仓库/库房','仓库一');await pick(page,d,'仓库/库房','仓库二');await pick(page,d,'领用人','仓储员');await pick(page,d,'仓管员','仓储员');return d}
 
 async function add(page:Page,d:any,w='10'){await d.locator('.line-toolbar').getByRole('button',{name:'添加',exact:true}).click();const l=page.getByRole('dialog',{name:'取物料明细',exact:true});await l.getByRole('combobox').first().click();await page.getByRole('option',{name:/原料：R/}).click();await l.getByLabel('实测取净重(g)',{exact:true}).fill(w);await l.getByRole('button',{name:'确认',exact:true}).click();await expect(l).not.toBeVisible()}
 
@@ -37,6 +37,17 @@ test('logout in another tab discards outbound warehouse groups',async({page})=>{
 
 
 test('import error locates another warehouse and preserves its rows',async({page})=>{const d=await ready(page);await add(page,d);await d.getByRole('tab',{name:'仓库二',exact:true}).click();await page.route('**/dev-api/metal/warehouse-order/import',r=>r.fulfill({json:{code:500,msg:'第一仓余额不足',fieldErrors:[{field:'groups[0].lines[0].netWeight',message:'第一仓余额不足',code:'INSUFFICIENT'}]}}));await d.locator('input[type=file]').setInputFiles({name:'out.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from('fixture')});await expect(d.getByRole('tab',{name:'仓库一',exact:true})).toHaveAttribute('aria-selected','true');await expect(d.getByRole('alert')).toContainText('余额不足');await expect(d.locator('.el-table__body')).toContainText('10')})
+
+test('explicit supplement refreshes its bound version after review and keeps both warehouse drafts',async({page})=>{
+ const d=await ready(page,true);await add(page,d);await d.getByRole('tab',{name:'仓库二',exact:true}).click();await add(page,d,'20');
+ await page.route('**/dev-api/metal/warehouse/options/batches?*',r=>r.fulfill({json:{code:200,data:[{id:'71',workOrderId:'21',itemId:'31',processId:'51',version:4}]}}));
+ await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+ await d.getByRole('button',{name:'重新核对候选',exact:true}).click();
+ await expect(d.getByRole('button',{name:'重新核对候选',exact:true})).not.toBeVisible();
+ let sent:any;await page.route('**/dev-api/metal/warehouse-order/outbound-submissions',r=>{sent=r.request().postDataJSON();return r.fulfill({json:{code:500,msg:'隔离验证：保存被拒绝'}})});
+ await d.getByRole('button',{name:'确认',exact:true}).click();
+ await expect.poll(()=>sent?.batchVersion).toBe(4);expect(sent.batchAction).toBe('APPEND');expect(sent.batchId).toBe('71');expect(sent.groups.map((g:any)=>Number(g.lines[0].netWeight))).toEqual([10,20]);
+})
 
 
 

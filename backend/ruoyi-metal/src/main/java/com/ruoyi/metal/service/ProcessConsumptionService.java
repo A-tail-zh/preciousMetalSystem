@@ -38,10 +38,10 @@ public class ProcessConsumptionService {
     private static Map<String,Object> result(Long work,Long item,List<Map<String,Object>> rows){var out=new LinkedHashMap<String,Object>();out.put("workOrderId",String.valueOf(work));out.put("itemId",String.valueOf(item));out.put("readAt",LocalDateTime.now().toString());out.put("rows",rows);return out;}
     private static void page(int n,int size){if(n<1||size<1||size>100)throw new ServiceException("分页参数不合法（每页1至100条）");}
     private static Map<String,Object> paged(Long work,Long item,List<Map<String,Object>> rows,long total,int n,int size){var out=result(work,item,rows);out.put("total",total);out.put("pageNum",n);out.put("pageSize",size);return out;}
-    // Aggregate lines before joining batches and the UNIQUE(batch_id) report, so neither join multiplies weights.
+    // Aggregate both documents and segment reports before joining the parent batch.
     private static final String BATCH_SQL="""
         SELECT b.batch_id batchId,b.batch_no batchNo,b.item_id itemId,b.process_id processId,b.sequence_no sequenceNo,
-        b.measurement_mode measurementMode,b.loss_rate_basis lossRateBasis,b.status,b.version batchVersion,b.planned_quantity plannedQuantity,b.completed_quantity batchCompletedQuantity,
+        b.measurement_mode measurementMode,b.handover_policy_version handoverPolicyVersion,b.loss_rate_basis lossRateBasis,b.status,b.version batchVersion,b.planned_quantity plannedQuantity,b.completed_quantity batchCompletedQuantity,
         COALESCE(x.rawIssuedWeight,0) rawIssuedWeight,COALESCE(x.semiIssuedWeight,0) semiIssuedWeight,
         COALESCE(x.rawReturnedWeight,0) rawReturnedWeight,COALESCE(x.semiReturnedWeight,0) semiReturnedWeight,COALESCE(x.processRawReturnedWeight,0) processRawReturnedWeight,COALESCE(x.outputWeight,0) outputWeight,
         COALESCE(x.outputQuantity,0) outputQuantity,COALESCE(x.documentCount,0) documentCount,
@@ -61,7 +61,20 @@ public class ProcessConsumptionService {
           FROM metal_warehouse_order o JOIN metal_process_batch sourceBatch ON sourceBatch.batch_id=o.batch_id
           JOIN metal_warehouse_order_line l ON l.order_id=o.order_id
           WHERE o.status='POSTED' AND sourceBatch.work_order_id=? AND sourceBatch.item_id=? GROUP BY o.batch_id
-        ) x ON x.batch_id=b.batch_id LEFT JOIN metal_work_report r ON r.batch_id=b.batch_id
+        ) x ON x.batch_id=b.batch_id LEFT JOIN (
+          SELECT batch_id,MIN(report_id) report_id,SUM(issued_weight) issued_weight,SUM(returned_weight) returned_weight,
+          SUM(loss_weight) loss_weight,SUM(completed_quantity) completed_quantity,MIN(numeric_policy_version) numeric_policy_version,
+          CASE WHEN COUNT(*)=1 THEN MIN(average_loss) ELSE COALESCE(ROUND(SUM(loss_weight)/NULLIF(SUM(completed_quantity),0),2),0) END average_loss,
+          SUM(handover_difference) handover_difference,SUM(processor_output_weight) processor_output_weight,
+          SUM(processor_returned_weight) processor_returned_weight,SUM(keeper_received_weight) keeper_received_weight,
+          MIN(loss_rate_basis) loss_rate_basis,SUM(loss_rate_denominator_weight) loss_rate_denominator_weight,
+          CASE WHEN SUM(status='ABNORMAL')>0 THEN 'ABNORMAL' ELSE 'NORMAL' END status,MAX(voided) voided,
+          MAX(create_time) create_time,MIN(threshold_value) threshold_value,MIN(loss_unit) loss_unit,
+          MIN(theoretical_loss) theoretical_loss,SUM(net_input_weight) net_input_weight,
+          CASE WHEN COUNT(*)=1 THEN MIN(loss_rate_percent) ELSE ROUND(SUM(loss_weight)/NULLIF(SUM(loss_rate_denominator_weight),0)*100,2) END loss_rate_percent
+          FROM metal_work_report WHERE (voided=FALSE OR handover_flow_id IS NULL)
+          AND batch_id IN (SELECT report_batch.batch_id FROM metal_process_batch report_batch WHERE report_batch.work_order_id=?) GROUP BY batch_id
+        ) r ON r.batch_id=b.batch_id
         WHERE b.work_order_id=? AND b.item_id=?
         """;
     private static String batchScope(String value){if(value==null)return "ALL";if(!Set.of("ALL","SETTLED").contains(value))throw new ServiceException("批次范围仅支持ALL或SETTLED");return value;}
@@ -75,7 +88,7 @@ public class ProcessConsumptionService {
     private Map<String,Object> stepsResult(Long work,Long item,List<Map<String,Object>> steps,Long process,String selectedScope){
         var grouped=new LinkedHashMap<String,List<Map<String,Object>>>();
         String filter=(process==null?"":" AND b.process_id=?")+("SETTLED".equals(selectedScope)?" AND b.status='SETTLED'":"");
-        Object[] args=process==null?new Object[]{work,item,work,item}:new Object[]{work,item,work,item,process};
+        Object[] args=process==null?new Object[]{work,item,work,work,item}:new Object[]{work,item,work,work,item,process};
         for(var raw:jdbc.queryForList(BATCH_SQL+filter,args)){var b=calculateBatch(clean(raw));grouped.computeIfAbsent(String.valueOf(b.get("processId")),k->new ArrayList<>()).add(b);}
         var rows=new ArrayList<Map<String,Object>>();
         for(var step:steps){var row=new LinkedHashMap<>(step);row.putAll(summarize(grouped.getOrDefault(String.valueOf(step.get("processId")),List.of())));rows.add(row);grouped.remove(String.valueOf(step.get("processId")));}
@@ -87,7 +100,7 @@ public class ProcessConsumptionService {
         page(n,size);context(work,item,process,null,null);
         String filter=" AND b.process_id=?"+("SETTLED".equals(selectedScope)?" AND b.status='SETTLED'":voided?"":" AND b.status<>'VOID'");
         Long total=jdbc.queryForObject("SELECT COUNT(*) FROM metal_process_batch b WHERE b.work_order_id=? AND b.item_id=?"+filter,Long.class,work,item,process);
-        var rows=jdbc.queryForList(BATCH_SQL+filter+" ORDER BY b.batch_id DESC LIMIT ? OFFSET ?",work,item,work,item,process,size,((long)n-1)*size).stream().map(ProcessConsumptionService::clean).map(ProcessConsumptionService::calculateBatch).toList();
+        var rows=jdbc.queryForList(BATCH_SQL+filter+" ORDER BY b.batch_id DESC LIMIT ? OFFSET ?",work,item,work,work,item,process,size,((long)n-1)*size).stream().map(ProcessConsumptionService::clean).map(ProcessConsumptionService::calculateBatch).toList();
         var out=paged(work,item,rows,total==null?0:total,n,size);out.put("processId",String.valueOf(process));out.put("batchScope",selectedScope);return out;
     }
     public Map<String,Object> orders(Long work,Long item,Long process,Long batch,int n,int size){
@@ -105,9 +118,9 @@ public class ProcessConsumptionService {
     }
     /** Caller already checks work-order factory access; fetch all saved item routes in one query. */
     Map<String,Map<String,Object>> settledReportMetrics(Long work) {
-        String query=BATCH_SQL.replace(" AND sourceBatch.item_id=?", "").replace(" AND b.item_id=?", "")+" AND b.status='SETTLED' AND r.voided=FALSE";
+        String query=BATCH_SQL.replace(" AND sourceBatch.item_id=?", "").replace(" AND b.item_id=?", "")+" AND (b.status='SETTLED' OR b.status='OPEN' AND b.handover_policy_version=2) AND r.voided=FALSE";
         var grouped=new LinkedHashMap<String,List<Map<String,Object>>>();
-        for(var raw:jdbc.queryForList(query,work,work)) {var b=calculateBatch(clean(raw));grouped.computeIfAbsent(b.get("itemId")+":"+b.get("processId"),k->new ArrayList<>()).add(b);}
+        for(var raw:jdbc.queryForList(query,work,work,work)) {var b=calculateBatch(clean(raw));grouped.computeIfAbsent(b.get("itemId")+":"+b.get("processId"),k->new ArrayList<>()).add(b);}
         var result=new LinkedHashMap<String,Map<String,Object>>();
         grouped.forEach((key,batches)->result.put(key,summarize(batches)));return result;
     }
@@ -120,6 +133,19 @@ public class ProcessConsumptionService {
         String state=String.valueOf(b.get("status"));
         var warnings=new ArrayList<String>();
         if("OPEN".equals(state))b.put("provisionalDifferenceWeight",weight(difference));
+        if(count(b.get("handoverPolicyVersion"))>=2&&"OPEN".equals(state)&&b.get("reportId")!=null&&!yes(b.get("reportVoided"))){
+            b.put("settledLossWeight",weight(b.get("reportLossWeight")));b.put("settledCompletedQuantity",count(b.get("reportCompletedQuantity")));b.put("averageLoss",weight(b.get("reportAverageLoss")));
+            b.put("provisionalDifferenceWeight",weight(difference.subtract(dec(b.get("reportLossWeight")))));
+            b.put("wipAndPendingWeight",weight(difference.subtract(dec(b.get("reportLossWeight")))));
+            BigDecimal accepted=dec(b.get("reportIssuedWeight")),acceptedReturned=dec(b.get("reportReturnedWeight"));
+            boolean valid=accepted.compareTo(issued)<=0&&accepted.subtract(acceptedReturned).compareTo(dec(b.get("reportLossWeight")))==0
+                &&acceptedReturned.compareTo(output.add(returned))==0&&count(b.get("reportCompletedQuantity"))==count(b.get("outputQuantity"))
+                &&difference.compareTo(dec(b.get("reportLossWeight")))>=0;
+            b.put("partialReportValid",valid);
+            b.put("acceptedNetInputWeight",weight(accepted.subtract(returned)));
+            b.put("acceptedDenominatorWeight",weight(LossCalculator.denominator(Objects.toString(b.get("lossRateBasis"),"NET_INPUT"),accepted,returned)));
+            if(!valid){state="REVIEW";warnings.add("分次报工快照与已验收单据不一致，请核对");}
+        }
         if("SETTLED".equals(state)){
             if(b.get("reportId")==null||yes(b.get("reportVoided"))){state="REVIEW";warnings.add("已结算批次缺少有效报工");}
             else{
@@ -143,25 +169,25 @@ public class ProcessConsumptionService {
     static Map<String,Object> summarize(List<Map<String,Object>> batches){
         var out=new LinkedHashMap<String,Object>();
         var active=batches.stream().filter(b->!"VOID".equals(b.get("status"))).toList();
+        var settledRows=active.stream().filter(b->"SETTLED".equals(b.get("status"))||Boolean.TRUE.equals(b.get("partialReportValid"))).toList();
         for(String key:List.of("rawIssuedWeight","semiIssuedWeight","issuedWeight","rawReturnedWeight","semiReturnedWeight","processRawReturnedWeight","outputWeight","netInputWeight"))out.put(key,weight(active.stream().map(b->dec(b.get(key))).reduce(BigDecimal.ZERO,BigDecimal::add)));
         var handovers=active.stream().filter(b->b.get("handoverDifference")!=null).toList();out.put("handoverRecordedBatchCount",handovers.size());out.put("handoverDifference",handovers.isEmpty()?null:weight(handovers.stream().map(b->dec(b.get("handoverDifference"))).reduce(BigDecimal.ZERO,BigDecimal::add)));
         long open=active.stream().filter(b->"OPEN".equals(b.get("status"))).count(),settled=active.stream().filter(b->"SETTLED".equals(b.get("status"))).count();
         boolean missing=active.stream().anyMatch(b->"SETTLED".equals(b.get("status"))&&(b.get("settledLossWeight")==null||(!"WEIGHT".equals(b.get("measurementMode"))&&b.get("settledCompletedQuantity")==null)));
         BigDecimal loss=active.stream().map(b->dec(b.get("settledLossWeight"))).reduce(BigDecimal.ZERO,BigDecimal::add);
         long completed=active.stream().mapToLong(b->count(b.get("settledCompletedQuantity"))).sum();
-        out.put("reportStatus",settled==0||missing?null:active.stream().anyMatch(b->"SETTLED".equals(b.get("status"))&&"ABNORMAL".equals(b.get("reportStatus")))?"ABNORMAL":"NORMAL");
+        out.put("reportStatus",settledRows.isEmpty()||missing?null:settledRows.stream().anyMatch(b->"ABNORMAL".equals(b.get("reportStatus")))?"ABNORMAL":"NORMAL");
         out.put("batchCount",active.size());out.put("voidBatchCount",batches.size()-active.size());out.put("openBatchCount",open);out.put("settledBatchCount",settled);
         out.put("outputQuantity",active.stream().mapToLong(b->count(b.get("outputQuantity"))).sum());out.put("settledCompletedQuantity",missing?null:completed);
         out.put("settledLossWeight",missing?null:weight(loss));out.put("provisionalDifferenceWeight",weight(active.stream().map(b->dec(b.get("provisionalDifferenceWeight"))).reduce(BigDecimal.ZERO,BigDecimal::add)));
         out.put("averageLoss",!missing&&completed>0?loss.divide(BigDecimal.valueOf(completed),6,RoundingMode.HALF_UP).toPlainString():null);
-        out.put("state",active.stream().anyMatch(b->"REVIEW".equals(b.get("state")))?"REVIEW":active.isEmpty()?(batches.isEmpty()?"NOT_STARTED":"NO_ACTIVE"):open>0?(settled>0?"PARTIAL":"OPEN"):"SETTLED");
-        var settledRows=active.stream().filter(b->"SETTLED".equals(b.get("status"))).toList();
+        out.put("state",active.stream().anyMatch(b->"REVIEW".equals(b.get("state")))?"REVIEW":active.isEmpty()?(batches.isEmpty()?"NOT_STARTED":"NO_ACTIVE"):open>0?(!settledRows.isEmpty()?"PARTIAL":"OPEN"):"SETTLED");
         var bases=settledRows.stream().map(b->Objects.toString(b.get("lossRateBasis"),"NET_INPUT")).distinct().toList();
-        BigDecimal denominator=settledRows.stream().map(b->dec(b.getOrDefault("lossRateDenominatorWeight",b.get("netInputWeight")))).reduce(BigDecimal.ZERO,BigDecimal::add);
-        BigDecimal settledNet=settledRows.stream().map(b->dec(b.get("netInputWeight"))).reduce(BigDecimal.ZERO,BigDecimal::add);
-        boolean reliable=!settledRows.isEmpty()&&settledRows.stream().allMatch(b->"SETTLED".equals(b.get("state"))&&b.get("settledLossWeight")!=null&&b.get("netInputWeight")!=null&&dec(b.get("netInputWeight")).signum()>0);
+        BigDecimal denominator=settledRows.stream().map(b->dec(b.getOrDefault("acceptedDenominatorWeight",b.getOrDefault("lossRateDenominatorWeight",b.get("netInputWeight"))))).reduce(BigDecimal.ZERO,BigDecimal::add);
+        BigDecimal settledNet=settledRows.stream().map(b->dec(b.getOrDefault("acceptedNetInputWeight",b.get("netInputWeight")))).reduce(BigDecimal.ZERO,BigDecimal::add);
+        boolean reliable=!settledRows.isEmpty()&&settledRows.stream().allMatch(b->("SETTLED".equals(b.get("state"))||Boolean.TRUE.equals(b.get("partialReportValid")))&&b.get("settledLossWeight")!=null&&b.get("netInputWeight")!=null&&dec(b.get("netInputWeight")).signum()>0);
         out.put("settledNetInputWeight",weight(settledNet));out.put("lossRateBasis",bases.size()==1?bases.get(0):null);out.put("lossRateDenominatorWeight",bases.size()==1?weight(denominator):null);out.put("lossRatePercent",bases.size()==1?ReportMetrics.percentage(loss,denominator,reliable):null);
-        out.put("lossRateGroups",bases.stream().map(basis->{var rows=settledRows.stream().filter(b->basis.equals(Objects.toString(b.get("lossRateBasis"),"NET_INPUT"))).toList();BigDecimal total=rows.stream().map(b->dec(b.getOrDefault("lossRateDenominatorWeight",b.get("netInputWeight")))).reduce(BigDecimal.ZERO,BigDecimal::add),totalLoss=rows.stream().map(b->dec(b.get("settledLossWeight"))).reduce(BigDecimal.ZERO,BigDecimal::add);var group=new LinkedHashMap<String,Object>();group.put("lossRateBasis",basis);group.put("lossRateDenominatorWeight",weight(total));group.put("lossWeight",weight(totalLoss));group.put("lossRatePercent",ReportMetrics.percentage(totalLoss,total,rows.stream().allMatch(b->"SETTLED".equals(b.get("state")))));return group;}).toList());
+        out.put("lossRateGroups",bases.stream().map(basis->{var rows=settledRows.stream().filter(b->basis.equals(Objects.toString(b.get("lossRateBasis"),"NET_INPUT"))).toList();BigDecimal total=rows.stream().map(b->dec(b.getOrDefault("acceptedDenominatorWeight",b.getOrDefault("lossRateDenominatorWeight",b.get("netInputWeight"))))).reduce(BigDecimal.ZERO,BigDecimal::add),totalLoss=rows.stream().map(b->dec(b.get("settledLossWeight"))).reduce(BigDecimal.ZERO,BigDecimal::add);var group=new LinkedHashMap<String,Object>();group.put("lossRateBasis",basis);group.put("lossRateDenominatorWeight",weight(total));group.put("lossWeight",weight(totalLoss));group.put("lossRatePercent",ReportMetrics.percentage(totalLoss,total,rows.stream().allMatch(b->"SETTLED".equals(b.get("state"))||Boolean.TRUE.equals(b.get("partialReportValid")))));return group;}).toList());
         out.put("lossRateWarning",!settledRows.isEmpty()&&out.get("lossRatePercent")==null?"实际损耗率依据不足或重量异常，请核对":null);
         if(bases.size()>1)out.put("lossRateWarning","损耗率口径不同，已分别展示，请按口径或批次查看");
         var units=settledRows.stream().map(b->Objects.toString(b.get("lossUnit"),"G_PER_PIECE")).distinct().toList();

@@ -24,5 +24,5 @@ public final class WeightStageProgressService {
  if(SemiMeasurementRules.weight(s))return Boolean.TRUE.equals(s.get("weight_stage_closed"))&&j.queryForObject("SELECT COUNT(*) FROM metal_process_batch WHERE item_id=? AND sequence_no=? AND status='SETTLED'",Long.class,item,seq)>0;
  // Earlier pieces converted to powder cannot be equated with the final piece plan.
  if(j.queryForObject("SELECT COUNT(*) FROM metal_work_order_step w WHERE w.item_id=? AND w.sequence_no>? AND w.measurement_mode='WEIGHT' AND w.weight_stage_closed=TRUE AND EXISTS(SELECT 1 FROM metal_process_batch b WHERE b.item_id=w.item_id AND b.process_id=w.process_id AND b.status='SETTLED')",Long.class,item,seq)>0)return true;
- long done=j.queryForObject("SELECT COALESCE(SUM(completed_quantity),0) FROM metal_process_batch WHERE item_id=? AND sequence_no=? AND status='SETTLED'",Long.class,item,seq);return done+semi.credit(item,seq)==SemiFlowService.num(s.get("quantity"));}
+ long done=j.queryForObject("SELECT COALESCE(SUM(completed_quantity),0) FROM metal_process_batch WHERE item_id=? AND sequence_no=? AND (status='SETTLED' OR status='OPEN' AND handover_policy_version=2)",Long.class,item,seq);return done+semi.credit(item,seq)==SemiFlowService.num(s.get("quantity"));}
 }

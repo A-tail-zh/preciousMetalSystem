@@ -74,7 +74,7 @@ for(const piece of [true,false])test('production RAW '+(piece?'PIECE':'legacy')+
  await expect(l.getByLabel('参考件数（选填）',{exact:true})).toHaveCount(0)
  await l.getByLabel('实测取净重(g)',{exact:true}).fill('30');await l.getByRole('button',{name:'确认',exact:true}).click();await expect(l).toBeHidden()
  if(piece){await expect(d.locator('.el-table thead').first()).toContainText('数量');await expect(d.locator('.el-table__body').first()).toContainText('3')}
- await d.getByPlaceholder('填写本批件数，不是整单剩余件数').fill('3');await pick(page,d,'领用人','库管｜人员｜13800000000');await pick(page,d,'仓管员','库管｜人员｜13800000000');await d.getByRole('button',{name:'确认',exact:true}).click();await expect.poll(()=>posts.length).toBe(1)
+ await pick(page,d,'领用人','库管｜人员｜13800000000');await pick(page,d,'仓管员','库管｜人员｜13800000000');await d.getByRole('button',{name:'确认',exact:true}).click();await expect.poll(()=>posts.length).toBe(1)
  expect(posts[0].groups[0].lines[0].quantity).toBe(piece?3:0);expect(posts[0].groups[0].lines[0].referenceQuantity).toBeNull()
 })
 test('RAW PIECE return import rejects reference counts',async({page})=>{

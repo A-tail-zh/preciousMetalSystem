@@ -4,9 +4,19 @@ import {execFileSync} from 'node:child_process';
 import {test,expect,type Page,type Locator}from'./helpers/isolated-live-test';import{randomUUID}from'node:crypto';import{warehouseFixture}from'../../tools/warehouse-test-fixture.mjs';import{api,ok,detail,sql}from'../../tools/local-test-client.mjs';
 installWarehouseDiagnostics()
 async function pick(page:Page,d:Locator,label:string,name:string){return test.step('选择'+label,async()=>{const field=d.locator('.order-header-form>.el-form-item').filter({has:page.locator('label').filter({hasText:new RegExp('^'+label+'$')})});await selectWarehouseOption(page,field,name)})}
+async function supplementFromIssue(page:Page,f:any,issue:string){
+ const order=await detail('/metal/warehouse-order',issue,f.admin);
+ const filters=page.getByRole('search',{name:'筛选条件'});
+ await filters.getByRole('textbox',{name:'单据编号',exact:true}).fill(order.orderNo);
+ await filters.getByRole('button',{name:'查询',exact:true}).click();
+ await page.locator('.warehouse-page .el-table__body tr').filter({hasText:order.orderNo}).getByRole('button',{name:'物料清单',exact:true}).click();
+ await page.getByRole('button',{name:'追加领料',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'添加出库工单',exact:true});
+ await expect(dialog).toContainText(f.work.orderNo);return dialog;
+}
 test('real multi outbound posts one batch from two warehouses and shows sibling documents',async({page})=>{test.setTimeout(120000);const f=await warehouseFixture({completionPolicy:'SINGLE_OUTPUT_RETURN'});try{
 const w2=String(ok(await api('/metal/warehouse',f.admin,'POST',{requestId:randomUUID(),factoryId:f.factoryA,name:f.prefix+'第二库',sortOrder:1,status:'0'})).id);for(const warehouseId of [f.warehouse,w2])await f.post('RAW_IN',[{category:'RAW',referenceId:f.mat1,netWeight:'100',quantity:0}],{warehouseId});
-await f.createBatch(f.processA,10);await page.context().addCookies([{name:'Admin-Token',value:f.admin,url:'http://127.0.0.1:5173'}]);await page.goto('/metal/warehouse-order');await page.locator('.toolbar').getByRole('button',{name:'添加',exact:true}).click();const d=page.getByRole('dialog',{name:'添加出库工单',exact:true});await pick(page,d,'工厂',f.prefix+'厂A');await pick(page,d,'生产工单',f.work.orderNo);await pick(page,d,'产品明细',f.item.snapshot.name+' 1');await pick(page,d,'工序',f.prefix+'粉料');await pick(page,d,'仓库/库房',f.prefix+'库房');await pick(page,d,'仓库/库房',f.prefix+'第二库');const person=f.prefix+'角色A｜'+f.prefix+'负责人A｜'+f.phoneA;await pick(page,d,'领用人',person);await pick(page,d,'仓管员',person);
+await page.context().addCookies([{name:'Admin-Token',value:f.admin,url:'http://127.0.0.1:5173'}]);await page.goto('/metal/warehouse-order');await page.locator('.toolbar').getByRole('button',{name:'添加',exact:true}).click();const d=page.getByRole('dialog',{name:'添加出库工单',exact:true});await pick(page,d,'工厂',f.prefix+'厂A');await pick(page,d,'生产工单',f.work.orderNo);await pick(page,d,'产品明细',f.item.snapshot.name+' 1');await pick(page,d,'工序',f.prefix+'粉料');await pick(page,d,'仓库/库房',f.prefix+'库房');await pick(page,d,'仓库/库房',f.prefix+'第二库');const person=f.prefix+'角色A｜'+f.prefix+'负责人A｜'+f.phoneA;await pick(page,d,'领用人',person);await pick(page,d,'仓管员',person);
 async function add(weight:string){await d.locator('.line-toolbar').getByRole('button',{name:'添加',exact:true}).click();const l=page.getByRole('dialog',{name:'取物料明细',exact:true});await l.getByRole('combobox').first().click();await page.getByRole('option').filter({hasText:'WH_M1_'+f.suffix}).click();await l.getByLabel('实测取净重(g)',{exact:true}).fill(weight);await l.getByRole('button',{name:'确认',exact:true}).click();await expect(l).not.toBeVisible()}
 await add('20');await d.getByRole('tab',{name:f.prefix+'第二库',exact:true}).click();await add('30');await d.getByText('单独设置人员',{exact:true}).click();await d.getByRole('button',{name:'刷新额度',exact:true}).click();await expect(d).toContainText('净重 50.00 g');for(const width of [1920,1440,768,390]){await page.setViewportSize({width,height:1000});expect(await d.locator('.el-dialog__body').evaluate(el=>el.scrollWidth<=el.clientWidth)).toBeTruthy();await page.screenshot({path:'.runtime/multi-warehouse-outbound/real-layout-'+width+'.png',fullPage:true})}
 const response=page.waitForResponse(r=>r.url().endsWith('/metal/warehouse-order/outbound-submissions')&&r.request().method()==='POST');await d.getByRole('button',{name:'确认',exact:true}).click();const sent=await(await response).json();expect(sent.code).toBe(200);expect(sent.data.orders).toHaveLength(2);const result=page.getByRole('dialog',{name:'出库提交成功',exact:true});await expect(result).toContainText('本次仅保存待确认申请');await f.confirmFlow(sent.data.flowId);const docs=await Promise.all(sent.data.orders.map((o:any)=>detail('/metal/warehouse-order',o.id,f.admin)));expect(docs.map(x=>Number(x.lines[0].netWeight)).sort()).toEqual([20,30]);expect(docs.every(x=>String(x.warehouseFlowId)===String(sent.data.flowId)&&String(x.batchId)===String(sent.data.batchId))).toBeTruthy();await result.getByRole('button',{name:'查看详情',exact:true}).first().click();await expect(result.locator('.el-table__body').last()).toContainText('WH_M1_'+f.suffix);
@@ -42,9 +52,7 @@ with zipfile.ZipFile(output,'w',zipfile.ZIP_DEFLATED) as target:
 sys.stdout.buffer.write(output.getvalue())`,JSON.stringify(values)],{input:await template.body()});
   await page.context().addCookies([{name:'Admin-Token',value:f.admin,url:'http://127.0.0.1:5173'}]);
   await page.goto('/metal/warehouse-order');
-  await page.locator('.toolbar').getByRole('button',{name:'添加',exact:true}).click();
-  const d=page.getByRole('dialog',{name:'添加出库工单',exact:true});
-  await pick(page,d,'工厂',f.prefix+'厂A');await pick(page,d,'生产工单',f.work.orderNo);await pick(page,d,'产品明细',f.item.snapshot.name+' 1');await pick(page,d,'工序',f.prefix+'粉料');
+  const d=await supplementFromIssue(page,f,firstIssue);
   for(const warehouse of warehouses)await pick(page,d,'仓库/库房',warehouse.name);
   const person=f.prefix+'角色A｜'+f.prefix+'负责人A｜'+f.phoneA;
   await pick(page,d,'领用人',person);await pick(page,d,'仓管员',person);
@@ -84,8 +92,8 @@ for(const warehouseCount of [1,2,3])test(`real committed outbound retries with $
   const stocks=[];for(const {id:warehouseId} of warehouses){const id=await f.post('RAW_IN',[{category:'RAW',referenceId:f.mat1,netWeight:'100',quantity:0}],{warehouseId});stocks.push((await detail('/metal/warehouse-order',id,f.admin)).lines[0].inventoryId)}
   const existingBatch=await f.createBatch(f.processA,10);const issued=await f.post('PRODUCTION_OUT',[{inventoryId:stocks[0],netWeight:'1',quantity:0}],{workOrderId:f.wo,itemId:f.item.id,processId:f.processA,batchId:existingBatch});
   const batchId=(await detail('/metal/warehouse-order',issued,f.admin)).batchId;
-  await page.context().addCookies([{name:'Admin-Token',value:f.admin,url:'http://127.0.0.1:5173'}]);await page.goto('/metal/warehouse-order');await page.locator('.toolbar').getByRole('button',{name:'添加',exact:true}).click();
-  const d=page.getByRole('dialog',{name:'添加出库工单',exact:true});await pick(page,d,'工厂',f.prefix+'厂A');await pick(page,d,'生产工单',f.work.orderNo);await pick(page,d,'产品明细',f.item.snapshot.name+' 1');await pick(page,d,'工序',f.prefix+'粉料');for(const warehouse of warehouses)await pick(page,d,'仓库/库房',warehouse.name);
+  await page.context().addCookies([{name:'Admin-Token',value:f.admin,url:'http://127.0.0.1:5173'}]);await page.goto('/metal/warehouse-order');
+  const d=await supplementFromIssue(page,f,issued);for(const warehouse of warehouses)await pick(page,d,'仓库/库房',warehouse.name);
   const person=f.prefix+'角色A｜'+f.prefix+'负责人A｜'+f.phoneA;await pick(page,d,'领用人',person);await pick(page,d,'仓管员',person);
   async function add(weight:string){await d.locator('.line-toolbar').getByRole('button',{name:'添加',exact:true}).click();const line=page.getByRole('dialog',{name:'取物料明细',exact:true});await line.getByRole('combobox').first().click();await page.getByRole('option').filter({hasText:'WH_M1_'+f.suffix}).click();await line.getByLabel('实测取净重(g)',{exact:true}).fill(weight);await line.getByRole('button',{name:'确认',exact:true}).click();await expect(line).not.toBeVisible()}
   await add('99');for(const warehouse of warehouses.slice(1)){await d.getByRole('tab',{name:warehouse.name,exact:true}).click();await add('100')}

@@ -6,6 +6,12 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class WarehouseFlowRulesTest {
     private BigDecimal d(String value) { return new BigDecimal(value); }
+    @Test void onlyPartialSegmentsMayReturnAllRetainedWipWithoutInventingOutput() {
+        assertThrows(RuntimeException.class,()->WarehouseFlowRules.mass(d("250"),d("0"),d("250"),d("249")));
+        var returned=WarehouseFlowRules.mass(d("250"),d("0"),d("250"),d("249"),true);
+        assertEquals(0,returned.loss().signum());assertEquals(0,returned.handoverDifference().compareTo(d("1")));
+        assertThrows(RuntimeException.class,()->WarehouseFlowRules.mass(d("250"),d("0"),d("251"),d("251"),true));
+    }
 
     @Test void fixedAcceptanceSeparatesProcessingLossFromCustodyDifference() {
         var m = WarehouseFlowRules.mass(d("100"),d("96"),d("3"),d("98.8"));

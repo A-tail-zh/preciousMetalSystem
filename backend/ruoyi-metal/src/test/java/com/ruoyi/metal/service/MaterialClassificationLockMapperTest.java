@@ -39,7 +39,7 @@ class MaterialClassificationLockMapperTest {
         execute("CREATE TEMPORARY TABLE metal_warehouse_order_line(line_id BIGINT,reference_id BIGINT,category VARCHAR(16))");
         execute("CREATE TEMPORARY TABLE metal_warehouse_flow(flow_id BIGINT PRIMARY KEY,status VARCHAR(16))");
         execute("CREATE TEMPORARY TABLE metal_warehouse_flow_group(group_id BIGINT PRIMARY KEY,flow_id BIGINT,status VARCHAR(16))");
-        execute("CREATE TEMPORARY TABLE metal_warehouse_flow_line(flow_line_id BIGINT,group_id BIGINT,line_json JSON)");
+        execute("CREATE TEMPORARY TABLE metal_warehouse_flow_line(flow_line_id BIGINT,group_id BIGINT,line_json JSON,reference_id_key VARCHAR(64) AS (NULLIF(JSON_UNQUOTE(JSON_EXTRACT(line_json,'$.referenceId')),'null')) STORED,category_key VARCHAR(16) AS (NULLIF(JSON_UNQUOTE(JSON_EXTRACT(line_json,'$.category')),'null')) STORED,KEY idx_flow_line_reference(reference_id_key,category_key,group_id))");
         execute("CREATE TEMPORARY TABLE metal_work_order(work_order_id BIGINT PRIMARY KEY,task_type VARCHAR(24),status VARCHAR(24),del_flag CHAR(1))");
         execute("CREATE TEMPORARY TABLE metal_work_order_item(item_id BIGINT PRIMARY KEY,work_order_id BIGINT,material_id BIGINT)");
         execute("INSERT INTO metal_type VALUES(1,'iridium')");
@@ -90,7 +90,7 @@ class MaterialClassificationLockMapperTest {
     void pendingReferencesFollowFlowAndGroupLifecycle(String flowStatus, String groupStatus, boolean locked) throws Exception {
         execute("INSERT INTO metal_warehouse_flow VALUES(10,'" + flowStatus + "')");
         execute("INSERT INTO metal_warehouse_flow_group VALUES(20,10,'" + groupStatus + "')");
-        execute("INSERT INTO metal_warehouse_flow_line VALUES(30,20,'{\"referenceId\":\"7\",\"category\":\"RAW\"}')");
+        execute("INSERT INTO metal_warehouse_flow_line(flow_line_id,group_id,line_json) VALUES(30,20,'{\"referenceId\":\"7\",\"category\":\"RAW\"}')");
         assertLocked(locked);
     }
 
@@ -99,7 +99,7 @@ class MaterialClassificationLockMapperTest {
     void pendingReferenceRequiresThisMaterialAndRawCategory(String reference, String category, boolean locked) throws Exception {
         execute("INSERT INTO metal_warehouse_flow VALUES(10,'WAITING')");
         execute("INSERT INTO metal_warehouse_flow_group VALUES(20,10,'WAITING')");
-        execute("INSERT INTO metal_warehouse_flow_line VALUES(30,20,'{\"referenceId\":" + reference
+        execute("INSERT INTO metal_warehouse_flow_line(flow_line_id,group_id,line_json) VALUES(30,20,'{\"referenceId\":" + reference
                 + ",\"category\":\"" + category + "\"}')");
         assertLocked(locked);
     }
