@@ -1,3 +1,4 @@
+import {filterFactory} from './helpers/business-filter'
 import {assertRegisteredIsolation} from '../../tools/isolated-test-environment.mjs'
 import {test,expect,type Page,type Locator} from './helpers/isolated-live-test'
 import {warehouseFixture} from '../../tools/warehouse-test-fixture.mjs'
@@ -12,7 +13,7 @@ test('real raw detail and lost adjustment response across four widths',async({pa
   const incoming=await f.post('RAW_IN',[{category:'RAW',referenceId:f.mat1,netWeight:'100',quantity:0}])
   const id=(await detail('/metal/warehouse-order',incoming,f.admin)).lines[0].inventoryId
   const code='WH_M1_'+f.suffix,company=f.prefix+'公司A'
-  await page.context().addCookies([{name:'Admin-Token',value:f.admin,url:'http://127.0.0.1:5180'}]);await page.goto('/metal/inventory')
+  await page.context().addCookies([{name:'Admin-Token',value:f.admin,url:'http://127.0.0.1:5180'}]);await page.goto('/metal/inventory');await filterFactory(page,f.prefix+'厂A')
   const row=page.locator('.warehouse-table .el-table__body .el-table__row').filter({hasText:code})
   for(const width of [1920,1440,768,390]){
    await page.setViewportSize({width,height:1000});await expect(row).toContainText(company)

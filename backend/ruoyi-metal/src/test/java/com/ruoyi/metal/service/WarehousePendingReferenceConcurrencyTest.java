@@ -12,7 +12,7 @@ import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 class WarehousePendingReferenceConcurrencyTest {
  @Test void pendingReferenceCommittedDuringMaterialLockWaitIsSeenDespiteAnEarlierSnapshot()throws Exception{
   var ds=WarehouseIntegrationEnvironment.dataSource();long factory=Long.parseLong(System.getenv("METAL_FLOW_FACTORY_ID"));var base=new JdbcTemplate(ds);String suffix=System.getenv("METAL_FLOW_FIXTURE_PREFIX").substring("工单验收_".length());long material=base.queryForObject("SELECT material_id FROM metal_material WHERE material_code=? AND del_flag='0'",Long.class,"WH_M2_"+suffix);assertFalse(WarehouseReferences.materialReferenced(base,material));
-  long warehouse=base.queryForObject("SELECT warehouse_id FROM metal_warehouse WHERE factory_id=? AND del_flag='0' LIMIT 1",Long.class,factory),person=base.queryForObject("SELECT user_id FROM sys_user WHERE factory_id=? AND del_flag='0' ORDER BY user_id LIMIT 1",Long.class,factory);long flow=0,order=0,group=0;var executor=Executors.newSingleThreadExecutor();
+  long warehouse=base.queryForObject("SELECT warehouse_id FROM metal_warehouse WHERE factory_id=? AND del_flag='0' LIMIT 1",Long.class,factory),person=base.queryForObject("SELECT user_id FROM sys_user WHERE factory_id=? AND del_flag='0' ORDER BY user_id LIMIT 1",Long.class,factory);long flow=0,order=0,group=0,unrelatedMaterial=0;var executor=Executors.newSingleThreadExecutor();
   try(var a=ds.getConnection();var b=ds.getConnection()){
    a.setAutoCommit(false);b.setTransactionIsolation(java.sql.Connection.TRANSACTION_REPEATABLE_READ);b.setAutoCommit(false);var writer=new JdbcTemplate(new SingleConnectionDataSource(a,true));var reader=new JdbcTemplate(new SingleConnectionDataSource(b,true));
    writer.queryForMap("SELECT material_id FROM metal_material WHERE material_id=? FOR UPDATE",material);
@@ -24,8 +24,14 @@ class WarehousePendingReferenceConcurrencyTest {
    writer.update("INSERT INTO metal_warehouse_flow_line(group_id,sequence_no,line_json,planned_weight) VALUES(?,1,?,1)",group,"{\"category\":\"RAW\",\"referenceId\":\""+material+"\"}");a.commit();
    try{assertTrue(result.get(10,TimeUnit.SECONDS),"分类变更在物料锁后必须看到已提交的待确认引用，不能沿用旧快照");}finally{b.rollback();}
    writer.queryForMap("SELECT flow_id FROM metal_warehouse_flow WHERE flow_id=? FOR UPDATE",flow);reader.queryForMap("SELECT material_id FROM metal_material WHERE material_id=? FOR UPDATE",material);var pending=executor.submit(()->{try{return WarehouseReferences.materialReferenced(reader,material);}catch(com.ruoyi.common.exception.ServiceException e){assertTrue(e.getMessage().contains("正在处理中"));return true;}});boolean waitedForParent=false;try{assertTrue(pending.get(2,TimeUnit.SECONDS));}catch(TimeoutException e){waitedForParent=true;}finally{a.rollback();assertTrue(pending.get(5,TimeUnit.SECONDS));b.rollback();}assertFalse(waitedForParent,"引用检查只锁明细，不应反向等待交接父行锁");
+   String unusedCode="UNRELATED-"+UUID.randomUUID();
+   base.update("INSERT INTO metal_material(material_code,material_name,material_type,specification,metal_type_id,factory_id,create_by) SELECT ?,material_name,material_type,specification,metal_type_id,factory_id,'reference-test' FROM metal_material WHERE material_id=? AND factory_id=?",unusedCode,material,factory);
+   unrelatedMaterial=base.queryForObject("SELECT material_id FROM metal_material WHERE material_code=? AND factory_id=?",Long.class,unusedCode,factory);
+   writer.queryForMap("SELECT flow_line_id FROM metal_warehouse_flow_line WHERE group_id=? FOR UPDATE",group);
+   reader.queryForMap("SELECT material_id FROM metal_material WHERE material_id=? FOR UPDATE",unrelatedMaterial);
+   try{assertFalse(WarehouseReferences.materialReferenced(reader,unrelatedMaterial),"不得因其他物料的交接明细被锁而误报本物料正在处理中");}finally{a.rollback();b.rollback();}
   }finally{
-   executor.shutdownNow();if(group!=0)base.update("DELETE FROM metal_warehouse_flow_line WHERE group_id=?",group);if(group!=0)base.update("DELETE FROM metal_warehouse_flow_group WHERE group_id=?",group);if(order!=0)base.update("DELETE FROM metal_warehouse_order WHERE order_id=? AND factory_id=?",order,factory);if(flow!=0)base.update("DELETE FROM metal_warehouse_flow WHERE flow_id=? AND factory_id=?",flow,factory);
+   executor.shutdownNow();if(group!=0)base.update("DELETE FROM metal_warehouse_flow_line WHERE group_id=?",group);if(group!=0)base.update("DELETE FROM metal_warehouse_flow_group WHERE group_id=?",group);if(order!=0)base.update("DELETE FROM metal_warehouse_order WHERE order_id=? AND factory_id=?",order,factory);if(flow!=0)base.update("DELETE FROM metal_warehouse_flow WHERE flow_id=? AND factory_id=?",flow,factory);if(unrelatedMaterial!=0)base.update("DELETE FROM metal_material WHERE material_id=? AND factory_id=?",unrelatedMaterial,factory);
   }
  }
 }

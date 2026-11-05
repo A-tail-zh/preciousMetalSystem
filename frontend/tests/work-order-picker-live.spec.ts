@@ -7,7 +7,7 @@ test('工单底部时间面板不被表格或弹窗裁剪',async({page,context})
   const body=f.body();body.items=[body.items[0],structuredClone(body.items[0]),structuredClone(body.items[0])];await f.createOrder(body)
   await context.addCookies([{name:'Admin-Token',value:f.admin,url:'http://127.0.0.1:5173'}])
   for(const width of [1442,1920]){
-   await page.setViewportSize({width,height:width===1442?1026:1080});await page.goto('/metal/work-order');await page.getByRole('row').filter({hasText:f.prefix}).getByRole('button',{name:'编辑',exact:true}).click()
+   await page.setViewportSize({width,height:width===1442?1026:1080});await page.goto('/metal/work-order');await expect(page.locator('.order-table .el-table__row').first()).toBeVisible();await page.locator('.order-pagination .el-pager li.number').last().click();await page.getByRole('row').filter({hasText:f.prefix}).getByRole('button',{name:'编辑',exact:true}).click()
    const dialog=page.getByRole('dialog',{name:'编辑工单',exact:true});const input=dialog.getByPlaceholder('请选择结束时间').last();await input.scrollIntoViewIfNeeded();await input.click()
    const popper=page.locator('.el-picker__popper:visible');await expect(popper).toBeVisible();expect(await popper.evaluate(el=>!el.closest('.order-dialog'))).toBe(true)
    const bounds=await popper.boundingBox();expect(bounds!.y).toBeGreaterThanOrEqual(0);expect(bounds!.y+bounds!.height).toBeLessThanOrEqual(width===1442?1026:1080)

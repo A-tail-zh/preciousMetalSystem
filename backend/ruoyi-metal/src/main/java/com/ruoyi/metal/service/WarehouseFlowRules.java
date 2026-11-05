@@ -41,12 +41,16 @@ public final class WarehouseFlowRules {
 
     public static Mass mass(BigDecimal issued, BigDecimal processorOutput,
                             BigDecimal processorReturns, BigDecimal keeperReceived) {
+        return mass(issued,processorOutput,processorReturns,keeperReceived,false);
+    }
+    public static Mass mass(BigDecimal issued, BigDecimal processorOutput,
+                            BigDecimal processorReturns, BigDecimal keeperReceived, boolean allowReturnsOnly) {
         if (issued == null || processorOutput == null || processorReturns == null || keeperReceived == null
-                || issued.signum() <= 0 || processorOutput.signum() <= 0
+                || issued.signum() <= 0 || processorOutput.signum() < 0 || processorOutput.signum()==0&&(!allowReturnsOnly||processorReturns.signum()<=0)
                 || processorReturns.signum() < 0 || keeperReceived.signum() <= 0)
             throw new ServiceException("加工交接重量资料不完整或无实际产出");
         BigDecimal input = issued.subtract(processorReturns), loss = input.subtract(processorOutput);
-        if (input.signum() <= 0 || loss.signum() < 0)
+        if (input.signum() < 0 || input.signum()==0&&!allowReturnsOnly || loss.signum() < 0)
             throw new ServiceException("实际加工投入须大于0，产出和余料不能超过实领；不能用备注绕过负损耗");
         BigDecimal difference = processorOutput.add(processorReturns).subtract(keeperReceived);
         if (keeperReceived.add(loss).add(difference).compareTo(issued) != 0)

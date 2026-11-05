@@ -7,6 +7,14 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ContinuousBatchRequestCompatibilityTest {
+    private record LegacyHandover(String requestId,Integer version,LocalDate orderDate,Boolean physicalChecked,
+                                  String residualMode,String reason,List<com.ruoyi.metal.catalog.WarehouseFlowRequests.HandoverDocument> documents) {}
+    @Test void addingWipDoesNotChangeSuccessfulHistoricalHandoverFingerprints(){
+        var date=LocalDate.of(2026,11,4);
+        var old=new LegacyHandover("request",3,date,true,"NONE",null,List.of());
+        var compatible=new com.ruoyi.metal.catalog.WarehouseFlowRequests.Handover("request",3,date,true,"NONE",null,List.of());
+        assertEquals(WarehouseWorkflowService.json(List.of(7L,old)),WarehouseWorkflowService.json(List.of(7L,compatible)));
+    }
     private Request old(){return new Request("request",1L,"PRODUCTION_OUT",LocalDate.of(2026,11,4),List.of(),2L,3L,null,4L,5L,6L,null,null,List.of(new Group(7L,null,List.of())));}
     @Test void oldRequestFingerprintRetainsTheOriginalRecordShape(){
         assertEquals("Request[requestId=request, factoryId=1, type=PRODUCTION_OUT, orderDate=2026-11-04, operatorIds=[], recipientId=2, keeperId=3, reviewerId=null, workOrderId=4, itemId=5, processId=6, batchId=null, batchVersion=null, groups=[Group[warehouseId=7, peopleOverride=null, lines=[]]]]",old().toString());

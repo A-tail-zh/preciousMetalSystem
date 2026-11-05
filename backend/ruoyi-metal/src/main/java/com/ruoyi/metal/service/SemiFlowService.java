@@ -138,7 +138,7 @@ public class SemiFlowService {
             throw fail("半成品不属于当前工厂或工单上下文");
         ProcessingInputService.require(jdbc,stock,target);
         boolean qualification=SemiSourcePolicyService.qualificationEntry(target);
-        if (!"SETTLED".equals(source.get("status")) || !qualification && num(target.get("sequence_no")) <= 1)
+        if (!HandoverSource.canEnter(jdbc,stock,source,target) || !qualification && num(target.get("sequence_no")) <= 1)
             throw fail("半成品来源须已结算并与当前工序衔接");
         var sp = JSON.parseObject(text(source.get("product_snapshot")));
         var tp = JSON.parseObject(text(item.get("product_snapshot")));
@@ -408,6 +408,7 @@ public class SemiFlowService {
         if (stock.get("origin_batch_id") != null) {
             var b = sourceBatch(stock);
             r.put("origin_batch_status", b.get("status"));
+            r.put("source_ready",HandoverSource.ready(jdbc,stock,b));
             r.put("origin_work_order_no", one("SELECT order_no FROM metal_work_order WHERE work_order_id=?", b.get("work_order_id")).get("order_no"));
             r.put("origin_process_sequence", b.get("sequence_no"));
             r.put("origin_process_name", one("SELECT process_name FROM metal_work_order_step WHERE item_id=? AND process_id=?", b.get("item_id"), b.get("process_id")).get("process_name"));

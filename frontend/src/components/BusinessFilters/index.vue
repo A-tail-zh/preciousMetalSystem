@@ -3,7 +3,7 @@
   <el-form class="business-filter-form" @submit.prevent="apply">
    <el-form-item v-for="field in fields" :key="field.key" class="filter-field">
     <el-autocomplete v-if="!field.options&&!field.remote" v-model="draft[field.key]" clearable :aria-label="field.label" :placeholder="field.label" :fetch-suggestions="(keyword:string,callback:SuggestionCallback)=>{void suggest(field,keyword,callback)}" :trigger-on-focus="false" :debounce="300" @keydown.enter.capture="textEnter($event)"/>
-    <el-select v-else v-model="draft[field.key]" clearable filterable :aria-label="field.label" :remote="!!field.remote" :remote-method="(keyword:string)=>search(field,keyword)" :loading="busy[field.key]" :placeholder="field.label" @visible-change="v=>v&&(field.key==='metalTypeId'?loadMetals():field.remote&&search(field,''))" @change="field.key==='factoryId'&&factoryChanged()">
+    <el-select v-else v-model="draft[field.key]" clearable filterable :aria-label="field.label" :remote="!!field.remote" :remote-method="(keyword:string)=>search(field,keyword)" :loading="busy[field.key]" :placeholder="field.label" @visible-change="v=>v&&(field.key==='metalTypeId'?loadMetals():field.remote&&search(field,keywords[field.key]??''))" @change="field.key==='factoryId'&&factoryChanged()">
      <el-option v-for="option in field.options??choices[field.key]??[]" :key="option.id" :label="option.name" :value="option.id"/>
      <template v-if="more[field.key]" #footer><el-button link type="primary" @click="search(field,keywords[field.key]??'',true)">加载更多</el-button></template>
     </el-select>

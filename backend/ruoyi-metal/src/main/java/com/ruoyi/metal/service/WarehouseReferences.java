@@ -45,7 +45,12 @@ public final class WarehouseReferences {
                 || !j.queryForList("SELECT i.item_id FROM metal_work_order_item i JOIN metal_work_order w ON w.work_order_id=i.work_order_id WHERE i.material_id=? AND w.task_type='RAW_PROCESSING' AND w.del_flag='0' LIMIT 1 FOR SHARE", id).isEmpty()
                 || pending(j,id,true);
     }
-    private static boolean pending(JdbcTemplate j,Long id,boolean raw){if(id==null)return false;try{return !j.queryForList("SELECT l.flow_line_id FROM metal_warehouse_flow_line l JOIN metal_warehouse_flow_group g ON g.group_id=l.group_id JOIN metal_warehouse_flow f ON f.flow_id=g.flow_id WHERE f.status IN ('WAITING','COLLECTING','RETURNED') AND g.status<>'SUPERSEDED' AND JSON_UNQUOTE(JSON_EXTRACT(l.line_json,'$.referenceId'))=? AND JSON_UNQUOTE(JSON_EXTRACT(l.line_json,'$.category'))"+(raw?"='RAW'":" IN ('SEMI','FINISHED')")+" LIMIT 1 FOR SHARE NOWAIT",id.toString()).isEmpty();}catch(org.springframework.dao.DataAccessException e){if(e.getMostSpecificCause() instanceof java.sql.SQLException sql&&sql.getErrorCode()==3572)throw new ServiceException("关联仓储记录正在处理中，请稍后重试");throw e;}}
+    private static boolean pending(JdbcTemplate j,Long id,boolean raw){
+        if(id==null)return false;
+        // A JSON table scan locks unrelated handovers before filtering; seek only this catalog identity.
+        try{return !j.queryForList("SELECT l.flow_line_id FROM metal_warehouse_flow_line l FORCE INDEX (idx_flow_line_reference) STRAIGHT_JOIN metal_warehouse_flow_group g ON g.group_id=l.group_id STRAIGHT_JOIN metal_warehouse_flow f ON f.flow_id=g.flow_id WHERE l.reference_id_key=? AND l.category_key"+(raw?"='RAW'":" IN ('SEMI','FINISHED')")+" AND f.status IN ('WAITING','COLLECTING','RETURNED') AND g.status<>'SUPERSEDED' LIMIT 1 FOR SHARE NOWAIT",id.toString()).isEmpty();}
+        catch(org.springframework.dao.DataAccessException e){if(e.getMostSpecificCause() instanceof java.sql.SQLException sql&&sql.getErrorCode()==3572)throw new ServiceException("关联仓储记录正在处理中，请稍后重试");throw e;}
+    }
     private static void pendingReference(JdbcTemplate j,Long id,boolean raw){if(pending(j,id,raw))throw new ServiceException("资料存在待确认仓储或加工交接引用，请先处理对应申请");}
 
     /**

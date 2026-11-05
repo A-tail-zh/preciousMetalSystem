@@ -37,8 +37,9 @@ test('real warning handler persists across reopen, refresh and account switch',a
   flow=ok(await f.confirm(flow,flow.groups[0],f.processor)).data
   const lines=(await detail('/metal/warehouse-order',outbound.id,f.admin)).lines
   const currentBatch=await detail('/metal/process-batch',f.flowBatchId,f.admin)
+  const wipContext=ok(await api('/metal/warehouse-flows/handover-context/'+f.flowBatchId,f.processor)).data
   flow=ok(await api('/metal/warehouse-flows/handover/'+f.flowBatchId,f.processor,'POST',{
-   requestId:randomUUID(),version:currentBatch.version,orderDate:'2026-11-03',physicalChecked:true,residualMode:'RETURNED',reason:'预警处理人隔离验收',documents:[
+   requestId:randomUUID(),version:currentBatch.version,wipBalances:wipContext.wipGroups.map((g:any)=>({groupKey:g.groupKey,remainingWeight:'0'})),orderDate:'2026-11-03',physicalChecked:true,residualMode:'RETURNED',reason:'预警处理人隔离验收',documents:[
     {type:'FINISHED_IN',warehouseId:f.warehouse,keeperId:f.ownerA,lines:[{category:'FINISHED',referenceId:f.productB,netWeight:'96',quantity:10}]},
     {type:'RAW_RETURN',warehouseId:f.warehouse,keeperId:f.ownerA,lines:[{category:'RAW',sourceLineId:lines.find((line:any)=>line.inventoryId===customerStock).id,netWeight:'2',quantity:0},{category:'RAW',sourceLineId:lines.find((line:any)=>line.inventoryId===factoryStock).id,netWeight:'1',quantity:0}]}
    ]
