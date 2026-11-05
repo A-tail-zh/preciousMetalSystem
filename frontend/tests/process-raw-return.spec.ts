@@ -1,4 +1,4 @@
-import {test,expect,type Page,type Locator} from '@playwright/test'
+import {test,expect,type Page,type Locator} from './helpers/isolated-live-test'
 import {warehouseFixture} from '../../tools/warehouse-test-fixture.mjs'
 import {detail,sql} from '../../tools/local-test-client.mjs'
 const pick=async(page:Page,d:Locator,label:string,name:string)=>{const f=d.locator('.el-form-item').filter({has:page.locator('label').filter({hasText:new RegExp('^'+label+'$')})});await f.locator('.el-select__wrapper').click();const id=await f.getByRole('combobox').getAttribute('aria-controls');await page.locator('[id="'+id+'"]').getByRole('option',{name,exact:true}).click()}

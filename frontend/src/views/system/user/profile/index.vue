@@ -50,7 +50,7 @@
                </template>
                <el-tabs v-model="selectedTab">
                   <el-tab-pane label="基本资料" name="userinfo">
-                     <userInfo :user="state.user" />
+                     <userInfo v-if="state.user.userId" :user="state.user" />
                   </el-tab-pane>
                   <el-tab-pane label="修改密码" name="resetPwd">
                      <resetPwd />

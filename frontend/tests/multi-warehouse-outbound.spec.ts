@@ -252,13 +252,13 @@ test('single outbound known business rejection permits correction after an exact
 
 const nonProductionTypes=[{type:'PRODUCT_OUT',label:'产品出库',category:'FINISHED'},{type:'SEMI_OUT',label:'半成品出库',category:'SEMI'},{type:'EXCHANGE_OUT',label:'还料出库',category:'RAW'}];
 
-async function nonProductionDraft(page:Page,c:{type:string,label:string,category:string}){
+async function nonProductionDraft(page:Page,c:{type:string,label:string,category:string},includeRecipient=true){
 
  const d=await setup(page);let empty=false,reads=0;const choose=async(label:string,name:string)=>{const f=d.locator('.order-header-form>.el-form-item').filter({has:page.locator('label').filter({hasText:new RegExp('^'+label+'$')})});await f.locator('.el-select__wrapper').click();const id=await f.getByRole('combobox').getAttribute('aria-controls');await page.locator('[id="'+id+'"]').getByRole('option',{name:name==='仓储员'?/仓储员/:name,exact:name!=='仓储员'}).click();if(label==='经办人')await page.keyboard.press('Escape')};
 
- await page.route('**/dev-api/metal/warehouse/options/stocks**',async r=>{reads++;await r.fulfill({json:{code:200,data:empty?[]:[{id:'S11',warehouseId:'11',category:c.category,referenceId:'61',code:'RETRY_STOCK',name:'重试物料',organization:'客户',netWeight:'100.000000',quantity:c.category==='RAW'?0:2,measurementMode:'PIECE'}]}})});
+ await page.route('**/dev-api/metal/warehouse/options/stocks**',async r=>{reads++;await r.fulfill({json:{code:200,data:empty?[]:[{id:'S11',warehouseId:'11',category:c.category,referenceId:'61',code:'RETRY_STOCK',materialOwnership:'UNVERIFIED',name:'重试物料',organization:'客户',netWeight:'100.000000',quantity:c.category==='RAW'?0:2,measurementMode:'PIECE'}]}})});
 
- await choose('出库类型',c.label);await choose('仓库/库房','仓库一');await choose('经办人','仓储员');await choose('仓管员','仓储员');if(['SEMI_OUT','PRODUCT_OUT'].includes(c.type))await choose('领用人','仓储员');
+ await choose('出库类型',c.label);await choose('仓库/库房','仓库一');await choose('经办人','仓储员');await choose('仓管员','仓储员');if(includeRecipient&&['SEMI_OUT','PRODUCT_OUT'].includes(c.type))await choose('领用人','仓储员');
 
  await d.locator('.line-toolbar').getByRole('button',{name:'添加',exact:true}).click();const line=page.getByRole('dialog',{name:'物料明细',exact:true});await line.getByRole('combobox').first().click();await page.getByRole('option').filter({hasText:'RETRY_STOCK'}).click();await line.getByLabel('实测净重(g)',{exact:true}).fill('100');if(c.category!=='RAW')await line.getByLabel('数量(件)',{exact:true}).fill('2');await line.getByRole('button',{name:'确认',exact:true}).click();await expect(line).not.toBeVisible();
 
@@ -272,7 +272,7 @@ for(const c of nonProductionTypes){
 
   const s=await nonProductionDraft(page,c),bodies:any[]=[];let commits=0;await page.route('**/dev-api/metal/warehouse-order',async r=>{bodies.push(r.request().postDataJSON());if(bodies.length===1){s.empty=true;commits++;await r.abort('failed')}else await r.fulfill({json:{code:200,id:'ORIGINAL'}})});
 
-  await s.d.getByRole('button',{name:'确认',exact:true}).click();await expect.poll(()=>bodies.length).toBe(1);await expectFrozen(s.d);await expect(s.d.getByRole('combobox',{name:/出库日期/})).toHaveValue(bodies[0].orderDate);await s.d.getByRole('button',{name:'确认',exact:true}).dispatchEvent('click');expect(bodies).toHaveLength(1);
+  await s.d.getByRole('button',{name:'确认',exact:true}).click();await expect.poll(()=>bodies.length).toBe(1);expect(bodies[0].lines[0].materialOwnership).toBeNull();await expectFrozen(s.d);await expect(s.d.getByRole('combobox',{name:/出库日期/})).toHaveValue(bodies[0].orderDate);await s.d.getByRole('button',{name:'确认',exact:true}).dispatchEvent('click');expect(bodies).toHaveLength(1);
 
   const reads=s.reads;await s.d.getByRole('button',{name:'重试原请求',exact:true}).click();await expect(s.d).not.toBeVisible();expect(bodies).toHaveLength(2);expect(bodies[1]).toEqual(bodies[0]);expect(s.reads).toBe(reads);expect(commits).toBe(1);
 
@@ -291,3 +291,13 @@ for(const c of nonProductionTypes){
  });
 
 }
+
+
+test('PRODUCT_OUT marks recipient required and blocks a missing recipient before posting',async({page})=>{
+ const s=await nonProductionDraft(page,nonProductionTypes[0],false);let posts=0;
+ await page.route('**/dev-api/metal/warehouse-order',r=>{posts++;return r.fulfill({json:{code:200,id:'SHOULD_NOT_POST'}})});
+ const field=s.d.locator('.order-header-form>.el-form-item').filter({has:page.locator('label').filter({hasText:/^领用人$/})});
+ await expect(field).toHaveClass(/is-required/);
+ await s.d.getByRole('button',{name:'确认',exact:true}).click();
+ await expect(field.getByText('请选择领用人',{exact:true})).toBeVisible();expect(posts).toBe(0);
+});

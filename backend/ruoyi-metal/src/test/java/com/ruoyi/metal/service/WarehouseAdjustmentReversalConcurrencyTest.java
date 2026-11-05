@@ -19,7 +19,7 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 
 /** Service/transaction fixtures in the disposable MySQL copy, never the business database. */
-@EnabledIfEnvironmentVariable(named="METAL_FLOW_ISOLATED_JDBC_URL",matches=".*(3310/heavy_metal_plan_upgrade_20261022|3321/(?:heavy_metal_flow|heavy_metal_factory_20261104)).*")
+@EnabledIfEnvironmentVariable(named="METAL_FLOW_ISOLATED_JDBC_URL",matches=WarehouseIntegrationEnvironment.URL_PATTERN)
 class WarehouseAdjustmentReversalConcurrencyTest {
     static class Fixture implements AutoCloseable {
         final DriverManagerDataSource ds = WarehouseIntegrationEnvironment.dataSource();

@@ -1,5 +1,5 @@
 import {uiIdentityFixture} from '../../tools/ui-identity-fixture.mjs'
-import {test,expect} from '@playwright/test'
+import {test,expect} from './helpers/isolated-live-test'
 import {login,api,ok} from '../../tools/local-test-client.mjs'
 test('操作列按当前账号权限显示',async({browser})=>{
  test.skip(process.env.LIVE_ACTION_COLUMN!=='1','需要本地服务');

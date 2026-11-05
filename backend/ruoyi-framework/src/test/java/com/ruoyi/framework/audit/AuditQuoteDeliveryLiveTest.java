@@ -21,6 +21,6 @@ class AuditQuoteDeliveryLiveTest {
    assertEquals("/metal/quotation/save",e.getString("path"));assertEquals(target.getString("factoryId"),e.getString("factory"));assertEquals(target.getString("requestId"),JSON.parseObject(e.getString("request")).getJSONObject("body").getString("requestId"));assertEquals("SUCCESS",e.getString("code"));
    if("PENDING".equals(queued.get("status"))){store.invoke(delivery,e);jdbc.update("UPDATE audit_outbox SET status='DELIVERED',delivered_time=NOW() WHERE event_id=?",row.get("event_id"));}
   }catch(Exception failure){throw new IllegalStateException("新测试事件投递失败",failure);}});
-  assertEquals(2,jdbc.queryForObject("SELECT COUNT(*) FROM sys_oper_log WHERE business_code=? AND business_factory_id=?",Integer.class,no,target.getLong("factoryId")));
+  assertEquals(2,jdbc.queryForObject("SELECT COUNT(*) FROM sys_oper_log WHERE event_id IN (?,?) AND business_code=? AND business_factory_id=?",Integer.class,events.get(0).get("event_id"),events.get(1).get("event_id"),no,target.getLong("factoryId")));
  }
 }

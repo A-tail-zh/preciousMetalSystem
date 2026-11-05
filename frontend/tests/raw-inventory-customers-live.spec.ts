@@ -1,11 +1,12 @@
-import {test,expect,type Page,type Locator} from '@playwright/test'
+import {assertRegisteredIsolation} from '../../tools/isolated-test-environment.mjs'
+import {test,expect,type Page,type Locator} from './helpers/isolated-live-test'
 import {warehouseFixture} from '../../tools/warehouse-test-fixture.mjs'
 import {api,ok,detail,sql} from '../../tools/local-test-client.mjs'
 import {selectWarehouseOption} from './helpers/warehouse-select'
 
 test('real raw detail and lost adjustment response across four widths',async({page})=>{
  test.setTimeout(120000)
- expect(process.env.TEST_MYSQL_PORT).toBe('3320');expect(sql('SELECT @@port')).toBe('3320')
+ if(process.env.TEST_ISOLATED_RUN==='1')assertRegisteredIsolation();else expect(process.env.TEST_MYSQL_PORT).toBe('3320');expect(sql('SELECT @@port')).toBe(process.env.TEST_MYSQL_PORT)
  const f=await warehouseFixture()
  try{
   const incoming=await f.post('RAW_IN',[{category:'RAW',referenceId:f.mat1,netWeight:'100',quantity:0}])

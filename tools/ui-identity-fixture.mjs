@@ -1,3 +1,4 @@
+import {randomUUID} from 'node:crypto';
 import {workOrderFixture} from './work-order-test-fixture.mjs';
 import {warehouseFixture} from './warehouse-test-fixture.mjs';
 import {api,ok,detail,login} from './local-test-client.mjs';
@@ -9,7 +10,7 @@ export async function uiIdentityFixture({business=false}={}){
  const base=['metal:dashboard:list','metal:work-order:list','metal:work-order:query','metal:inventory:list','metal:inventory:query','metal:warehouse-order:list','metal:warehouse-order:query'];
  await grant(f.roleA,base);await grant(f.roleB,base);
  const accounts=[{phone:f.phoneA,role:'只读查看员',factoryId:f.factoryA},{phone:f.phoneB,role:'只读查看员',factoryId:f.factoryB}];
- if(business){await f.post('RAW_IN',[{category:'RAW',referenceId:f.mat1,netWeight:'10',quantity:0}]);await f.post('SEMI_IN',[{category:'SEMI',referenceId:f.productA,netWeight:'10',quantity:1}]);await f.post('FINISHED_IN',[{category:'FINISHED',referenceId:f.productA,netWeight:'10',quantity:1}]);}
+ if(business){await f.post('RAW_IN',[{category:'RAW',referenceId:f.mat1,netWeight:'10',quantity:0}]);for(const category of ['SEMI','FINISHED'])ok(await api('/metal/inventory/opening',f.admin,'POST',{requestId:randomUUID(),factoryId:f.factoryA,warehouseId:f.warehouse,type:'OPENING',orderDate:'2026-11-05',operatorId:f.ownerA,keeperId:f.ownerA,lines:[{category,referenceId:f.productA,netWeight:'10',quantity:1,organization:f.prefix+'公司A'}]}));await grant(f.roleA,base);await grant(f.roleB,base);}
  else for(let i=0;i<2;i++){const roleId=String(ok(await api('/system/role',f.admin,'POST',{roleName:f.prefix+'展示角色'+i,factoryId:f.factoryA,roleSort:1,status:'0',menuIds:[]})).id);f.made.roles.push(roleId);await grant(roleId,[...base,...(i===0?['metal:warehouse-order:add']:['metal:work-order:add'])]);const phone='132'+randomBytes(4).readUInt32BE().toString().padStart(10,'0').slice(-8);const id=String(ok(await api('/system/user',f.admin,'POST',{phonenumber:phone,nickName:f.prefix+'展示人员'+i,factoryId:f.factoryA,roleIds:[roleId],status:'0',password:f.password})).id);f.made.users.push(id);accounts.push({phone,role:i===0?'仓储录入员':'生产录入员',factoryId:f.factoryA});}
  return {...f,accounts};
 }

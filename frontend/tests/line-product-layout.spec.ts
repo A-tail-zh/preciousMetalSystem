@@ -1,10 +1,10 @@
-import {test,expect} from '@playwright/test'
+import {test,expect} from './helpers/isolated-live-test'
 import {login,api} from '../../tools/local-test-client.mjs'
 test('line dialog displays ten factory and product choices before scrolling',async({page,context})=>{
  const token=await login();try{
  await context.addCookies([{name:'Admin-Token',value:token,url:'http://127.0.0.1:5173'}]);
  await page.route('**/metal/options/factories',route=>route.fulfill({json:{code:200,data:Array.from({length:15},(_,i)=>({id:String(8000+i),name:'布局验收工厂'+(i+1)}))}}));
- await page.route('**/metal/options/products',route=>route.fulfill({json:{code:200,data:Array.from({length:15},(_,i)=>({id:String(9000+i),name:'布局验收产品'+(i+1)}))}}));
+ await page.route('**/metal/options/products?*',route=>route.fulfill({json:{code:200,data:Array.from({length:15},(_,i)=>({id:String(9000+i),name:'布局验收产品'+(i+1)}))}}));
  await page.goto('/metal/production-line');await page.getByRole('button',{name:'添加',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'添加产线',exact:true});await expect(dialog).toBeVisible();
  await dialog.locator('.line-factory-select .el-select__wrapper').click();

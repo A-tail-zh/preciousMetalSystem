@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test'
+import {test,expect} from './helpers/isolated-live-test'
 import {api,ok,detail,sql} from '../../tools/local-test-client.mjs'
 import {workOrderFixture} from '../../tools/work-order-test-fixture.mjs'
 import {registerPageResources} from './helpers/fixture-registration'
@@ -18,15 +18,15 @@ test('real eight-type forms calculate, save, preserve legacy data and convert ex
  const f=await workOrderFixture();registerPageResources(page,f);let original:any
  const choose=async(label:string,value:string)=>{await page.getByRole('dialog').getByRole('combobox',{name:new RegExp(label+'$')}).press('ArrowDown');await page.getByRole('option',{name:value,exact:true}).click()}
  try{
-  original=ok(await api('/metal/volume-rule',f.admin)).data;ok(await api('/metal/volume-rule',f.admin,'PUT',{piValue:'3.14',curvedBottomFactor:'1.03',version:original.version}))
-  const metal=String(ok(await api('/metal/metal-types',f.admin,'POST',{name:f.prefix+'页面金属'})).id);f.made.metalTypes.push(metal)
+  original=ok(await api('/metal/volume-rule?factoryId='+f.factoryA,f.admin)).data;ok(await api('/metal/volume-rule?factoryId='+f.factoryA,f.admin,'PUT',{factoryId:f.factoryA,piValue:'3.14',curvedBottomFactor:'1.03',version:original.version}))
+  const metal=String(ok(await api('/metal/metal-types',f.admin,'POST',{factoryId:f.factoryA,name:f.prefix+'页面金属'})).id);f.made.metalTypes.push(metal)
   ok(await api('/metal/quote-rule',f.admin,'PUT',{metalTypeId:metal,version:0,density:'22.65',powderPrice:'0',nonPowderPrice:'0',shortagePrice:'0',lossPrice:'0'}))
   await page.route('**/dev-api/**',async route=>{const u=new URL(route.request().url());const response=await route.fetch({url:process.env.TEST_API_BASE_URL+u.pathname.replace('/dev-api','')+u.search});await route.fulfill({response})})
   await context.addCookies([{name:'Admin-Token',value:f.admin,url:baseURL!}]);await page.goto('/metal/product')
   for(const [index,[type,fields,volume,weight]] of samples.entries()){
    await page.setViewportSize({width:1440,height:1000});await page.getByRole('button',{name:'添加',exact:true}).click();const d=page.getByRole('dialog')
    await d.getByLabel('产品编号',{exact:true}).fill('PV2_UI_'+f.suffix+'_'+index);await d.getByLabel('产品名称',{exact:true}).fill(f.prefix+'页面'+type)
-   await choose('金属类型',f.prefix+'页面金属');await choose('产品类型',type)
+   await choose('所属工厂',f.prefix+'厂A');await choose('金属类型',f.prefix+'页面金属');await choose('产品类型',type)
    for(const [label,value] of Object.entries(fields))await d.getByLabel(label,{exact:true}).fill(value)
    await d.getByRole('heading').click();await expect(d.getByLabel('产品体积（cm³）',{exact:true})).toHaveValue(volume);await expect(d.getByLabel('理论成品净重（g）',{exact:true})).toHaveValue(weight);await expect(d.getByLabel('理论成品净重（g）',{exact:true})).toHaveAttribute('readonly','')
    if(type==='梯形')for(const width of [1920,1440,768,390]){await page.setViewportSize({width,height:1000});expect(await d.evaluate(e=>e.scrollWidth<=e.clientWidth+1)).toBeTruthy();await page.screenshot({path:`.runtime/product-v2-live-${width}.png`,fullPage:true})}
@@ -34,7 +34,7 @@ test('real eight-type forms calculate, save, preserve legacy data and convert ex
    const saved=ok(await api('/metal/product/list?code=PV2_UI_'+f.suffix+'_'+index,f.admin)).rows.find((p:any)=>p.code==='PV2_UI_'+f.suffix+'_'+index);expect(saved).toBeTruthy();if(!f.made.products.includes(saved.id))f.made.products.push(saved.id)
    const p=await detail('/metal/product',saved.id,f.admin);expect(Number(p.volume)).toBe(Number(volume));expect(Number(p.weight)).toBe(Number(weight));expect(p.calculationVersion).toBe(2)
   }
-  const legacy=String(ok(await api('/metal/product',f.admin,'POST',{metalTypeId:'1',productType:'环',dimensions:{outerDiameter:'4',innerDiameter:'2',thickness:'1'},name:f.prefix+'旧版环',code:'PV2_UI_OLD_'+f.suffix,processes:[]})).id);f.made.products.push(legacy)
+  const legacy=String(ok(await api('/metal/product',f.admin,'POST',{factoryId:f.factoryA,metalTypeId:metal,calculationVersion:2,productType:'环',dimensions:{outerDiameter:'4',innerDiameter:'2',thickness:'1'},name:f.prefix+'旧版环',code:'PV2_UI_OLD_'+f.suffix,processes:[]})).id);f.made.products.push(legacy)
   sql(`UPDATE metal_product SET calculation_version=1,dimensions=JSON_OBJECT('outerDiameter','4','innerDiameter','2','height','1.234567'),volume=11.234567,theoretical_weight=77.123456 WHERE product_id=${legacy}`)
   await page.reload();await page.getByRole('row').filter({hasText:f.prefix+'旧版环'}).getByRole('button',{name:'编辑',exact:true}).click();const d=page.getByRole('dialog')
   await expect(d.getByLabel('高度（cm）',{exact:true})).toBeDisabled();await expect(d.getByLabel('理论成品净重（g）',{exact:true})).toHaveValue('77.12')
@@ -42,5 +42,5 @@ test('real eight-type forms calculate, save, preserve legacy data and convert ex
   await page.getByRole('row').filter({hasText:f.prefix+'旧版环改名'}).getByRole('button',{name:'编辑',exact:true}).click();await choose('产品类型','环');await expect(d.getByLabel('高度（cm）',{exact:true})).toHaveCount(0)
   for(const [label,value] of Object.entries(samples[1][1]))await d.getByLabel(label,{exact:true}).fill(value)
   await d.getByRole('button',{name:'确定',exact:true}).click();await expect(d).not.toBeVisible();expect((await detail('/metal/product',legacy,f.admin)).calculationVersion).toBe(2)
- }finally{try{if(original){const current=ok(await api('/metal/volume-rule',f.admin)).data;ok(await api('/metal/volume-rule',f.admin,'PUT',{...original,version:current.version}))}}finally{await f.cleanup()}}
+ }finally{try{if(original){const current=ok(await api('/metal/volume-rule?factoryId='+f.factoryA,f.admin)).data;ok(await api('/metal/volume-rule?factoryId='+f.factoryA,f.admin,'PUT',{...original,factoryId:f.factoryA,version:current.version}))}}finally{await f.cleanup()}}
 })

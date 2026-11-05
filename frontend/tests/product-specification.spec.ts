@@ -1,5 +1,5 @@
 import {workOrderFixture} from '../../tools/work-order-test-fixture.mjs'
-import {test,expect} from '@playwright/test'
+import {test,expect} from './helpers/isolated-live-test'
 import {api,ok,sql} from '../../tools/local-test-client.mjs'
 test('product specification is derived, persisted and fully displayed',async({page,context})=>{
  test.setTimeout(90000)
@@ -8,7 +8,7 @@ test('product specification is derived, persisted and fully displayed',async({pa
  const dimensions={innerDiameter:'10',outerDiameter:'12',wallThickness:'0.2',innerHeight:'8',bottomThickness:'0.3'};
  const expected='内径10cm；外径12cm；壁厚0.2cm；内高8cm；底厚0.3cm';
  try{
-  id=String(ok(await api('/metal/product',token,'POST',{code,name:fixture.prefix+'尺寸回显验收',metalTypeId:'1',productType:'弧底',dimensions,processes:[],specification:'不应保存的手填型号'})).id);
+  id=String(ok(await api('/metal/product',token,'POST',{factoryId:fixture.factoryA,code,name:fixture.prefix+'尺寸回显验收',metalTypeId:fixture.metalA,calculationVersion:2,productType:'弧底',dimensions,processes:[],specification:'不应保存的手填型号'})).id);
   fixture.made.products.push(id);const detail=ok(await api('/metal/product/'+id,token)).data;expect(detail.specification).toBe(expected);
   expect(Buffer.from(sql('SELECT HEX(specification) FROM metal_product WHERE product_id='+id),'hex').toString('utf8')).toBe(expected);
   await context.addCookies([{name:'Admin-Token',value:token,url:process.env.TEST_FRONTEND_BASE_URL!}]);

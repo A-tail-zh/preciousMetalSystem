@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from './helpers/isolated-live-test';
 import {warehouseFixture} from '../../tools/warehouse-test-fixture.mjs';
 import {detail,api,ok} from '../../tools/local-test-client.mjs';
 test('未结算半成品不出现在出库选项，结算后可选择',async({page,context})=>{
