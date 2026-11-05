@@ -17,7 +17,7 @@ public final class WarehouseReferences {
         //判断报价历史中是否有工厂
         deny(j, "SELECT quote_id FROM metal_saved_quotation WHERE factory_id=? LIMIT 1", id);
         //判断仓库中是否有工厂
-        deny(j, "SELECT warehouse_id FROM metal_warehouse WHERE factory_id=? LIMIT 1", id);
+        deny(j, "SELECT warehouse_id FROM metal_warehouse WHERE factory_id=? AND del_flag='0' LIMIT 1", id);
     }
 
     /**
