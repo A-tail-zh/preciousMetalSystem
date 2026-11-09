@@ -11,7 +11,8 @@ public class SemiAutoReleaseService {
  private final JdbcTemplate jdbc;private final TransactionTemplate tx;
  public SemiAutoReleaseService(JdbcTemplate j,PlatformTransactionManager manager){jdbc=j;tx=new TransactionTemplate(manager);tx.setIsolationLevel(org.springframework.transaction.TransactionDefinition.ISOLATION_READ_COMMITTED);}
  static int retryDelay(int failures){return failures>5?-1:new int[]{0,2,10,30,120,300}[failures];}
- @Scheduled(fixedDelay=2000,initialDelay=5000)
+ // 旧模块重写期间停止自动释放；原实现备份见 .runtime/legacy-retirement-20261106/source-before.zip。
+ // @Scheduled(fixedDelay=2000,initialDelay=5000)
  public void recover(){try{for(var row:jdbc.queryForList("SELECT event_id FROM metal_semi_auto_release_event WHERE status IN ('PENDING','RETRY') AND next_attempt<=NOW() ORDER BY event_id LIMIT 20")){long id=SemiFlowService.num(row.get("event_id"));try{tx.executeWithoutResult(s->process(id));}catch(Exception failure){tx.executeWithoutResult(s->{var e=jdbc.queryForMap("SELECT failures,status FROM metal_semi_auto_release_event WHERE event_id=? FOR UPDATE",id);if(!Set.of("PENDING","RETRY").contains(String.valueOf(e.get("status"))))return;int count=(int)SemiFlowService.num(e.get("failures"))+1;int delay=retryDelay(count);jdbc.update("UPDATE metal_semi_auto_release_event SET failures=?,status=?,next_attempt=DATE_ADD(NOW(),INTERVAL ? SECOND),message=?,update_time=NOW() WHERE event_id=?",count,delay<0?"FAILED":"RETRY",Math.max(0,delay),"自动释放技术失败："+failure.getClass().getSimpleName(),id);});}}}catch(Exception failure){LOG.warn("SEMI_AUTO_RELEASE_RECOVERY_UNAVAILABLE {}",failure.getClass().getSimpleName());}}
  void process(long id){
   var hint=jdbc.queryForMap("SELECT factory_id,work_order_id FROM metal_semi_auto_release_event WHERE event_id=?",id);

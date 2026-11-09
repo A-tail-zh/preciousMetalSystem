@@ -83,7 +83,7 @@ const rows = ref<Factory[]>([]), selected = ref<Factory[]>([])
 const total = ref(0), loading = ref(false), loadFailed = ref(false), dialogOpen = ref(false), saving = ref(false), deleting = ref(false)
 const updateTime = ref(''), tableRef = ref<TableInstance>(), formRef = ref<FormInstance>()
 const appliedFilters=ref<Record<string,string>>({})
-function applyFilters(filters:Record<string,string>){appliedFilters.value=filters;query.pageNum=1;selected.value=[];tableRef.value?.clearSelection();load()}
+function applyFilters(filters:Record<string,string>){rows.value=[];total.value=0;appliedFilters.value=filters;query.pageNum=1;selected.value=[];tableRef.value?.clearSelection();load()}
 const query = reactive({pageNum: 1, pageSize: 16})
 const blank = (): FactoryForm => ({factoryName: '', area: '', address: '', introduction: ''})
 const form = reactive<FactoryForm>(blank())
@@ -100,7 +100,7 @@ const rules: FormRules = {
 let loadSequence=0,operationEpoch=0,manualPending=false
 async function load(){if(loading.value){manualPending=true;return false}return readList(false)}
 async function readList(background:boolean,refresh?:InventoryRefreshContext) {
-  if(!canRead()){resetAccess();return false}if(loading.value)return false
+  if(!canRead()){resetAccess();return false}if(!actionPermission.isAdmin.value&&!appliedFilters.value.factoryId){loadSequence++;loading.value=false;manualPending=false;rows.value=[];total.value=0;selected.value=[];loadFailed.value=false;return true}if(loading.value)return false
   const sequence=++loadSequence,account=identity(),params={...query,...appliedFilters.value},ids=selected.value.map(row=>row.factoryId),valid=()=>!disposed&&sequence===loadSequence&&account===identity()&&canRead(),current=()=>valid()&&!manualPending&&JSON.stringify(params)===JSON.stringify({...query,...appliedFilters.value})&&(!refresh||refresh.isCurrent()&&!saving.value&&!deleting.value)
   loading.value = true
   try {

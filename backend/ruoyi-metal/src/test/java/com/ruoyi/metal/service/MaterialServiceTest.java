@@ -22,6 +22,7 @@ class MaterialServiceTest {
         jdbc = mock(JdbcTemplate.class);
         when(jdbc.queryForList(contains("FROM metal_type WHERE"), any(Object[].class)))
                 .thenReturn(List.of(Map.of("metal_type_id", 1L)));
+        when(jdbc.queryForList(contains("FROM metal_material_type"), eq(String.class), eq(7L), anyString())).thenAnswer(i->List.of("粉料","块料","旧料").contains(i.getArgument(3,String.class))?List.of(i.getArgument(3,String.class)):List.of());
         service = new MaterialService(mock(MaterialMapper.class), FactoryCatalogTestFixtures.scope(), jdbc);
     }
 
@@ -33,12 +34,12 @@ class MaterialServiceTest {
     }
 
     @ParameterizedTest @CsvSource({"铱粉,粉料", "铱块,块料", "旧铱杆,旧料", "旧铱坩埚,旧料"})
-    void legacyTypesCannotCreateNewBusiness(String legacy, String type) {
+    void unregisteredLegacyNamesCannotCreateNewBusiness(String legacy, String type) {
         var row = material(legacy, null);
         assertThrows(ServiceException.class,()->service.prepare(row,null));
     }
 
-    @Test void legacyTypeCannotDescribeAnotherMetal() {
+    @Test void unregisteredNameIsRejectedForAnyMetal() {
         assertThrows(ServiceException.class, () -> service.prepare(material("铱粉", 2L), null));
     }
 
@@ -73,6 +74,23 @@ class MaterialServiceTest {
         assertThrows(ServiceException.class, () -> service.deletable(material("粉料", 1L)));
     }
 
+    @Test void registeredCustomAndLongNamesAreSavedExactly() {
+        for(String type:List.of("颗粒料","料".repeat(100),"铱粉")){
+            when(jdbc.queryForList(contains("FROM metal_material_type"),eq(String.class),eq(7L),eq(type))).thenReturn(List.of(type));
+            var row=material(type,1L);assertDoesNotThrow(()->service.prepare(row,null));assertEquals(type,row.getMaterialType());
+        }
+        assertThrows(ServiceException.class,()->service.prepare(material("料".repeat(101),1L),null));
+    }
+    @Test void historicalUnregisteredNameCanOnlyBeRetainedOnItsOriginalRecord() {
+        assertDoesNotThrow(()->service.prepare(material("旧目录外名称",1L),material("旧目录外名称",1L)));
+        assertThrows(ServiceException.class,()->service.prepare(material("旧目录外名称",1L),null));
+        assertThrows(ServiceException.class,()->service.prepare(material("另一个旧名称",1L),material("旧目录外名称",1L)));
+    }
+    @Test void directoryQueryUsesFactoryAndCurrentReadAndSavesCanonicalName() {
+        when(jdbc.queryForList("SELECT name FROM metal_material_type WHERE factory_id=? AND name=? FOR UPDATE",String.class,7L,"abc")).thenReturn(List.of("ABC"));
+        var row=material("abc",1L);service.prepare(row,null);assertEquals("ABC",row.getMaterialType());
+        verify(jdbc).queryForList("SELECT name FROM metal_material_type WHERE factory_id=? AND name=? FOR UPDATE",String.class,7L,"abc");
+    }
     @Test void onlyIridiumCanEnterProduction() {
         assertDoesNotThrow(() -> MaterialTypes.requireProduction(1L));
         assertThrows(ServiceException.class, () -> MaterialTypes.requireProduction(2L));

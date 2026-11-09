@@ -15,10 +15,10 @@ async function setup(page:Page,address=origin()){
   else if(path==='/metal/quotation/context'){
    state.contexts++
    if(state.contextFailure){await route.abort('failed');return}
-   result.data={metalTypes:[{id:'1',name:'铱'}],rules:[{metalTypeId:'1',version:state.version}],volumeRule:{version:0}}
+   result.data={productTypes:['平底坩埚','环','杆','梯形','弧底','靶','方形坩埚','方形盖'],metalTypes:[{id:'1',name:'铱'}],rules:[{metalTypeId:'1',version:state.version}],volumeRule:{version:0}}
   }else if(path==='/metal/quotation/save'){
    const payload=route.request().postDataJSON();calls.push(payload);let quote=requests.get(payload.requestId);const reused=!!quote
-   if(!quote){quote={id:String(documents.length+1),quoteNo:'QT-REVIEW-'+(documents.length+1),factoryName:'审查工厂',createTime:'2026-11-03 10:00:00',snapshotVersion:2,totalPrice:state.version?'84.00':'42.00',items:[]};documents.push(quote);requests.set(payload.requestId,quote)}
+   if(!quote){quote={id:String(documents.length+1),quoteNo:'QT-REVIEW-'+(documents.length+1),factoryId:payload.factoryId,factoryName:'审查工厂',createTime:'2026-11-03 10:00:00',snapshotVersion:2,totalPrice:state.version?'84.00':'42.00',items:[]};documents.push(quote);requests.set(payload.requestId,quote)}
    if(state.loseResponse){state.loseResponse=false;await route.abort('timedout');return}
    result.data={...quote,reused}
   }else if(path==='/metal/quotation/orders'){result.rows=documents;result.total=documents.length}
@@ -65,7 +65,7 @@ test('QR-02 changed rules after refresh recovery save once and then remain stabl
 
 test('QR-02 lost response plus failed refresh recovers original UUID before saving changed rules',async({page})=>{
  const s=await setup(page);await fill(page);s.state.loseResponse=true;await calculate(page);await expect(page.getByRole('button',{name:'开始计算',exact:true})).toBeEnabled()
- s.state.contextFailure=true;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(page.getByText('金属及规则加载失败，正在自动重试。',{exact:true})).toBeVisible();expect(s.calls).toHaveLength(1)
+ s.state.contextFailure=true;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(page.getByText('金属、产品类型及规则加载失败，正在自动重试。',{exact:true})).toBeVisible();expect(s.calls).toHaveLength(1)
  s.state.contextFailure=false;s.state.version++;await refresh(page);await expect(total(page)).toContainText('84.00')
  expect(s.calls).toHaveLength(3);expect(s.calls[0]).toEqual(s.calls[1]);expect(s.calls[2].requestId).not.toBe(s.calls[0].requestId);expect(s.documents).toHaveLength(2);expect(s.errors).toEqual([])
 })

@@ -15,12 +15,16 @@ import com.ruoyi.metal.security.FactoryScope;
  /**
   * 获取当前用户可访问的工厂选项。
   */
- @GetMapping("/factories") @PreAuthorize("@ss.hasAnyPermi('metal:product:list,metal:product:add,metal:product:edit,metal:material:list,metal:material:add,metal:material:edit,metal:process:list,metal:process:add,metal:process:edit,metal:quote-rule:list,metal:quote-rule:edit,metal:quotation:list,metal:customer:add,metal:customer:edit,metal:production-line:add,metal:production-line:edit,system:user:add,system:user:edit,system:role:add,system:role:edit')")
+ @GetMapping("/factories") @PreAuthorize("@ss.hasAnyPermi('metal:factory:list,metal:customer:list,metal:production-line:list,metal:metal-type:list,metal:product-type:list,metal:material-type:list,metal:process-type:list,metal:process-type:add,metal:process-type:remove,metal:product:list,metal:product:add,metal:product:edit,metal:material:list,metal:material:add,metal:material:edit,metal:process:list,metal:process:add,metal:process:edit,metal:quote-rule:list,metal:quote-rule:edit,metal:quotation:list,metal:customer:add,metal:customer:edit,metal:production-line:add,metal:production-line:edit,system:user:add,system:user:edit,system:role:add,system:role:edit')")
  public AjaxResult factories(){Long id=scope.currentFactory();return success(id==null?jdbc.queryForList("SELECT CAST(factory_id AS CHAR) id,factory_name name FROM metal_factory WHERE del_flag='0' ORDER BY factory_id"):jdbc.queryForList("SELECT CAST(factory_id AS CHAR) id,factory_name name FROM metal_factory WHERE del_flag='0' AND factory_id=?",id));}
  /**
   * 获取可选择的产品资料。
   */
  @GetMapping("/products") @PreAuthorize("@ss.hasAnyPermi('metal:production-line:add,metal:production-line:edit')") public AjaxResult products(@RequestParam(required=false) Long factoryId){Long factory=scope.resolveFactory(factoryId);return success(jdbc.queryForList("SELECT CAST(product_id AS CHAR) id,product_name name FROM metal_product WHERE del_flag='0' AND factory_id=? ORDER BY product_id",factory));}
+ @GetMapping("/product-types") @PreAuthorize("@ss.hasAnyPermi('metal:product:list,metal:product:query,metal:product:add,metal:product:edit')")
+ public AjaxResult productTypes(@RequestParam(required=false) Long factoryId){Long factory=scope.resolveFactory(factoryId);return success(jdbc.queryForList("SELECT CAST(id AS CHAR) id,name FROM metal_product_type WHERE factory_id=? ORDER BY name,id",factory));}
+ @GetMapping("/material-types") @PreAuthorize("@ss.hasAnyPermi('metal:material:list,metal:material:query,metal:material:add,metal:material:edit')")
+ public AjaxResult materialTypes(@RequestParam(required=false) Long factoryId){Long factory=scope.resolveFactory(factoryId);return success(jdbc.queryForList("SELECT CAST(id AS CHAR) id,name,material_category materialCategory FROM metal_material_type WHERE factory_id=? ORDER BY name,id",factory));}
  /**
   * 获取可选择的工序资料或产品工序计划。
   */

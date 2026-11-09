@@ -62,4 +62,8 @@ class SharedVolumeRuleTest {
    for(String value:new String[]{"0","-1","1.0000001"})assertFalse(validator.validate(new VolumeRule(new BigDecimal("3.14"),0,new BigDecimal(value))).isEmpty());
   }
  }
+ @Test void missingFactoryParametersReturnActionableErrorWithoutWriting(){
+  var jdbc=mock(JdbcTemplate.class);when(jdbc.queryForMap(anyString(),any(Object[].class))).thenThrow(new org.springframework.dao.EmptyResultDataAccessException(1));
+  var error=assertThrows(com.ruoyi.common.exception.ServiceException.class,()->new QuoteRuleService(jdbc,FactoryCatalogTestFixtures.scope()).volumeRule(7L));assertEquals(503,error.getCode());assertTrue(error.getMessage().contains("体积计算参数缺失"));verify(jdbc,never()).update(anyString(),any(Object[].class));
+ }
 }

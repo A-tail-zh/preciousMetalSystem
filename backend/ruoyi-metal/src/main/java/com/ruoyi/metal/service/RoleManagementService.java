@@ -39,6 +39,10 @@ import com.ruoyi.common.exception.ServiceException;
    scope.adminOnly();if(jdbc.queryForObject("SELECT COUNT(*) FROM sys_user_role ur JOIN sys_user u ON u.user_id=ur.user_id AND u.del_flag='0' WHERE ur.role_id=?",Integer.class,row.getId())>0)throw new ServiceException("角色被人员使用，不能转移工厂");
   }
   scope.lockFactories(List.of(row.getFactoryId()));scope.menuGrants(row.getMenuIds());
+  var menuIds=new ArrayList<>(row.getMenuIds());
+  var typeMenus=jdbc.queryForList("SELECT menu_id,parent_id FROM sys_menu WHERE perms IN ('metal:metal-type:list','metal:product-type:list','metal:material-type:list') AND status='0'");
+  for(var menu:typeMenus)if(menuIds.contains(((Number)menu.get("menu_id")).longValue())){Long parent=((Number)menu.get("parent_id")).longValue();if(!menuIds.contains(parent))menuIds.add(parent);}
+  row.setMenuIds(menuIds);
   if(old==null)row.setRoleKey("factory_"+UUID.randomUUID().toString().replace("-",""));else row.setRoleKey(old.getRoleKey());
  }
  /**

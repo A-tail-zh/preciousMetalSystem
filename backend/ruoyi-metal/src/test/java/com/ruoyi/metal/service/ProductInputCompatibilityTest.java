@@ -3,7 +3,7 @@ import com.ruoyi.metal.catalog.*;import com.ruoyi.metal.mapper.ProductMapper;imp
 import org.junit.jupiter.api.Test;import java.util.*;import java.math.BigDecimal;import static org.junit.jupiter.api.Assertions.*;import static org.mockito.Mockito.*;
 class ProductInputCompatibilityTest {
  private ProductRecord product(String diameter,String length){var p=new ProductRecord();p.setFactoryId(7L);p.setCategory("铱杆实心");p.setDimensions(Map.of("diameter",diameter,"length",length));return p;}
- private ProductService service(){var rules=mock(QuoteRuleService.class);var rule=new QuoteRule();rule.setPiValue(new BigDecimal("3.14"));when(rules.get()).thenReturn(rule);when(rules.metalName(any())).thenReturn("铱");when(rules.pi(any())).thenReturn(rule.getPiValue());return new ProductService(mock(ProductMapper.class),FactoryCatalogTestFixtures.scope(),mock(JdbcTemplate.class),rules);}
+ private ProductService service(){var rules=mock(QuoteRuleService.class);var rule=new QuoteRule();rule.setPiValue(new BigDecimal("3.14"));when(rules.get()).thenReturn(rule);when(rules.metalName(any())).thenReturn("铱");when(rules.pi(any())).thenReturn(rule.getPiValue());return new ProductService(mock(ProductMapper.class),FactoryCatalogTestFixtures.scope(),FactoryCatalogTestFixtures.productTypes(mock(JdbcTemplate.class)),rules);}
  @Test void newScientificDimensionsAreRejected(){assertThrows(RuntimeException.class,()->service().prepare(product("1e1","20"),null));}
  @Test void unchangedLegacyFormatIsAcceptedUsingServerOldRecord(){assertDoesNotThrow(()->service().prepare(product("1e1","20"),product("1e1","20")));}
  @Test void changedLegacyFormatIsValidatedAgain(){assertThrows(RuntimeException.class,()->service().prepare(product("2e1","20"),product("1e1","20")));}

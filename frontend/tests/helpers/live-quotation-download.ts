@@ -15,11 +15,11 @@ export async function verifyLiveQuotationDownload(page:Page,context:BrowserConte
   await expect(page.locator('.quote-results')).toContainText(saved.quoteNo)
   await expect(page.locator('.quote-results .el-image img')).toBeVisible()
   for(const [key,value] of Object.entries(dimensions))expect(saved.items[0].dimensions[key]).toBe(Number(value).toFixed(2))
-  const image=await fetch(process.env.TEST_API_BASE_URL+`/metal/quotation/orders/${saved.id}/items/1/image`,{headers:{Authorization:'Bearer '+f.admin}})
+  const image=await fetch(process.env.TEST_API_BASE_URL+`/metal/quotation/orders/${saved.id}/items/1/image?factoryId=${f.factoryA}`,{headers:{Authorization:'Bearer '+f.admin}})
   expect(image.status).toBe(200);const hash=createHash('sha256').update(Buffer.from(await image.arrayBuffer())).digest('hex')
   const rule=ok(await api('/metal/quote-rule?metalTypeId='+f.metalA+'&factoryId='+f.factoryA,f.admin)).data
   ok(await api('/metal/quote-rule',f.admin,'PUT',{...rule,density:'25.00',lossPrice:'99.00'}))
-  const frozen=ok(await api('/metal/quotation/orders/'+saved.id,f.admin)).data
+  const frozen=ok(await api('/metal/quotation/orders/'+saved.id+'?factoryId='+f.factoryA,f.admin)).data
   expect(frozen.items).toEqual(saved.items);expect(frozen.totalPrice).toBe(saved.totalPrice)
   const [download]=await Promise.all([page.waitForEvent('download'),page.locator('.quote-results').getByRole('button',{name:'下载报价单',exact:true}).click()])
   expect(download.suggestedFilename()).toBe(saved.quoteNo+'.xlsx')
@@ -47,6 +47,6 @@ with zipfile.ZipFile(sys.argv[1]) as z:
   const role=await detail('/system/role',f.roleB,f.admin)
   ok(await api('/system/role',f.admin,'PUT',{...role,menuIds:[...new Set([...role.menuIds,...menus.map((m:any)=>m.id)])]}))
   const other=await login(f.phoneB,f.password)
-  try{expect((await api('/metal/quotation/orders/'+saved.id+'/download',other)).code).toBe(403)}finally{await api('/logout',other,'POST')}
+  try{expect((await api('/metal/quotation/orders/'+saved.id+'/download?factoryId='+f.factoryB,other)).code).toBe(403)}finally{await api('/logout',other,'POST')}
  }finally{await f.cleanup()}
 }

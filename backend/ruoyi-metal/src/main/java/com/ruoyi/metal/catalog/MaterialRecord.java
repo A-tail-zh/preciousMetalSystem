@@ -14,9 +14,12 @@ public class MaterialRecord extends FactoryCatalogRecord {
     @JsonFormat(shape=JsonFormat.Shape.STRING)
     @Positive private Long metalTypeId;
     private String metalTypeName;
+    @com.fasterxml.jackson.annotation.JsonProperty(access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private String materialCategory;
     private boolean classificationLocked;
     public String getCode(){return code;} public void setCode(String v){code=v==null?null:v.strip();}
     public String getMaterialType(){return materialType;} public void setMaterialType(String v){materialType=v==null?null:v.strip();}
+    public String getMaterialCategory(){return materialCategory;} public void setMaterialCategory(String v){materialCategory=v;}
     public String getSpecification(){return specification;} public void setSpecification(String v){specification=v==null?null:v.strip();}
     public Long getMetalTypeId(){return metalTypeId;} public void setMetalTypeId(Long v){metalTypeId=v;}
     public String getMetalTypeName(){return metalTypeName;} public void setMetalTypeName(String v){metalTypeName=v;}

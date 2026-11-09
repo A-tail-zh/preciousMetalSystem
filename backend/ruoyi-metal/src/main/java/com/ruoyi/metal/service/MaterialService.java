@@ -34,9 +34,11 @@ public class MaterialService extends FactoryCatalogService<MaterialRecord> {
     @Override
     protected void prepare(MaterialRecord row, MaterialRecord old) {
         super.prepare(row,old);
-        String type = MaterialTypes.require(row.getMaterialType());
-        if (MaterialTypes.LEGACY.containsKey(row.getMaterialType())) {
-            throw new ServiceException("新物料请选择粉料、块料或旧料，并选择本厂金属");
+        String type = TypeManagementService.validName(TypeManagementService.Kind.MATERIAL,row.getMaterialType());
+        if (old == null || !Objects.equals(old.getMaterialType(),type)) {
+            var names=jdbc.queryForList("SELECT name FROM metal_material_type WHERE factory_id=? AND name=? FOR UPDATE",String.class,row.getFactoryId(),type);
+            if(names.isEmpty())throw new ServiceException("所选物料类型不在当前工厂目录中，请重新选择",400);
+            type=names.get(0);
         }
         row.setMaterialType(type);
         scope.requireCatalog("metal",row.getMetalTypeId(),row.getFactoryId());

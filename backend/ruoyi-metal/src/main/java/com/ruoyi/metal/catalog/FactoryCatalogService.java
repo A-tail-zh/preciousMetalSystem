@@ -6,6 +6,7 @@ import com.ruoyi.metal.security.FactoryScope;
 
 public abstract class FactoryCatalogService<T extends FactoryCatalogRecord> extends MasterService<T> {
     protected FactoryCatalogService(MasterMapper<T> mapper,FactoryScope scope){super(mapper,scope);}
+    @Override protected boolean requiresFactorySelection(){return true;}
     @Override protected boolean scoped(){return true;}
     @Override protected void access(T record){
         if(record.getFactoryId()==null)throw new ServiceException("历史公共资料仅供历史查询，请创建本厂资料",403);

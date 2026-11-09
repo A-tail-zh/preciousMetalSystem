@@ -18,7 +18,7 @@ public class ProcessTypeService {
  public ProcessTypeService(JdbcTemplate jdbc){this(jdbc,new com.ruoyi.metal.security.FactoryScope(jdbc,null));}
  @org.springframework.beans.factory.annotation.Autowired public ProcessTypeService(JdbcTemplate jdbc,com.ruoyi.metal.security.FactoryScope scope){this.jdbc=jdbc;this.scope=scope;}
  public List<Map<String,Object>> list(){return list(null);}
- public List<Map<String,Object>> list(Long requested){Long factory=scope.resolveFactory(requested);return jdbc.queryForList("SELECT CAST(type_id AS CHAR) id,type_name name,CAST(factory_id AS CHAR) factoryId FROM metal_process_type WHERE factory_id=? ORDER BY type_id",factory);}
+ public List<Map<String,Object>> list(Long requested){Long factory=scope.resolveFactory(requested);return jdbc.queryForList("SELECT CAST(type_id AS CHAR) id,type_name name,version,CAST(factory_id AS CHAR) factoryId FROM metal_process_type WHERE factory_id=? ORDER BY type_id",factory);}
  @Transactional(rollbackFor=Exception.class)
  public void remove(Long id){
   Long factory=scope.catalogFactory("process-type",id);scope.lockFactories(List.of(factory));

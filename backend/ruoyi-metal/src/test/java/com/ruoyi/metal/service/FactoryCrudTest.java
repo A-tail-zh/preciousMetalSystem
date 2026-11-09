@@ -22,7 +22,7 @@ class FactoryCrudTest {
 
     @BeforeEach void setup() {
         mapper = mock(FactoryMapper.class);
-        var scope = mock(com.ruoyi.metal.security.FactoryScope.class); when(scope.isAdmin()).thenReturn(true); when(scope.currentFactory()).thenReturn(null); var jdbc = mock(org.springframework.jdbc.core.JdbcTemplate.class, i -> i.getMethod().getName().equals("queryForObject") ? 0 : RETURNS_DEFAULTS.answer(i)); service = new FactoryService(mapper, scope, jdbc);
+        var scope = mock(com.ruoyi.metal.security.FactoryScope.class); when(scope.isAdmin()).thenReturn(true); when(scope.currentFactory()).thenReturn(null); var jdbc = mock(org.springframework.jdbc.core.JdbcTemplate.class, i -> i.getMethod().getName().equals("queryForObject") ? 0 : i.getMethod().getName().equals("update") ? 1 : RETURNS_DEFAULTS.answer(i)); service = new FactoryService(mapper, scope, jdbc);
     }
 
     private FactoryRequest form(List<Long> lines) {

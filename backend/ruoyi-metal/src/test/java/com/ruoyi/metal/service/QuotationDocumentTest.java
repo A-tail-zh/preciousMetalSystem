@@ -17,13 +17,14 @@ import static org.mockito.ArgumentMatchers.*;
 class QuotationDocumentTest {
     private final JdbcTemplate jdbc=mock(JdbcTemplate.class);
     private final AtomicReference<String> inserted=new AtomicReference<>();
-    private QuoteRuleService rules(){return new QuoteRuleService(null,FactoryCatalogTestFixtures.scope()){
+    private QuoteRuleService rules(){return new QuoteRuleService(jdbc,FactoryCatalogTestFixtures.scope()){
         @Override public String metalName(Long id){return "铱";}
         @Override public Map<String,Object> rule(Long id){return Map.of("density","22.65","powderPrice","2.00","nonPowderPrice","3.00","shortagePrice","4.00","lossPrice","7.00","version",3,"updateTime",UUID.randomUUID().toString());}
         @Override public Map<String,Object> volumeRuleForMetal(Long id){return Map.of("piValue","3.14","curvedBottomFactor","1.03","version",2,"updateTime",UUID.randomUUID().toString());}
     };}
     private DashboardService service(){
         when(jdbc.queryForList(anyString(),any(Object[].class))).thenReturn(List.of());
+        when(jdbc.queryForList(eq("SELECT name FROM metal_product_type WHERE factory_id=? AND name=?"),eq(String.class),eq(1L),eq("杆"))).thenReturn(List.of("杆"));
         when(jdbc.queryForObject(contains("sequence_value"),eq(Integer.class),any(Object[].class))).thenReturn(0);
         when(jdbc.queryForObject(startsWith("SELECT quote_id"),eq(Long.class),any(Object[].class))).thenReturn(7L);
         when(jdbc.queryForObject(startsWith("SELECT factory_name"),eq(String.class),any(Object[].class))).thenReturn("测试工厂");
@@ -32,6 +33,11 @@ class QuotationDocumentTest {
     }
     private CalculationRequest item(String powder){return new CalculationRequest(null,Map.of("innerDiameter","0","outerDiameter","2","length","1"),2,1L,"杆","MATERIAL_CUSTOM",powder,"5","1");}
     private QuotationSaveRequest request(CalculationRequest... items){return new QuotationSaveRequest(UUID.randomUUID().toString(),1L,List.of(items));}
+    @Test void missingCatalogTypeKeepsValidationCodeAndDoesNotSave(){
+        var service=service();when(jdbc.queryForList(eq("SELECT name FROM metal_product_type WHERE factory_id=? AND name=?"),eq(String.class),eq(1L),eq("杆"))).thenReturn(List.of());
+        try(var security=mockStatic(SecurityUtils.class)){security.when(SecurityUtils::getUserId).thenReturn(1L);var error=assertThrows(com.ruoyi.common.exception.ServiceException.class,()->service.saveQuotation(request(item("10"))));assertEquals(400,error.getCode());assertTrue(error.getMessage().startsWith("第1项商品"));}
+        verify(jdbc,never()).update(startsWith("INSERT INTO metal_saved_quotation"),any(Object[].class));
+    }
     @Test void saveFreezesCalculatedInputsPricesVersionsAndImageDigest(){
         var service=service();try(var security=mockStatic(SecurityUtils.class)){security.when(SecurityUtils::getUserId).thenReturn(1L);assertEquals(false,service.saveQuotation(request(item("10"))).get("reused"));}
         var frozen=com.alibaba.fastjson2.JSON.parseArray(inserted.get()).getJSONObject(0);

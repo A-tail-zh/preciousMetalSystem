@@ -1,3 +1,4 @@
+import {productTypes} from '../src/views/metal/master-config'
 import {test,expect,type Page} from '@playwright/test'
 
 async function setup(page:Page,kind:'product'|'material',delay:'post'|'refresh'|null){
@@ -11,6 +12,8 @@ async function setup(page:Page,kind:'product'|'material',delay:'post'|'refresh'|
   let body:any={code:200,data:[],rows:[],total:0},delayed=false
   if(path==='/getInfo')body={code:200,user:{userId:2,userName:'metal-user',factoryId:'7'},roles:['staff'],permissions:['*:*:*']}
   else if(path==='/getRouters')body.data=[{path:'/metal',component:'Layout',children:[{path:kind,component:`metal/${kind}/index`}]}]
+  else if(path==='/metal/options/material-types')body.data=[{id:'1',name:'粉料'}]
+  else if(path==='/metal/options/product-types')body.data=productTypes.map((name,i)=>({id:String(i+1),name}))
   else if(path==='/metal/options/factories')body.data=[{id:'7',name:'产品测试厂'}];else if(path==='/metal/metal-types'){
    if(req.method()==='POST'){
     if(delay==='post'){delayed=true;started=true;await gate}
@@ -70,6 +73,7 @@ for(const kind of ['product','material'] as const){
  test(kind+' selects a new metal in the same draft',async({page})=>{
   const f=await setup(page,kind,null);await f.open()
   await f.parent().getByLabel(kind==='product'?'产品编号':'物料编码',{exact:true}).fill('SAME-DRAFT')
+  await f.parent().getByRole('combobox',{name:kind==='product'?/产品类型$/:/物料类型名称$/}).press('ArrowDown');await page.getByRole('option',{name:kind==='product'?'环':'粉料',exact:true}).click()
   await f.addMetal()
   await page.evaluate(async()=>{let vm=(document.querySelector('.master-page') as any)?.__vueParentComponent;while(vm&&vm.type?.__name!=='MasterDataPage')vm=vm.parent;if(!vm)throw Error('MasterDataPage is not mounted');await vm.setupState.probeEditor({isCurrent:()=>true,quiet:true})})
   await expect(f.parent().getByRole('button',{name:'确定',exact:true})).toBeEnabled()

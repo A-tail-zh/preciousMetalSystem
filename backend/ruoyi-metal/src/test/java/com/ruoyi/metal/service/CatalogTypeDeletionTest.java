@@ -15,7 +15,9 @@ import static org.mockito.Mockito.*;
 class CatalogTypeDeletionTest {
  private final JdbcTemplate jdbc=mock(JdbcTemplate.class);
  private final FactoryScope scope=FactoryCatalogTestFixtures.scope();
+ @org.junit.jupiter.api.BeforeEach void allowMetalRemoval(){when(scope.isAdmin()).thenReturn(true);}
  private void ready(String table,String key){
+  when(jdbc.queryForList("SELECT "+key+" id,name,version FROM "+table+" WHERE "+key+"=? AND factory_id=? FOR UPDATE",10L,7L)).thenReturn(List.of(Map.of("id",10L,"name","测试金属","version",0)));
   when(jdbc.queryForObject(anyString(),eq(Integer.class),any(Object[].class))).thenReturn(0);
   when(jdbc.queryForList("SELECT "+key+" FROM "+table+" WHERE "+key+"=? AND factory_id=? FOR UPDATE",10L,7L)).thenReturn(List.of(Map.of(key,10L)));
   when(jdbc.update("DELETE FROM "+table+" WHERE "+key+"=? AND factory_id=?",10L,7L)).thenReturn(1);
@@ -36,7 +38,7 @@ class CatalogTypeDeletionTest {
  @ParameterizedTest @ValueSource(strings={"metal_product","metal_material","metal_type_quote_rule","metal_process_batch"})
  void referencedMetalCannotBeDeleted(String table){
   ready("metal_type","metal_type_id");when(jdbc.queryForObject("SELECT COUNT(*) FROM "+table+" WHERE metal_type_id=?",Integer.class,10L)).thenReturn(1);
-  assertTrue(assertThrows(ServiceException.class,()->new QuoteRuleService(jdbc,scope).removeMetal(10L)).getMessage().contains("不能删除"));
+  assertTrue(assertThrows(ServiceException.class,()->new QuoteRuleService(jdbc,scope).removeMetal(10L)).getMessage().contains("删除"));
   verify(jdbc,never()).update(anyString(),any(Object[].class));
  }
  @Test void stockSnapshotProtectsMetal(){

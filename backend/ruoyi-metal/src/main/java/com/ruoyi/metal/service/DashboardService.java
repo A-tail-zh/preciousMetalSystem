@@ -116,7 +116,7 @@ public class DashboardService {
         for(int index=0;index<input.items().size();index++){
             Map<String,Object> item;
             try{item=new LinkedHashMap<>(quotes.calculate(input.items().get(index),input.factoryId()));if(!Boolean.TRUE.equals(item.get("pricingEnabled")))throw new ServiceException("请选择加工类型");}
-            catch(ServiceException e){throw new ServiceException("第"+(index+1)+"项商品："+e.getMessage());}
+            catch(ServiceException e){throw new ServiceException("第"+(index+1)+"项商品："+e.getMessage(),e.getCode());}
             item.put("dimensionFields",ProductGeometry.FIELDS.get(item.get("productType").toString()).stream().map(key->Map.of("key",key,"label",ProductGeometry.label(item.get("productType").toString(),key),"unit","angle".equals(key)?"°":"cm")).toList());
             item.put("diagramVersion",QuotationDiagram.VERSION);
             items.add(item);total=BusinessDecimal.round(total.add(new BigDecimal(item.get("totalPrice").toString())));
@@ -161,6 +161,12 @@ public class DashboardService {
     /**
      * 读取报价单并校验所属工厂的访问权限。
      */
+    public Map<String,Object> quotation(Long id,Long selectedFactory){
+        Long factory=scope.resolveFactory(selectedFactory);
+        var quote=quotation(id);
+        if(!factory.toString().equals(quote.get("factoryId").toString()))throw new ServiceException("报价单不属于当前工厂",403);
+        return quote;
+    }
     public Map<String, Object> quotation(Long id) {
         var values = data("SELECT CAST(quote_id AS CHAR) id,quote_no quoteNo,CAST(factory_id AS CHAR) factoryId,category_labels categories,CAST(total_price AS CHAR) totalPrice,CAST(item_snapshot AS CHAR) items,rule_version ruleVersion,snapshot_version snapshotVersion,factory_name_snapshot factoryName,DATE_FORMAT(create_time,'%Y-%m-%d %H:%i:%s') createTime FROM metal_saved_quotation WHERE quote_id=?", id);
         if (values.isEmpty()) throw new ServiceException("报价单不存在");
@@ -175,7 +181,7 @@ public class DashboardService {
     public Map<String,Object> quotationList(Long selectedFactory,String quoteNo,int pageNum,int pageSize){
         if(pageNum<1||pageNum>1000000||pageSize<1||pageSize>100)throw new ServiceException("分页参数无效");
         if(quoteNo!=null&&quoteNo.length()>32)throw new ServiceException("报价单号最多32个字符");
-        Long factory=scope.currentFactory();if(selectedFactory!=null){scope.check(selectedFactory);factory=selectedFactory;}
+        Long factory=scope.resolveFactory(selectedFactory);
         List<Object> args=new ArrayList<>();String where=" WHERE 1=1";
         if(factory!=null){where+=" AND q.factory_id=?";args.add(factory);}
         if(quoteNo!=null&&!quoteNo.isBlank()){where+=" AND q.quote_no LIKE ? ESCAPE '!'";args.add(com.ruoyi.metal.catalog.ListQuery.pattern(quoteNo.strip()));}

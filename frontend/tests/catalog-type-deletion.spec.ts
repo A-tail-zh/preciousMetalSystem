@@ -38,7 +38,7 @@ for(const kind of ['process','product'] as const){
   await expect(d.getByRole('row').filter({hasText:'可删除类型'})).toHaveCount(0);await expect(d.getByRole('textbox')).toHaveValue('尚未保存的名称');expect(state.deletes).toHaveLength(2)
   if(kind==='process')await expect(d).not.toContainText('保存后可在工序')
  })
- test(`${kind}: add permission does not grant delete`,async({page})=>{await setup(page,kind,[`metal:${kind}:list`,`metal:${kind}:add`]);const d=await open(page,kind);await expect(d.getByRole('button',{name:'删除',exact:true})).toHaveCount(0)})
+ test(`${kind}: add permission does not grant delete`,async({page})=>{await setup(page,kind,[`metal:${kind}:list`,`metal:${kind}:add`,...(kind==='product'?['metal:metal-type:add']:[])]);const d=await open(page,kind);await expect(d.getByRole('button',{name:'删除',exact:true})).toHaveCount(0)})
  test(`${kind}: logout while confirming cannot issue delete`,async({page})=>{
   const state=await setup(page,kind),d=await open(page,kind);await d.getByRole('row').filter({hasText:'可删除类型'}).getByRole('button',{name:'删除',exact:true}).click()
   await page.evaluate(async()=>{const path='/src/store/modules/user.ts';(await import(path)).default().sessionReady=false})
@@ -55,3 +55,9 @@ test('deleting the selected process type clears only that applied filter',async(
  const d=await open(page,'process');await d.getByRole('row').filter({hasText:'可删除类型'}).getByRole('button',{name:'删除',exact:true}).click();await page.getByRole('dialog',{name:'删除工序类型',exact:true}).getByRole('button',{name:'删除',exact:true}).click()
  await expect(d.getByRole('row').filter({hasText:'可删除类型'})).toHaveCount(0);await d.getByRole('button',{name:'取消',exact:true}).click();await expect(select).toHaveValue('')
 })
+
+test('product editing permission cannot manage metal types',async({page})=>{
+ await setup(page,'product',['metal:product:list','metal:product:add','metal:product:edit']);
+ await page.getByRole('button',{name:'添加',exact:true}).click();
+ await expect(page.getByRole('button',{name:'添加金属类型',exact:true})).toHaveCount(0);
+});

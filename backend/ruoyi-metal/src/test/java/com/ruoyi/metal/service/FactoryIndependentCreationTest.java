@@ -15,7 +15,7 @@ import static org.mockito.Mockito.*;
 
 class FactoryIndependentCreationTest {
     private final FactoryMapper mapper = mock(FactoryMapper.class);
-    private final FactoryService service = new FactoryService(mapper, mock(FactoryScope.class), mock(JdbcTemplate.class));
+    private final FactoryService service = new FactoryService(mapper, mock(FactoryScope.class), mock(JdbcTemplate.class,i->i.getMethod().getName().equals("update")?1:RETURNS_DEFAULTS.answer(i)));
     private FactoryRequest form(List<Long> lines) {
         var r = new FactoryRequest(); r.setFactoryName("独立工厂"); r.setAddress("测试地址");
         r.setArea(BigDecimal.ONE); r.setProductionLineIds(lines); return r;

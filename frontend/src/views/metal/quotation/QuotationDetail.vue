@@ -8,7 +8,7 @@
     <div v-for="field in weights.filter(f=>item[f.key]!=null)" :key="field.key"><dt>{{field.label}}</dt><dd>{{decimalText(item[field.key])}}</dd></div>
     <div v-for="field in amounts.filter(f=>item[f.key]!=null)" :key="field.key"><dt>{{field.label}}</dt><dd>{{decimalText(item[field.key])}}</dd></div>
    </dl></div>
-   <QuotationImage :key="quote.id+':'+index" :quote-id="quote.id" :index="index+1"/></div>
+   <QuotationImage :key="quote.id+':'+index" :factory-id="String(quote.factoryId)" :quote-id="quote.id" :index="index+1"/></div>
   </article>
   <p class="quote-total" role="status">本次合计金额：{{decimalText(quote.totalPrice)}} 元</p>
  </section>

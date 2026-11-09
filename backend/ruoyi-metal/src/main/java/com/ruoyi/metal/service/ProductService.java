@@ -48,6 +48,11 @@ public class ProductService extends FactoryCatalogService<ProductRecord> {
             if(row.getMetalTypeId()==null)throw new ServiceException("请选择金属类型");
             ProductTypes.require(row.getProductType());
         }
+        if(old==null||priorVersion!=currentVersion||!Objects.equals(old.getProductType()==null&&priorVersion==1?ProductTypes.legacy(old.getCategory()):old.getProductType(),row.getProductType())){
+            var types=jdbc.queryForList("SELECT name FROM metal_product_type WHERE factory_id=? AND name=? FOR UPDATE",String.class,row.getFactoryId(),row.getProductType());
+            if(types.isEmpty())throw new ServiceException("所选产品类型不在当前工厂目录中，请重新选择",400);
+            row.setProductType(types.get(0));
+        }
         String metalName=quoteRules.metalName(row.getMetalTypeId());
         scope.requireCatalog("metal",row.getMetalTypeId(),row.getFactoryId());
         String category=metalName+row.getProductType();

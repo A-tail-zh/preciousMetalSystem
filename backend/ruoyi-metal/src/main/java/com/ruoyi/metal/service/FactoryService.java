@@ -22,10 +22,10 @@ public class FactoryService {
     /**
      * 查询列表并补充关联资料。
      */
-    public List<Factory> list() { return listInternal(null); }
-    public List<Factory> list(com.ruoyi.metal.catalog.ListQuery q) {q.validate();return listInternal(q);}
+    public List<Factory> list() { return list(new com.ruoyi.metal.catalog.ListQuery()); }
+    public List<Factory> list(com.ruoyi.metal.catalog.ListQuery q) {q.validate();if(!scope.isAdmin()||q.getFactoryId()!=null)q.setFactoryId(scope.resolveFactory(q.getFactoryId()));return listInternal(q);}
     private List<Factory> listInternal(com.ruoyi.metal.catalog.ListQuery q) {
-        List<Factory> factories = q==null?mapper.selectList(scope.currentFactory()):mapper.selectFiltered(scope.currentFactory(),q);
+        List<Factory> factories = q==null?mapper.selectList(scope.currentFactory()):mapper.selectFiltered(q.getFactoryId(),q);
         if (!factories.isEmpty()) {
             Map<String, List<ProductionLine>> lines = mapper.selectLines(factories.stream()
                 .map(f -> Long.valueOf(f.getFactoryId())).toList()).stream()
@@ -65,7 +65,9 @@ public class FactoryService {
         form.setArea(BusinessDecimal.positive(form.getArea(),"占地面积"));
         checkArea(form);
         mapper.insert(form, actor);
-        jdbc.update("INSERT INTO metal_factory_volume_rule(factory_id,pi_value,curved_bottom_factor,update_by) SELECT ?,pi_value,curved_bottom_factor,? FROM metal_volume_rule WHERE rule_id=1",form.getFactoryId(),actor);
+        // A business-data reset must not leave new factories without shared formula parameters.
+        jdbc.update("INSERT INTO metal_volume_rule(rule_id,pi_value,curved_bottom_factor,update_by) VALUES(1,3.14,1.03,?) ON DUPLICATE KEY UPDATE rule_id=rule_id",actor);
+        if(jdbc.update("INSERT INTO metal_factory_volume_rule(factory_id,pi_value,curved_bottom_factor,update_by) SELECT ?,pi_value,curved_bottom_factor,? FROM metal_volume_rule WHERE rule_id=1",form.getFactoryId(),actor)!=1)throw new ServiceException("工厂体积计算参数初始化失败，请重试",503);
         return form.getFactoryId().toString();
     }
 
@@ -101,7 +103,7 @@ public class FactoryService {
         for (Factory f : factories) {
             Long id=Long.valueOf(f.getFactoryId());
             WorkOrderReferences.factory(jdbc,id);WarehouseReferences.factory(jdbc,id);
-            for(String table:List.of("metal_product","metal_material","metal_process","metal_process_type","metal_type")){
+            for(String table:List.of("metal_product","metal_material","metal_process","metal_process_type","metal_type","metal_product_type","metal_material_type")){
                 String active=Set.of("metal_product","metal_material","metal_process").contains(table)?" AND del_flag='0'":"";
                 if(jdbc.queryForObject("SELECT COUNT(*) FROM "+table+" WHERE factory_id=?"+active,Integer.class,id)>0)throw new ServiceException("工厂下存在基础目录，请先核对："+f.getFactoryName());
             }

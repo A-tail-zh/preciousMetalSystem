@@ -12,7 +12,7 @@ import static org.mockito.Mockito.*;
 
 class LineFactoryRequiredTest {
     @Test void evenAdministratorMustChooseFactoryBeforeSavingLine() {
-        var scope=mock(FactoryScope.class);when(scope.isAdmin()).thenReturn(true);
+        var scope=mock(FactoryScope.class);when(scope.isAdmin()).thenReturn(true);when(scope.resolveFactory(null)).thenThrow(new ServiceException("请选择所属工厂"));
         var service=new LineService(mock(LineMapper.class),scope,mock(JdbcTemplate.class));
         var line=new LineRecord();line.setProductIds(List.of());
         assertTrue(assertThrows(ServiceException.class,()->service.prepare(line,null)).getMessage().contains("请选择所属工厂"));

@@ -24,6 +24,7 @@ public class LineService extends MasterService<LineRecord> {
     /**
      * 声明列表是否按照当前用户所属工厂过滤。
      */
+    @Override protected boolean requiresFactorySelection(){return true;}
     @Override
     protected boolean scoped() {
         return true;
@@ -70,6 +71,7 @@ public class LineService extends MasterService<LineRecord> {
      */
     @Override
     protected void prepare(LineRecord row, LineRecord old) {
+        row.setFactoryId(scope.resolveFactory(row.getFactoryId()));
         if (old != null && !Objects.equals(old.getFactoryId(), row.getFactoryId())) {
             scope.adminOnly();
             WorkOrderReferences.lineMove(jdbc, row.getId());

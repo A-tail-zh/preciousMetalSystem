@@ -40,7 +40,7 @@ public class DashboardController extends BaseController {
  /**
   * 查询指定报价单详情。
   */
- @GetMapping("/quotation/orders/{id}") @PreAuthorize("@ss.hasPermi('metal:quotation:list')") public AjaxResult quote(@PathVariable Long id){return success(service.quotation(id));}
+ @GetMapping("/quotation/orders/{id}") @PreAuthorize("@ss.hasPermi('metal:quotation:list')") public AjaxResult quote(@PathVariable Long id,@RequestParam(required=false) Long factoryId){return success(service.quotation(id,factoryId));}
 
  /**
   * 生成并下载指定报价单文件。
@@ -48,8 +48,8 @@ public class DashboardController extends BaseController {
  @GetMapping("/quotation/orders/{id}/download")
  @PreAuthorize("@ss.hasPermi('metal:quotation:list')")
  @Log(title="下载报价单",businessType=BusinessType.EXPORT,isSaveResponseData=false)
- public void download(@PathVariable Long id,HttpServletResponse response)throws Exception {
-  var quote=service.quotation(id);
+ public void download(@PathVariable Long id,@RequestParam(required=false) Long factoryId,HttpServletResponse response)throws Exception {
+  var quote=service.quotation(id,factoryId);
   if("2".equals(String.valueOf(quote.get("snapshotVersion")))){
    try(var book=new XSSFWorkbook()){com.ruoyi.metal.service.QuotationWorkbook.write(book,quote,index->service.quotationImage(id,index));response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");response.setHeader("Content-Disposition","attachment; filename="+quote.get("quoteNo")+".xlsx");book.write(response.getOutputStream());}return;
   }
@@ -78,8 +78,8 @@ public class DashboardController extends BaseController {
  }
  @GetMapping(value="/quotation/orders/{id}/items/{index}/image",produces="image/png")
  @PreAuthorize("@ss.hasPermi('metal:quotation:list')")
- public byte[] itemImage(@PathVariable Long id,@PathVariable int index,HttpServletResponse response){
-  var quote=service.quotation(id);response.setHeader("Cache-Control","no-store");if("2".equals(String.valueOf(quote.get("snapshotVersion"))))return service.quotationImage(id,index);var items=(List<?>)quote.get("items");
+ public byte[] itemImage(@PathVariable Long id,@PathVariable int index,@RequestParam(required=false) Long factoryId,HttpServletResponse response){
+  var quote=service.quotation(id,factoryId);response.setHeader("Cache-Control","no-store");if("2".equals(String.valueOf(quote.get("snapshotVersion"))))return service.quotationImage(id,index);var items=(List<?>)quote.get("items");
   if(index<1||index>items.size())throw new ServiceException("报价明细不存在");
   var item=(Map<?,?>)items.get(index-1);response.setHeader("Cache-Control","no-store");
   return images.render(String.valueOf(item.get("category")),item.get("dimensions") instanceof Map<?,?> dims?dims:null);

@@ -11,6 +11,7 @@ import com.ruoyi.metal.security.FactoryScope;
 public class CustomerService extends MasterService<CustomerRecord> {
     public CustomerService(CustomerMapper mapper, FactoryScope scope) { super(mapper, scope); }
 
+    @Override protected boolean requiresFactorySelection(){return true;}
     @Override protected boolean scoped() { return true; }
     @Override protected void access(CustomerRecord row) { scope.check(row.getFactoryId()); }
 

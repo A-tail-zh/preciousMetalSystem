@@ -2,18 +2,18 @@ import {test,expect,type Page} from '@playwright/test'
 
 const deferred=()=>{let resolve!:()=>void;const promise=new Promise<void>(r=>resolve=r);return{promise,resolve}}
 async function setup(page:Page,{admin=true,save=true,single=false}={}){
- const state={factoryFailure:false,emptyFactories:false,saveFailure:false,lost:false,saveGate:undefined as ReturnType<typeof deferred>|undefined,downloadGate:undefined as ReturnType<typeof deferred>|undefined,saves:[] as any[]}
+ const state={types:{'11':['杆'],'22':['环']} as Record<string,string[]>,contextFailure:false,contextGate:undefined as ReturnType<typeof deferred>|undefined,factoryFailure:false,emptyFactories:false,saveFailure:false,lost:false,saveGate:undefined as ReturnType<typeof deferred>|undefined,downloadGate:undefined as ReturnType<typeof deferred>|undefined,saves:[] as any[]}
  await page.context().addCookies([{name:'Admin-Token',value:'quote-context-fixture',url:String(test.info().project.use.baseURL)}])
  await page.route('**/dev-api/**',async route=>{
   const req=route.request(),path=new URL(req.url()).pathname.replace('/dev-api','');let out:any={code:200,data:[],rows:[],total:0}
   if(path==='/getInfo')out={code:200,user:{userId:admin?1:2,userName:'fixture'},roles:[admin?'admin':'staff'],permissions:save?['metal:quotation:list','metal:quotation:add']:['metal:quotation:list']}
   else if(path==='/getRouters')out.data=[{path:'/metal',component:'Layout',children:[{path:'quotation',component:'metal/quotation/index',name:'QuoteContext'}]}]
   else if(path==='/metal/quotation/factories')out=state.factoryFailure?{code:500,msg:'工厂加载失败'}:{code:200,data:state.emptyFactories?[]:single||!admin?[{id:'11',name:'工厂A'}]:[{id:'11',name:'工厂A'},{id:'22',name:'工厂B'}]}
-  else if(path==='/metal/quotation/context')out.data={metalTypes:[{id:'1',name:'铱'}],rules:[],volumeRule:{version:0}}
+  else if(path==='/metal/quotation/context'){const types=[...state.types[new URL(req.url()).searchParams.get('factoryId')!]];if(state.contextGate)await state.contextGate.promise;out=state.contextFailure?{code:500,msg:'目录加载失败'}:{code:200,data:{productTypes:types,metalTypes:[{id:'1',name:'铱'}],rules:[],volumeRule:{version:0}}}}
   else if(path==='/metal/quotation/save'){
    const body=req.postDataJSON();state.saves.push(body);if(state.saveGate)await state.saveGate.promise
    if(state.lost){state.lost=false;await route.abort();return}
-   out=state.saveFailure?{code:500,msg:'保存失败'}:{code:200,data:{id:String(state.saves.length),quoteNo:'QT'+state.saves.length,factoryName:body.factoryId==='11'?'工厂A':'工厂B',totalPrice:'24.00',snapshotVersion:2,items:body.items.map((item:any)=>({...item,category:'铱杆',processingTypeName:'欠料定制',totalPrice:'24.00',unitWeight:'12.00',totalWeight:'24.00'}))}}
+   out=state.saveFailure?{code:500,msg:'保存失败'}:{code:200,data:{id:String(state.saves.length),quoteNo:'QT'+state.saves.length,factoryId:body.factoryId,factoryName:body.factoryId==='11'?'工厂A':'工厂B',totalPrice:'24.00',snapshotVersion:2,items:body.items.map((item:any)=>({...item,category:'铱杆',processingTypeName:'欠料定制',totalPrice:'24.00',unitWeight:'12.00',totalWeight:'24.00'}))}}
   }else if(path.endsWith('/download')){if(state.downloadGate)await state.downloadGate.promise;await route.fulfill({contentType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',body:'mock excel'});return}
   else if(path.endsWith('/image')){await route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==','base64')});return}
   await route.fulfill({json:out})
@@ -28,6 +28,21 @@ async function goods(page:Page){
 }
 const calculate=(page:Page)=>page.getByRole('button',{name:'开始计算',exact:true}).click()
 const result=(page:Page)=>page.locator('.quote-results')
+
+test('factory product catalog replaces fixed choices and clears dimensions on factory change',async({page})=>{
+ await setup(page);await expect(page.getByRole('combobox',{name:'产品类型',exact:true})).toBeDisabled();await factory(page);await goods(page);await factory(page,'工厂B');await expect(page.getByLabel('长度（cm）',{exact:true})).toHaveCount(0);
+ await page.getByRole('combobox',{name:'产品类型',exact:true}).press('ArrowDown');await expect(page.getByRole('option',{name:'环',exact:true})).toBeVisible();await expect(page.getByRole('option',{name:'杆',exact:true})).toHaveCount(0)
+})
+test('empty catalog and load failure block new quotes without fixed fallback',async({page})=>{
+ const state=await setup(page);state.types['11']=[];await factory(page);await expect(page.getByText('本厂暂无产品类型，请先在类型管理中添加。',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'开始计算',exact:true})).toBeDisabled();
+ state.contextFailure=true;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(page.getByText('金属、产品类型及规则加载失败，正在自动重试。',{exact:false})).toBeVisible();state.contextFailure=false;state.types['11']=['杆'];await page.getByRole('button',{name:'重试',exact:true}).click();await goods(page);await calculate(page);await expect(result(page)).toBeVisible()
+})
+test('removed type keeps input but requires reselection and does not auto-save',async({page})=>{
+ const state=await setup(page);await factory(page);await goods(page);state.types['11']=['环'];await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(page.getByText('所选类型已失效，请重新选择',{exact:true})).toBeVisible();await expect(page.getByLabel('长度（cm）',{exact:true})).toHaveValue('3');await expect(page.getByRole('button',{name:'开始计算',exact:true})).toBeDisabled();expect(state.saves).toHaveLength(0)
+})
+test('late context from previous factory cannot replace the current catalog',async({page})=>{
+ const state=await setup(page);const gate=deferred();state.contextGate=gate;await factory(page);state.contextGate=undefined;await factory(page,'工厂B');gate.resolve();await page.getByRole('combobox',{name:'产品类型',exact:true}).press('ArrowDown');await expect(page.getByRole('option',{name:'环',exact:true})).toBeVisible();await expect(page.getByRole('option',{name:'杆',exact:true})).toHaveCount(0)
+})
 
 test('admin explicitly chooses a factory and calculation saves the frozen quote in one request',async({page})=>{
  const state=await setup(page,{single:true});await expect(page.getByRole('button',{name:'开始计算',exact:true})).toBeDisabled();await factory(page);await goods(page);await calculate(page);await expect(result(page)).toContainText('QT1');expect(state.saves[0].factoryId).toBe('11');await expect(page.getByRole('button',{name:'保存报价单',exact:true})).toHaveCount(0)

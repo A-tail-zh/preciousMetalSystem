@@ -41,7 +41,7 @@ class MasterCrudTest {
             case PRODUCT -> {
                 ProductMapper m = mock(ProductMapper.class); mapper = m;
                 QuoteRuleService quoteRules=mock(QuoteRuleService.class);QuoteRule rule=new QuoteRule();rule.setPiValue(new java.math.BigDecimal("3.141592653589793"));when(quoteRules.get()).thenReturn(rule);when(quoteRules.metalName(any())).thenReturn("铱");when(quoteRules.pi(any())).thenReturn(rule.getPiValue());when(quoteRules.volumeRuleForMetal(any())).thenReturn(Map.of("piValue","3.14","curvedBottomFactor","1.03"));
-                service = new ProductService(m, scope, jdbc,quoteRules);
+                service = new ProductService(m, scope, FactoryCatalogTestFixtures.productTypes(jdbc),quoteRules);
                 ProductRecord p = new ProductRecord();p.setFactoryId(7L); p.setName("Product"); p.setCode("P");
                 p.setCategory("铱环");p.setMetalTypeId(1L);p.setProductType("环");p.setCalculationVersion(2);
                 p.setDimensions(Map.of("outerDiameter", "12", "innerDiameter", "10", "thickness", "2")); form = p;
@@ -53,6 +53,7 @@ class MasterCrudTest {
             }
             case MATERIAL -> {
                 when(jdbc.queryForList(contains("FROM metal_type WHERE"), any(Object[].class))).thenReturn(List.of(Map.of("metal_type_id", 1L)));
+                when(jdbc.queryForList(contains("FROM metal_material_type"), eq(String.class), eq(7L), anyString())).thenAnswer(i->"粉料".equals(i.getArgument(3,String.class))?List.of("粉料"):List.of());
                 MaterialMapper m = mock(MaterialMapper.class); mapper = m;
                 service = new MaterialService(m, scope, jdbc);
                 MaterialRecord r = new MaterialRecord();r.setFactoryId(7L); r.setCode("M"); r.setMaterialType("粉料");r.setMetalTypeId(1L); form = r;

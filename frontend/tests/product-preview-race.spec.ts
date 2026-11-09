@@ -1,3 +1,4 @@
+import {productTypes} from '../src/views/metal/master-config'
 import {test,expect,type Page} from '@playwright/test'
 async function setup(page:Page,preview:(type:string)=>Promise<any>){
  const calls:string[]=[]
@@ -6,6 +7,7 @@ async function setup(page:Page,preview:(type:string)=>Promise<any>){
   const req=route.request(),p=new URL(req.url()).pathname.replace('/dev-api','');let result:any={code:200,data:[],rows:[],total:0}
   if(p==='/getInfo')result={code:200,user:{userId:2,userName:'preview-user',factoryId:'7'},roles:['staff'],permissions:['*:*:*']}
   else if(p==='/getRouters')result.data=[{path:'/metal',component:'Layout',children:[{path:'product',component:'metal/product/index'}]}]
+  else if(p==='/metal/options/product-types')result.data=productTypes.map((name,i)=>({id:String(i+1),name}))
   else if(p==='/metal/options/factories')result.data=[{id:'7',name:'产品测试厂'}];else if(p==='/metal/metal-types')result.data=[{id:'1',name:'铱'}]
   else if(p==='/metal/product/calculation-rule')result.data=[{metalTypeId:'1',density:'22.65',piValue:'3.14'}]
   else if(p==='/metal/product/calculation-preview'){const type=req.postDataJSON().productType;calls.push(type);result=await preview(type)}

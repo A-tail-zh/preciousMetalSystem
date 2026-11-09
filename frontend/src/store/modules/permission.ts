@@ -1,5 +1,6 @@
 import useUserStore from '@/store/modules/user'
 import {businessNavigation} from '@/utils/business-navigation'
+import {isRetiredBusinessRoute} from '@/utils/retired-business'
 import {getToken} from '@/utils/auth'
 import auth from '@/plugins/auth'
 import router, { constantRoutes, dynamicRoutes } from '@/router'
@@ -66,6 +67,7 @@ const usePermissionStore = defineStore(
 // 遍历后台传来的路由字符串，转换为组件对象
 function filterAsyncRouter(asyncRouterMap: any[], lastRouter = false, type = false) {
   return asyncRouterMap.filter(route => {
+    if (isRetiredBusinessRoute(route.path, route.component)) return false
     if (type && route.children) {
       route.children = filterChildren(route.children)
     }

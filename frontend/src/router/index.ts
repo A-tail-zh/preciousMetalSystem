@@ -86,11 +86,14 @@ export const constantRoutes = [
 
 // 动态路由，基于用户权限动态去加载
 export const dynamicRoutes = [
+
+  /* 旧工单入口暂停注册；恢复说明见 docs/20261106-旧模块停用与本地业务清空.md。
   {
     path: '/metal/acid-wash-history', component: Layout, hidden: true,
     permissions: ['metal:warehouse-order:add','metal:warehouse-order:query'],
     children: [{path:'',component:()=>import('@/views/metal/work-order/AcidWashHistory.vue'),name:'AcidWashHistory',meta:{title:'历史酸洗记录'}}]
   },
+  */
   {
     path: '/system/user-auth',
     component: Layout,

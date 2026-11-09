@@ -1,3 +1,4 @@
+import {productTypes} from '../src/views/metal/master-config'
 import {test,expect,type Page} from '@playwright/test'
 import {productWeight} from '../src/utils/product-volume'
 
@@ -8,6 +9,7 @@ async function setup(page:Page,product?:Record<string,unknown>){
   const req=route.request(),path=new URL(req.url()).pathname.replace('/dev-api','');let body:any={code:200,data:[],rows:[],total:0}
   if(path==='/getInfo')body={code:200,user:{userId:2,userName:'weight-user',factoryId:'7'},roles:['staff'],permissions:['*:*:*']}
   else if(path==='/getRouters')body.data=[{path:'/metal',component:'Layout',children:[{path:'product',component:'metal/product/index'}]}]
+  else if(path==='/metal/options/product-types')body.data=productTypes.map((name,i)=>({id:String(i+1),name}))
   else if(path==='/metal/options/factories')body.data=[{id:'7',name:'产品测试厂'}];else if(path==='/metal/metal-types')body.data=[{id:'1',name:'铱'},{id:'2',name:'铂'},{id:'3',name:'钌'}]
   else if(path==='/metal/product/calculation-rule')body.data=[{metalTypeId:'1',piValue:'3.14',density:'22.65'},{metalTypeId:'2',piValue:'3.14',density:'21.45'}]
   else if(path==='/metal/product/list'){body.rows=product?[product]:[];body.total=body.rows.length}

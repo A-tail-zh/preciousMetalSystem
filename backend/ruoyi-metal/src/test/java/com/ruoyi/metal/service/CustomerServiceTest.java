@@ -19,7 +19,7 @@ class CustomerServiceTest {
     MockedStatic<SecurityUtils> security;
     @BeforeEach void setup() {
         mapper=mock(CustomerMapper.class);scope=mock(FactoryScope.class);service=new CustomerService(mapper,scope);
-        when(scope.currentFactory()).thenReturn(7L);
+        when(scope.currentFactory()).thenReturn(7L);when(scope.resolveFactory(any())).thenAnswer(i->i.getArgument(0)==null?7L:i.getArgument(0));
         security=mockStatic(SecurityUtils.class);security.when(SecurityUtils::getUsername).thenReturn("customer-tester");
         doAnswer(call->{call.<CustomerRecord>getArgument(0).setId(9L);return 1;}).when(mapper).insert(any());
     }

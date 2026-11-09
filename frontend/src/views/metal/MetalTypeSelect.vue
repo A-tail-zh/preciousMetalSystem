@@ -11,8 +11,8 @@ import useUserStore from '@/store/modules/user'
 import {getToken} from '@/utils/auth'
 const props=withDefaults(defineProps<{modelValue?:string;factoryId?:string|null;disabled?:boolean;allowAdd?:boolean}>(),{allowAdd:true})
 const emit=defineEmits<{ 'update:modelValue':[string];loaded:[{id:string;name:string}[]];changed:[{id:string;name:string}[]];mutating:[boolean] }>()
-const user=useUserStore(),permission=useActionPermission(),canAdd=computed(()=>permission.hasAny(['metal:material:add','metal:material:edit','metal:product:add','metal:product:edit','metal:quote-rule:edit']))
-const canRemove=computed(()=>permission.hasAny(['metal:material:remove','metal:product:remove','metal:quote-rule:edit']))
+const user=useUserStore(),permission=useActionPermission(),canAdd=computed(()=>permission.has('metal:metal-type:add'))
+const canRemove=computed(()=>permission.has('metal:metal-type:remove'))
 const options=ref<{id:string;name:string}[]>([]),loading=ref(false),visible=ref(false),busy=ref(false),name=ref(''),error=ref('');let epoch=0,disposed=false,draftIdentity=''
 watch(busy,value=>emit('mutating',value),{flush:'sync'})
 const identity=()=>JSON.stringify([user.sessionReady,user.token,String(user.id),[...user.permissions].sort(),props.factoryId])

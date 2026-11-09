@@ -25,6 +25,8 @@ public abstract class MasterService<T extends MasterRecord> {
     /**
      * 声明列表是否按照当前用户所属工厂过滤。
      */
+    protected boolean requiresFactorySelection() { return false; }
+
     protected boolean scoped() {
         return false;
     }
@@ -75,6 +77,7 @@ public abstract class MasterService<T extends MasterRecord> {
      * 查询列表并补充关联资料。
      */
     public List<T> list() {
+        if(requiresFactorySelection())return list(new ListQuery());
         List<T> rows = mapper.list(scoped() ? scope.currentFactory() : null);
         hydrate(rows);
         return rows;
@@ -85,6 +88,7 @@ public abstract class MasterService<T extends MasterRecord> {
      */
     public List<T> list(ListQuery q) {
         q.validate();
+        if(requiresFactorySelection()){q.setFactoryId(scope.resolveFactory(q.getFactoryId()));if(q.getMetalTypeId()!=null)scope.requireCatalog("metal",q.getMetalTypeId(),q.getFactoryId());}
         Long factory = scoped() ? scope.currentFactory() : null;
         if (factory != null && q.getFactoryId() != null && !factory.equals(q.getFactoryId()))
             throw new ServiceException("不能查询其他工厂", 403);

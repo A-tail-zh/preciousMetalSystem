@@ -29,7 +29,6 @@ export function productFields(product:{id?:string;productType?:string;category?:
 }
 
 export const processTypes = ['粉料', '旧锅清理', '碎料', '融定', '闸板', '线切割', '卷板成型', '焊接', '喷砂成品']
-export const materialTypes = ['粉料', '块料', '旧料']
 
 export interface Column {
     key: string;
@@ -58,7 +57,7 @@ export const masterConfigs = {
         endpoint: '/metal/material',
         permission: 'metal:material',
         width: 936,
-        columns: cols([['code', '物料编码', 132], ['materialType', '物料类型', 220], ['specification', '规格型号', 136], ['metalTypeName', '金属类型', 120], ['createBy', '创建人', 100], ['createTime', '创建时间', 140]])
+        columns: cols([['code', '物料编码', 132], ['materialType', '物料类型名称', 220], ['materialCategory', '物料分类', 110], ['specification', '规格型号', 136], ['metalTypeName', '金属类型', 120], ['createBy', '创建人', 100], ['createTime', '创建时间', 140]])
     },
     process: {
         title: '工序管理',

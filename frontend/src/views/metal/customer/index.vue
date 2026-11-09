@@ -1,7 +1,7 @@
 <template>
  <section class="customer-page">
   <BusinessFilters :key="sessionEpoch" kind="customer" @apply="applyFilters"><template #actions>
-   <el-button v-if="permission.has('metal:customer:add')" class="add-button list-action list-action--create" @click="openEditor()">添加</el-button>
+   <el-button v-if="permission.has('metal:customer:add')" class="add-button list-action list-action--create" :disabled="!filters.factoryId" @click="openEditor()">添加</el-button>
    <el-button v-if="permission.has('metal:customer:edit')" class="edit-button list-action list-action--edit" :disabled="selected.length!==1" @click="openEditor(selected[0])">编辑</el-button>
    <el-button v-if="permission.has('metal:customer:remove')" class="delete-button list-action list-action--delete" :disabled="!selected.length||deleting" @click="remove(selected)">删除</el-button>
   </template></BusinessFilters>
@@ -17,7 +17,7 @@
     </template>
    </el-table-column>
   </el-table>
-  <p v-if="loadFailed||refreshFailed" role="alert">客户列表更新失败，当前显示可能过期 <el-button link type="primary" @click="load">重试</el-button></p>
+  <p v-if="filters.factoryId&&(loadFailed||refreshFailed)" role="alert">客户列表更新失败，当前显示可能过期 <el-button link type="primary" @click="load">重试</el-button></p>
   <div class="customer-pagination"><el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :page-sizes="[16,32,64]" :total="total" layout="total, sizes, prev, pager, next, jumper" @size-change="changeSize" @current-change="load"/></div>
   <el-dialog :key="sessionEpoch" v-model="dialogOpen" class="customer-dialog" :title="form.id?'编辑客户':'添加客户'" width="min(760px,94vw)" :close-on-click-modal="false" :close-on-press-escape="!saving&&!uncertain" :show-close="!saving&&!uncertain">
    <p v-if="editError" role="alert">客户资料加载失败 <el-button link @click="openEditor(editing)">重试</el-button></p>
@@ -65,11 +65,11 @@ rules.contactPhone=[...textRules('联络人电话',11,true),fieldRule(value=>/^1
 let disposed=false,listEpoch=0,editEpoch=0,operationEpoch=0,manualPending=false,openedId='',openedVersion:number|undefined,openedFactories=''
 const needsReload=ref(false),uncertain=ref(false)
 function resetAccess(){++sessionEpoch.value;++listEpoch;++editEpoch;++operationEpoch;manualPending=false;dialogOpen.value=false;saving.value=false;deleting.value=false;editLoading.value=false;editError.value=false;loading.value=false;loadFailed.value=false;rows.value=[];selected.value=[];total.value=0;table.value?.clearSelection();form.value=blank();factories.value=[];filters.value={};query.pageNum=1;needsReload.value=false;uncertain.value=false}
-function applyFilters(value:Record<string,string>){filters.value=value;query.pageNum=1;void load()}
+function applyFilters(value:Record<string,string>){rows.value=[];total.value=0;selected.value=[];table.value?.clearSelection();filters.value=value;query.pageNum=1;void load()}
 function changeSize(){query.pageNum=1;void load()}
 async function load(){if(loading.value){manualPending=true;return false}return readList(false)}
 async function readList(background:boolean,refresh?:InventoryRefreshContext){
- if(!canRead()){resetAccess();return false}if(loading.value)return false
+ if(!canRead()){resetAccess();return false}if(!filters.value.factoryId){listEpoch++;loading.value=false;manualPending=false;rows.value=[];total.value=0;selected.value=[];loadFailed.value=false;return true}if(loading.value)return false
  const epoch=++listEpoch,account=identity(),params={...query,...filters.value},ids=selected.value.map(row=>row.id),valid=()=>!disposed&&epoch===listEpoch&&account===identity()&&canRead(),current=()=>valid()&&!manualPending&&JSON.stringify(params)===JSON.stringify({...query,...filters.value})&&(!refresh||refresh.isCurrent()&&!saving.value&&!deleting.value)
  loading.value=true
  try{const result=await customerList(params,current,background);if(!current())return false;rows.value=result.rows;total.value=result.total;selected.value=[];table.value?.clearSelection();if(background){await nextTick();if(!current())return false;for(const row of result.rows)if(ids.includes(row.id))table.value?.toggleRowSelection(row,true)}loadFailed.value=false;return true}
@@ -85,7 +85,7 @@ async function openEditor(row?:Customer){
  await nextTick();formRef.value?.clearValidate()
  try{
   if(row){const result=await customerEditContext(row.id,current);if(current()){if(result.data.id!==row.id)throw Error('客户资料不匹配');openedVersion=result.data.version;form.value={id:result.data.id,version:result.data.version,factoryId:result.data.factoryId,factoryName:result.data.factoryName,...Object.fromEntries(fields.map(f=>[f.key,result.data[f.key]]))} as CustomerForm}}
-  else{const result=await customerFactories(current);if(current()){factories.value=result.data;openedFactories=JSON.stringify(result.data);if(!permission.isAdmin.value)form.value.factoryId=result.data[0]?.id}}
+  else{const result=await customerFactories(current);if(current()){factories.value=result.data;openedFactories=JSON.stringify(result.data);form.value.factoryId=permission.isAdmin.value?filters.value.factoryId:result.data[0]?.id}}
   await nextTick();if(current())formRef.value?.clearValidate()
  }catch{if(current())editError.value=true}finally{if(current())editLoading.value=false}
 }

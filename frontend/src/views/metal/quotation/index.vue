@@ -1,25 +1,26 @@
 <template>
 <section class="quote-page">
+ <el-form :model="{factoryId}" label-width="160px" label-position="left" :disabled="calculating"><el-form-item class="quote-factory" label="所属工厂" prop="factoryId" :rules="[requiredRule('所属工厂',true,true)]"><el-select v-if="permission.isAdmin.value" v-model="factoryId" :disabled="calculating||!!pendingPayload" aria-label="所属工厂" placeholder="请选择所属工厂" filterable><el-option v-for="factory in factories" :key="factory.id" :label="factory.name" :value="factory.id"/></el-select><el-input v-else :model-value="factories.find(f=>f.id===factoryId)?.name??''" aria-label="所属工厂" readonly/></el-form-item></el-form>
  <el-form ref="quoteForm" :model="{items,factoryId}" label-width="160px" label-position="left" scroll-to-error :disabled="calculating||!canSave">
- <el-form-item class="quote-factory" label="所属工厂" prop="factoryId" :rules="[requiredRule('所属工厂',true,true)]"><el-select v-if="permission.isAdmin.value" v-model="factoryId" :disabled="calculating||!!pendingPayload" aria-label="所属工厂" placeholder="请选择所属工厂" filterable><el-option v-for="factory in factories" :key="factory.id" :label="factory.name" :value="factory.id"/></el-select><el-input v-else :model-value="factories.find(f=>f.id===factoryId)?.name??''" aria-label="所属工厂" readonly/></el-form-item>
  <div v-for="(item,index) in items" :key="item.key" class="goods-item">
   <el-form-item label="加工类型" :prop="`items.${index}.processingType`" :rules="[requiredRule('加工类型',true,true)]"><el-select aria-label="加工类型" v-model="item.processingType" placeholder="请选择加工类型" @change="processingChanged(item)"><el-option v-for="type in processingTypes" :key="type.value" :value="type.value" :label="type.label"/></el-select></el-form-item>
   <el-form-item label="金属类型" :prop="`items.${index}.metalTypeId`" :rules="[requiredRule('金属类型',true,true)]"><el-select aria-label="金属类型" v-model="item.metalTypeId" filterable placeholder="请选择金属类型"><el-option v-for="metal in metals" :key="metal.id" :value="metal.id" :label="metal.name"/></el-select></el-form-item>
-  <el-form-item label="产品类型" :prop="`items.${index}.productType`" :rules="[requiredRule('产品类型',true,true)]"><el-select aria-label="产品类型" v-model="item.productType" placeholder="请选择产品类型" @change="categoryChanged(item)"><el-option v-for="type in productTypes" :key="type" :value="type"/></el-select></el-form-item>
+  <el-form-item label="产品类型" :prop="`items.${index}.productType`" :rules="[requiredRule('产品类型',true,true)]" :error="typesLoaded&&item.productType&&!productTypes.includes(item.productType)?'所选类型已失效，请重新选择':''"><el-select aria-label="产品类型" v-model="item.productType" :disabled="!factoryId||loadError" :loading="loading" :placeholder="factoryId?'请选择产品类型':'请先选择所属工厂'" no-data-text="本厂暂无产品类型，请先在类型管理中添加" @visible-change="visible=>{if(visible)void load()}" @change="categoryChanged(item)"><el-option v-for="type in productTypes" :key="type" :value="type"/></el-select></el-form-item>
   <el-form-item label="商品数量" :prop="`items.${index}.quantity`" :rules="integerRules('商品数量')"><el-input aria-label="商品数量" v-model="item.quantity" inputmode="numeric"/></el-form-item>
   <el-form-item v-for="field in weightFields(item)" :key="field.key" :label="field.label+'（g）'" :prop="`items.${index}.${field.key}`" :rules="[fieldRule(v=>decimalError(v,field.label))]"><BusinessDecimalInput :aria-label="field.label+'（g）'" v-model="item[field.key]" inputmode="decimal"/></el-form-item>
   <el-form-item v-for="d in dimensions(item)" :key="d.key" :label="d.label+'（'+(d.unit??'cm')+'）'" :prop="`items.${index}.dimensions.${d.key}`" :rules="[fieldRule(v=>decimalError(v,d.label,{positive:!d.allowZero}))]"><BusinessDecimalInput :aria-label="d.label+'（'+(d.unit??'cm')+'）'" v-model="item.dimensions[d.key]" inputmode="decimal"/></el-form-item>
   <el-button v-if="items.length>1" link type="danger" @click="items.splice(index,1)">移除商品</el-button>
  </div>
- <div class="calculate-row"><el-button type="primary" @click="items.push(blank())">添加商品</el-button><el-button type="primary" :loading="calculating" :disabled="loading||loadError||factoryLoading||!factoryId||!canSave" @click="calculate(false)">开始计算</el-button></div>
+ <div class="calculate-row"><el-button type="primary" @click="items.push(blank())">添加商品</el-button><el-button type="primary" :loading="calculating" :disabled="loading||loadError||!typesLoaded||(!pendingPayload&&(!productTypes.length||invalidTypes))||factoryLoading||!factoryId||!canSave" @click="calculate(false)">开始计算</el-button></div>
  </el-form>
- <p v-if="loadError" role="alert">{{saved?'规则刷新失败，当前规则状态未知；保留上次已保存报价，正在自动重试。':'金属及规则加载失败，正在自动重试。'}}</p>
+ <p v-if="loadError" role="alert"><span>{{saved?'规则刷新失败，当前规则状态未知；保留上次已保存报价，正在自动重试。':'金属、产品类型及规则加载失败，正在自动重试。'}}</span> <el-button link type="primary" :disabled="loading" @click="load">重试</el-button></p>
+ <p v-if="factoryId&&typesLoaded&&!loadError&&!productTypes.length" role="status">本厂暂无产品类型，请先在类型管理中添加。</p>
  <p v-if="factoryError" role="alert">工厂加载失败，正在自动重试。</p>
  <QuotationDetail v-if="saved" :quote="saved" class="quote-results" @download="downloadQuote"/>
- <section class="history"><h3>历史报价</h3><div class="history-query"><el-input v-model="query.quoteNo" aria-label="历史报价单号" placeholder="报价单号" maxlength="32"/><el-select v-if="permission.isAdmin.value" v-model="query.factoryId" aria-label="历史工厂" clearable placeholder="全部工厂"><el-option v-for="factory in factories" :key="factory.id" :label="factory.name" :value="factory.id"/></el-select><el-button class="list-action list-action--primary" :disabled="historyLoading" @click="query.pageNum=1;loadHistoryList()">查询</el-button></div>
+ <section class="history"><h3>历史报价</h3><div class="history-query"><el-input :disabled="!factoryId" v-model="query.quoteNo" aria-label="历史报价单号" placeholder="报价单号" maxlength="32"/><el-button class="list-action list-action--primary" :disabled="historyLoading||!factoryId" @click="query.pageNum=1;loadHistoryList()">查询</el-button></div>
   <el-table v-loading="historyLoading" :data="historyRows" border><el-table-column prop="quoteNo" label="报价单号" min-width="190"/><el-table-column prop="factoryName" label="所属工厂" min-width="140"/><el-table-column prop="categories" label="商品类别" min-width="160"/><el-table-column prop="totalPrice" label="金额（元）" min-width="140" :formatter="decimalColumn"/><el-table-column prop="createTime" label="保存时间" min-width="170"/><el-table-column label="操作" min-width="140"><template #default="{row}"><el-button class="list-action list-action--primary list-action--row" link type="primary" @click="viewHistory(row.id)">查看</el-button><el-button class="list-action list-action--download list-action--row" link type="primary" @click="downloadQuote(row)">下载</el-button></template></el-table-column></el-table>
   <p v-if="historyError" role="alert">历史报价加载失败 <el-button link @click="loadHistoryList">重试</el-button></p>
-  <el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :page-sizes="[16,32,64]" :total="historyTotal" layout="total, sizes, prev, pager, next" @size-change="query.pageNum=1;loadHistoryList()" @current-change="loadHistoryList"/>
+  <el-pagination :disabled="!factoryId||historyLoading" v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :page-sizes="[16,32,64]" :total="historyTotal" layout="total, sizes, prev, pager, next" @size-change="query.pageNum=1;loadHistoryList()" @current-change="loadHistoryList"/>
  </section>
  <el-dialog v-model="historyVisible" title="历史报价详情" width="min(1200px,96vw)" destroy-on-close @closed="history=undefined;detailEpoch++"><QuotationDetail v-if="history" :quote="history" @download="downloadQuote"/></el-dialog>
 </section>
@@ -32,7 +33,7 @@ import type {FormInstance} from 'element-plus'
 import {ElMessage} from 'element-plus'
 import request from '@/utils/request'
 import {requiredRule,integerRules,fieldRule,decimalError,applyFieldErrors} from '@/utils/input-validation'
-import {productFields,productTypes} from '../master-config'
+import {productFields} from '../master-config'
 import {decimalColumn,roundDecimal} from '@/utils/business-decimal'
 import {useActionPermission} from '@/composables/useActionPermission'
 import useUserStore from '@/store/modules/user'
@@ -49,8 +50,9 @@ const lossField={key:'lossWeight',label:'理论损失重量'} as const
 const blank=()=>({key:++key,processingType:'',metalTypeId:'',productType:'',quantity:'',powderWeight:'',nonPowderWeight:'',lossWeight:'',dimensions:{} as Record<string,string>})
 const items=ref([blank()]),metals=ref<{id:string;name:string}[]>([]),factories=ref<{id:string;name:string}[]>([]),factoryId=ref(''),quoteForm=ref<FormInstance>(),loading=ref(false),loadError=ref(false),factoryLoading=ref(false),calculating=ref(false),saved=ref<Record<string,any>>()
 const historyRows=ref<Record<string,any>[]>([]),historyTotal=ref(0),historyLoading=ref(false),historyError=ref(false),history=ref<Record<string,any>>(),historyVisible=ref(false)
-const query=reactive({quoteNo:'',factoryId:'',pageNum:1,pageSize:16})
-const factoryError=ref(false)
+const query=reactive({quoteNo:'',pageNum:1,pageSize:16})
+const factoryError=ref(false),productTypes=ref<string[]>([]),typesLoaded=ref(false)
+const invalidTypes=computed(()=>items.value.some(item=>!!item.productType&&!productTypes.value.includes(item.productType)))
 function weightFields(item:ReturnType<typeof blank>){return item.processingType==='SHORTAGE_CUSTOM'?[lossField]:item.processingType?[...materialFields,lossField]:[]}
 function processingChanged(item:ReturnType<typeof blank>){if(item.processingType==='SHORTAGE_CUSTOM'){item.powderWeight='';item.nonPowderWeight=''}}
 function dimensions(item:{productType:string}){return productFields(item)}
@@ -64,14 +66,15 @@ async function load(){
   const r:any=await request({url:'/metal/quotation/context',params:{factoryId:factory},isContextCurrent:current});if(!current())return
   const snapshot=JSON.stringify([r.data.metalTypes,r.data.rules,r.data.volumeRule])
   if(ruleSnapshot&&snapshot!==ruleSnapshot&&(armed||calculating.value||pendingPayload))refreshPending=true
-  ruleSnapshot=snapshot;metals.value=r.data.metalTypes;loadError.value=false
+  if(!Array.isArray(r.data.productTypes))throw new Error('产品类型目录加载失败')
+  ruleSnapshot=snapshot;metals.value=r.data.metalTypes;productTypes.value=r.data.productTypes;typesLoaded.value=true;loadError.value=false
  }catch{if(current())loadError.value=true}finally{if(current())loading.value=false}
  if(current()&&!loadError.value&&!calculating.value&&(refreshPending||retryPending))void calculate(true)
 }
 function refreshRules(){if(document.visibilityState!=='hidden'&&permission.has('metal:quotation:list')){void load();if(factoryError.value)void loadFactories()}}
 async function loadFactories(){if(factoryLoading.value||!sessionCurrent())return;const session=sessionEpoch,account=identity(),current=()=>sessionCurrent()&&account===identity()&&session===sessionEpoch;factoryLoading.value=true;try{const r:any=await request({url:'/metal/quotation/factories',isContextCurrent:current});if(current()){factoryError.value=false;factories.value=r.data;if(!permission.isAdmin.value&&!factoryId.value&&r.data.length===1)factoryId.value=r.data[0].id}}catch{if(current())factoryError.value=true}finally{if(current())factoryLoading.value=false}}
 async function calculate(automatic=false){
- if(!sessionCurrent()||calculating.value||loading.value||loadError.value||!canSave.value||!factoryId.value||automatic&&!armed&&!pendingPayload)return
+ if(!sessionCurrent()||calculating.value||loading.value||loadError.value||!canSave.value||!factoryId.value||!typesLoaded.value||(!pendingPayload&&(!productTypes.value.length||invalidTypes.value))||automatic&&!armed&&!pendingPayload)return
  const session=sessionEpoch,draft=epoch,account=identity()
  if(!await quoteForm.value?.validate().catch(()=>false)||!sessionCurrent()||account!==identity()||session!==sessionEpoch||draft!==epoch)return
  const current=()=>sessionCurrent()&&account===identity()&&session===sessionEpoch&&draft===epoch&&canSave.value
@@ -86,15 +89,15 @@ async function calculate(automatic=false){
  if(current()&&refreshPending&&!retryPending)void calculate(true)
 }
 async function loadHistoryList(){
- if(!permission.has('metal:quotation:list'))return
- const round=++listEpoch,session=sessionEpoch,account=identity(),current=()=>sessionCurrent()&&account===identity()&&round===listEpoch&&session===sessionEpoch;historyLoading.value=true
- try{const r:any=await request({url:'/metal/quotation/orders',params:{...query,factoryId:query.factoryId||undefined},isContextCurrent:current});if(current()){historyRows.value=r.rows;historyTotal.value=r.total;historyError.value=false}}catch{if(current())historyError.value=true}finally{if(current())historyLoading.value=false}
+ if(!permission.has('metal:quotation:list')||!factoryId.value)return
+ const factory=factoryId.value,round=++listEpoch,session=sessionEpoch,account=identity(),current=()=>sessionCurrent()&&account===identity()&&round===listEpoch&&session===sessionEpoch&&factory===factoryId.value;historyLoading.value=true
+ try{const r:any=await request({url:'/metal/quotation/orders',params:{...query,factoryId:factory},isContextCurrent:current});if(current()){historyRows.value=r.rows;historyTotal.value=r.total;historyError.value=false}}catch{if(current())historyError.value=true}finally{if(current())historyLoading.value=false}
 }
-async function viewHistory(id:string){const round=++detailEpoch,session=sessionEpoch,account=identity(),current=()=>sessionCurrent()&&account===identity()&&round===detailEpoch&&session===sessionEpoch;history.value=undefined;try{const r:any=await request({url:'/metal/quotation/orders/'+id,isContextCurrent:current});if(current()){history.value=r.data;historyVisible.value=true}}catch{}}
-async function downloadQuote(quote:Record<string,any>){const session=sessionEpoch,account=identity(),current=()=>sessionCurrent()&&account===identity()&&session===sessionEpoch;try{const blob:Blob=await request({url:'/metal/quotation/orders/'+quote.id+'/download',responseType:'blob',isContextCurrent:current});if(!current())return;if(blob.type.includes('json')){ElMessage.error('报价单下载失败，请重试');return}const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=quote.quoteNo+'.xlsx';a.click();URL.revokeObjectURL(url)}catch{}}
-permission.onChange(()=>{sessionEpoch++;invalidate();loadEpoch++;listEpoch++;detailEpoch++;ruleSnapshot='';loading.value=false;loadError.value=false;factoryLoading.value=false;factoryError.value=false;calculating.value=false;history.value=undefined;historyVisible.value=false;historyRows.value=[];historyTotal.value=0;metals.value=[];factories.value=[];factoryId.value='';items.value=[blank()];if(permission.has('metal:quotation:list'))start()})
-function start(){void loadFactories().then(load).catch(()=>{});void loadHistoryList()}
-watch(factoryId,()=>{++loadEpoch;loading.value=false;ruleSnapshot='';metals.value=[];for(const item of items.value)item.metalTypeId='';void load()})
+async function viewHistory(id:string){if(!factoryId.value)return;const factory=factoryId.value,round=++detailEpoch,session=sessionEpoch,account=identity(),current=()=>sessionCurrent()&&account===identity()&&round===detailEpoch&&session===sessionEpoch&&factory===factoryId.value;history.value=undefined;try{const r:any=await request({url:'/metal/quotation/orders/'+id,params:{factoryId:factory},isContextCurrent:current});if(current()){history.value=r.data;historyVisible.value=true}}catch{}}
+async function downloadQuote(quote:Record<string,any>){if(!factoryId.value||String(quote.factoryId)!==factoryId.value)return;const factory=factoryId.value,round=listEpoch,session=sessionEpoch,account=identity(),current=()=>sessionCurrent()&&account===identity()&&session===sessionEpoch&&factory===factoryId.value&&round===listEpoch;try{const blob:Blob=await request({url:'/metal/quotation/orders/'+quote.id+'/download',params:{factoryId:factory},responseType:'blob',isContextCurrent:current});if(!current())return;if(blob.type.includes('json')){ElMessage.error('报价单下载失败，请重试');return}const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=quote.quoteNo+'.xlsx';a.click();URL.revokeObjectURL(url)}catch{}}
+permission.onChange(()=>{sessionEpoch++;invalidate();loadEpoch++;listEpoch++;detailEpoch++;ruleSnapshot='';loading.value=false;loadError.value=false;factoryLoading.value=false;factoryError.value=false;calculating.value=false;history.value=undefined;historyVisible.value=false;historyRows.value=[];historyTotal.value=0;metals.value=[];productTypes.value=[];typesLoaded.value=false;factories.value=[];factoryId.value='';items.value=[blank()];if(permission.has('metal:quotation:list'))start()})
+function start(){void loadFactories().then(load).catch(()=>{})}
+watch(factoryId,()=>{listEpoch++;detailEpoch++;query.quoteNo='';query.pageNum=1;historyRows.value=[];historyTotal.value=0;historyLoading.value=false;historyError.value=false;historyVisible.value=false;history.value=undefined;++loadEpoch;loading.value=false;ruleSnapshot='';metals.value=[];productTypes.value=[];typesLoaded.value=false;loadError.value=false;for(const item of items.value){item.metalTypeId='';item.productType='';item.dimensions={}}void load();void loadHistoryList()},{flush:'sync'})
 onMounted(()=>{start();refreshTimer=setInterval(refreshRules,15000);window.addEventListener('focus',refreshRules);document.addEventListener('visibilitychange',refreshRules)})
 onBeforeUnmount(()=>{disposed=true;sessionEpoch++;invalidate();loadEpoch++;listEpoch++;detailEpoch++;clearInterval(refreshTimer);window.removeEventListener('focus',refreshRules);document.removeEventListener('visibilitychange',refreshRules)})
 </script>

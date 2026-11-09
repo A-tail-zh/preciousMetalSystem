@@ -15,7 +15,7 @@ import static org.mockito.Mockito.*;
 class FactoryServiceTest {
     private FactoryMapper mapper;
     private FactoryService service;
-    @BeforeEach void setup() { mapper = mock(FactoryMapper.class); var scope = mock(com.ruoyi.metal.security.FactoryScope.class); when(scope.isAdmin()).thenReturn(true); when(scope.currentFactory()).thenReturn(null); var jdbc = mock(org.springframework.jdbc.core.JdbcTemplate.class, i -> i.getMethod().getName().equals("queryForObject") ? 0 : RETURNS_DEFAULTS.answer(i)); service = new FactoryService(mapper, scope, jdbc); }
+    @BeforeEach void setup() { mapper = mock(FactoryMapper.class); var scope = mock(com.ruoyi.metal.security.FactoryScope.class); when(scope.isAdmin()).thenReturn(true); when(scope.currentFactory()).thenReturn(null); when(scope.resolveFactory(2L)).thenReturn(2L); var jdbc = mock(org.springframework.jdbc.core.JdbcTemplate.class, i -> i.getMethod().getName().equals("queryForObject") ? 0 : i.getMethod().getName().equals("update") ? 1 : RETURNS_DEFAULTS.answer(i)); service = new FactoryService(mapper, scope, jdbc); }
     private Factory factory(long id) {
         Factory f = new Factory(); f.setFactoryId(Long.toString(id)); f.setFactoryName("工厂" + id); f.setVersion(0); return f;
     }
@@ -28,10 +28,10 @@ class FactoryServiceTest {
     }
     @Test void pageHydratesLinesInOneBatch() {
         Factory first = factory(2), second = factory(1);
-        when(mapper.selectList(null)).thenReturn(List.of(first, second));
-        when(mapper.selectLines(List.of(2L,1L))).thenReturn(List.of(line(10,"2"),line(11,"2")));
-        assertEquals(2, service.list().size()); assertEquals(List.of("10","11"), first.getProductionLineIds());
-        assertTrue(second.getProductionLines().isEmpty()); verify(mapper, times(1)).selectLines(anyList());
+        when(mapper.selectFiltered(eq(2L),any())).thenReturn(List.of(first));
+        when(mapper.selectLines(List.of(2L))).thenReturn(List.of(line(10,"2"),line(11,"2")));
+        var query=new com.ruoyi.metal.catalog.ListQuery();query.setFactoryId(2L);assertEquals(1, service.list(query).size()); assertEquals(List.of("10","11"), first.getProductionLineIds());
+        verify(mapper, times(1)).selectLines(anyList());
     }
     @Test void emptyPageDoesNotQueryEmptyInClause() {
         when(mapper.selectList(null)).thenReturn(List.of()); assertTrue(service.list().isEmpty()); verify(mapper, never()).selectLines(anyList());
@@ -110,5 +110,26 @@ class FactoryServiceTest {
             r.setArea(new BigDecimal("1")); r.setFactoryName("   "); assertFalse(validator.validate(r).isEmpty());
             r.setFactoryName("A"); r.setProductionLineIds(null); assertTrue(validator.validate(r).isEmpty());
         }
+    }
+    @Test void createRestoresMissingTemplateAndRequiresFactoryRuleInsert(){
+        var jdbc=mock(org.springframework.jdbc.core.JdbcTemplate.class);var scope=mock(com.ruoyi.metal.security.FactoryScope.class);
+        when(jdbc.queryForObject(anyString(),eq(Integer.class),any(Object[].class))).thenReturn(0);
+        doAnswer(i->{((FactoryRequest)i.getArgument(0)).setFactoryId(8L);return 1;}).when(mapper).insert(any(),anyString());
+        when(jdbc.update(startsWith("INSERT INTO metal_factory_volume_rule"),any(Object[].class))).thenReturn(1);
+        var guarded=new FactoryService(mapper,scope,jdbc);assertEquals("8",guarded.create(form(List.of()),"admin"));
+        var order=inOrder(jdbc);order.verify(jdbc).update(startsWith("INSERT INTO metal_volume_rule"),eq("admin"));order.verify(jdbc).update(startsWith("INSERT INTO metal_factory_volume_rule"),eq(8L),eq("admin"));
+        when(jdbc.update(startsWith("INSERT INTO metal_factory_volume_rule"),any(Object[].class))).thenReturn(0);
+        assertEquals(503,assertThrows(ServiceException.class,()->guarded.create(form(List.of()),"admin")).getCode());
+    }
+    @Test void adminListsAllFactoriesWithoutSelection(){
+        when(mapper.selectFiltered(isNull(),any())).thenReturn(List.of(factory(1),factory(2)));
+        assertEquals(2,service.list().size());verify(mapper).selectFiltered(isNull(),any());
+    }
+    @Test void ordinaryListResolvesOwnFactoryAndRejectsForeignSelection(){
+        var scope=mock(com.ruoyi.metal.security.FactoryScope.class);
+        when(scope.resolveFactory(null)).thenReturn(7L);when(scope.resolveFactory(8L)).thenThrow(new ServiceException("无权访问",403));
+        var own=new FactoryService(mapper,scope,mock(org.springframework.jdbc.core.JdbcTemplate.class));
+        own.list();verify(mapper).selectFiltered(eq(7L),any());
+        var query=new com.ruoyi.metal.catalog.ListQuery();query.setFactoryId(8L);assertThrows(ServiceException.class,()->own.list(query));
     }
 }

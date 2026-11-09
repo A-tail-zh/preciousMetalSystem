@@ -21,8 +21,10 @@ public class QuoteRuleService {
     private final com.ruoyi.metal.security.FactoryScope scope;
 
     public QuoteRuleService(JdbcTemplate jdbc) { this(jdbc,new com.ruoyi.metal.security.FactoryScope(jdbc,null)); }
+    private final TypeManagementService types;
+    public QuoteRuleService(JdbcTemplate jdbc,com.ruoyi.metal.security.FactoryScope scope) { this(jdbc,scope,new TypeManagementService(jdbc,scope)); }
     @org.springframework.beans.factory.annotation.Autowired
-    public QuoteRuleService(JdbcTemplate jdbc,com.ruoyi.metal.security.FactoryScope scope) { this.jdbc=jdbc;this.scope=scope; }
+    public QuoteRuleService(JdbcTemplate jdbc,com.ruoyi.metal.security.FactoryScope scope,TypeManagementService types) { this.jdbc=jdbc;this.scope=scope;this.types=types; }
 
     /**
      * 读取当前报价规则。
@@ -58,28 +60,13 @@ public class QuoteRuleService {
     }
     @Transactional(rollbackFor=Exception.class)
     public void removeMetal(Long id) {
-        Long factory=scope.catalogFactory("metal",id);scope.lockFactories(List.of(factory));
-        if(jdbc.queryForList("SELECT metal_type_id FROM metal_type WHERE metal_type_id=? AND factory_id=? FOR UPDATE",id,factory).isEmpty())throw new ServiceException("金属类型不存在或已删除");
-        // Include deleted master records: their IDs may still be used by historical documents.
-        for(String table:List.of("metal_product","metal_material","metal_type_quote_rule","metal_process_batch"))
-            if(jdbc.queryForObject("SELECT COUNT(*) FROM "+table+" WHERE metal_type_id=?",Integer.class,id)>0)throw new ServiceException("金属类型已被产品、物料、报价或加工记录引用，不能删除");
-        if(jdbc.queryForObject("SELECT COUNT(*) FROM metal_inventory WHERE metal_type_id_snapshot=?",Integer.class,id)>0
-            ||jdbc.queryForObject("SELECT COUNT(*) FROM metal_saved_quotation WHERE JSON_CONTAINS(JSON_EXTRACT(item_snapshot,'$[*].metalTypeId'),JSON_QUOTE(?)) OR JSON_CONTAINS(JSON_EXTRACT(item_snapshot,'$[*].metalTypeId'),CAST(? AS JSON))",Integer.class,id.toString(),id.toString())>0)
-            throw new ServiceException("金属类型已被库存或历史报价引用，不能删除");
-        try{if(jdbc.update("DELETE FROM metal_type WHERE metal_type_id=? AND factory_id=?",id,factory)!=1)throw new ServiceException("金属类型不存在或已删除");}
-        catch(org.springframework.dao.DataIntegrityViolationException e){throw new ServiceException("金属类型已被引用，不能删除");}
+        types.removeLegacyMetal(id);
     }
     @Transactional
     public String addMetal(String name){return addMetal(name,null);}
     @Transactional
     public String addMetal(String name,Long requested) {
-        Long factory=scope.resolveFactory(requested);scope.lockFactories(List.of(factory));
-        if(!SecurityUtils.isAdmin(SecurityUtils.getUserId()) && !SecurityUtils.hasPermi("metal:material:add") && !SecurityUtils.hasPermi("metal:material:edit") && !SecurityUtils.hasPermi("metal:product:add") && !SecurityUtils.hasPermi("metal:product:edit") && !SecurityUtils.hasPermi("metal:quote-rule:edit")) throw new ServiceException("没有新增金属类型权限",403);
-        if(name==null || name.isBlank() || name.strip().length()>100) throw new ServiceException("金属类型名称须为1至100个字符");
-        String clean=name.strip();
-        try { jdbc.update("INSERT INTO metal_type(factory_id,name,create_by) VALUES(?,?,?)",factory,clean,SecurityUtils.getUsername()); }
-        catch(org.springframework.dao.DuplicateKeyException e){throw new ServiceException("金属类型已存在，请直接选择",409);}
-        return jdbc.queryForObject("SELECT CAST(metal_type_id AS CHAR) FROM metal_type WHERE factory_id=? AND name=?",String.class,factory,clean);
+        return types.create("metal",new TypeManagementService.Write(requested,name,null,null)).get("id").toString();
     }
     private Long ruleFactory(Long metalTypeId,Long requested){
         Long factory=metalTypeId==null?scope.resolveFactory(requested):scope.catalogFactory("metal",metalTypeId);
@@ -113,7 +100,11 @@ public class QuoteRuleService {
     public Map<String,Object> volumeRuleForMetal(Long id){return volumeRule(scope.catalogFactory("metal",id));}
     public Map<String,Object> volumeRule(Long requested){
         Long factory=scope.resolveFactory(requested);
-        return jdbc.queryForMap("SELECT CAST(factory_id AS CHAR) factoryId,CAST(pi_value AS CHAR) piValue,CAST(curved_bottom_factor AS CHAR) curvedBottomFactor,version,update_time updateTime FROM metal_factory_volume_rule WHERE factory_id=?",factory);
+        return requiredVolumeRule("SELECT CAST(factory_id AS CHAR) factoryId,CAST(pi_value AS CHAR) piValue,CAST(curved_bottom_factor AS CHAR) curvedBottomFactor,version,update_time updateTime FROM metal_factory_volume_rule WHERE factory_id=?",factory);
+    }
+    private Map<String,Object> requiredVolumeRule(String sql,Long factory){
+        try{return jdbc.queryForMap(sql,factory);}
+        catch(org.springframework.dao.EmptyResultDataAccessException e){throw new ServiceException("工厂体积计算参数缺失，请联系管理员修复",503);}
     }
     @Transactional(rollbackFor=Exception.class)
     public void updateVolumeRule(com.ruoyi.metal.catalog.VolumeRule value){updateVolumeRule(value,null);}
@@ -121,7 +112,7 @@ public class QuoteRuleService {
     public void updateVolumeRule(com.ruoyi.metal.catalog.VolumeRule value,Long requested) {
         if(!SecurityUtils.isAdmin(SecurityUtils.getUserId())&&!SecurityUtils.hasPermi("metal:quote-rule:edit"))throw new ServiceException("没有报价规则修改权限",403);
         Long factory=scope.resolveFactory(requested);scope.lockFactories(List.of(factory));
-        var old=jdbc.queryForMap("SELECT version,curved_bottom_factor FROM metal_factory_volume_rule WHERE factory_id=? FOR UPDATE",factory);
+        var old=requiredVolumeRule("SELECT version,curved_bottom_factor FROM metal_factory_volume_rule WHERE factory_id=? FOR UPDATE",factory);
         if(((Number)old.get("version")).intValue()!=value.version())throw new ServiceException("公共体积参数已被修改，请刷新后重试",409);
         var pi=BusinessDecimal.positive(value.piValue(),"π值");
         if(pi.precision()-pi.scale()>5)throw new ServiceException("π值四舍五入后超过5位整数范围");
@@ -157,7 +148,10 @@ public class QuoteRuleService {
      */
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public Map<String,Object> calculate(com.ruoyi.metal.catalog.CalculationRequest input,Long factory){
-        scope.requireCatalog("metal",input.metalTypeId(),scope.resolveFactory(factory));
+        Long resolved=scope.resolveFactory(factory);
+        scope.requireCatalog("metal",input.metalTypeId(),resolved);
+        String type=ProductTypes.require(input.productType());
+        if(jdbc.queryForList("SELECT name FROM metal_product_type WHERE factory_id=? AND name=?",String.class,resolved,type).isEmpty())throw new ServiceException("所选产品类型未在本厂类型管理中配置，请重新选择",400);
         return calculate(input);
     }
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
@@ -226,6 +220,6 @@ public class QuoteRuleService {
         Long factory=scope.resolveFactory(requested);
         List<Map<String, Object>> products = jdbc.queryForList("SELECT CAST(product_id AS CHAR) id,product_name name,product_category category,CAST(metal_type_id AS CHAR) metalTypeId,product_type productType,calculation_version calculationVersion,specification,dimensions FROM metal_product WHERE del_flag='0' AND factory_id=? ORDER BY product_id",factory);
         products.forEach(p -> p.put("dimensions", JSON.parseObject(p.get("dimensions").toString())));
-        return Map.of("metalTypes",metals(factory),"rules",rules(null,factory),"productTypes",ProductTypes.ALL,"products",products,"calculationEnabled",true,"pricingEnabled",true,"volumeRule",volumeRule(factory),"processingTypes",List.of("MATERIAL_CUSTOM","DIRECT_CUSTOM","SHORTAGE_CUSTOM").stream().map(type->Map.of("value",type,"label",processingName(type))).toList());
+        return Map.of("metalTypes",metals(factory),"rules",rules(null,factory),"productTypes",jdbc.queryForList("SELECT name FROM metal_product_type WHERE factory_id=? ORDER BY name,id",String.class,factory),"products",products,"calculationEnabled",true,"pricingEnabled",true,"volumeRule",volumeRule(factory),"processingTypes",List.of("MATERIAL_CUSTOM","DIRECT_CUSTOM","SHORTAGE_CUSTOM").stream().map(type->Map.of("value",type,"label",processingName(type))).toList());
     }
 }
