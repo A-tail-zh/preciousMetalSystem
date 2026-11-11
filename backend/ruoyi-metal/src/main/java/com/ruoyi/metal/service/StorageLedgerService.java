@@ -68,6 +68,10 @@ public class StorageLedgerService {
         jdbc.update("UPDATE metal_storage_debt SET remaining_weight=remaining_weight-?,remaining_quantity=remaining_quantity-?,version=version+1 WHERE id=? AND factory_id=?",reduction,piece?quantity:0,id(debt.get("id")),factory);
         jdbc.update("INSERT INTO metal_storage_debt_settlement(event_id,factory_id,debt_id,weight,quantity,reason) VALUES(?,?,?,?,?,?)",event,factory,id(debt.get("id")),reduction,piece?quantity:0,reason);
     }
+    static void requireCustomerArrivalForm(String type,Object form,Object code){
+        if("CUSTOMER_IN".equals(type)&&!Set.of("POWDER","UNTREATED").contains(text(form)))
+            throw fail("来料物料“"+text(code)+"”：客户来料仅允许粉状或未处理料，请重新选择");
+    }
     /** Server callers must discard client productionIdentity and populate it through execution validation. */
     public Map<String,Object> normalizeInbound(long factory,String type,Map<String,Object> input){
         scope.check(factory);long warehouse=id(input.get("warehouseId"));one("SELECT warehouse_id FROM metal_warehouse WHERE warehouse_id=? AND factory_id=? AND status='0' AND del_flag='0'",warehouse,factory);
@@ -79,6 +83,7 @@ public class StorageLedgerService {
         if(category.equals("RAW")){
             input=new LinkedHashMap<>(input);input.remove("originOrderId");input.remove("originStepId");if(input.get("productionIdentity") instanceof Map<?,?> trusted){input.put("originOrderId",trusted.get("originOrderId"));input.put("originStepId",trusted.get("originStepId"));}
             var material=one("SELECT m.*,t.name metal_name FROM metal_material m JOIN metal_type t ON t.metal_type_id=m.metal_type_id AND t.factory_id=m.factory_id WHERE m.material_id=? AND m.factory_id=? AND m.del_flag='0'",id(input.get("materialId")),factory);
+            requireCustomerArrivalForm(type,material.get("material_form"),material.get("material_code"));
             mode=text(material.get("measurement_mode"));identity.put("materialId",text(material.get("material_id")));identity.put("metalTypeId",text(material.get("metal_type_id")));identity.put("name",material.get("material_name"));identity.put("code",material.get("material_code"));identity.put("metalType",material.get("metal_name"));identity.put("specification",material.get("specification"));
             // Raw processing form is supplied only by the validated execution path.
             String form=text(input.get("productionIdentity") instanceof Map<?,?> production?production.get("form"):material.get("material_form"));if(!Set.of("POWDER","UNTREATED","METAL").contains(form))throw fail("材料形态无效");identity.put("form",form);
