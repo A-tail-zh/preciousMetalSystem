@@ -75,8 +75,35 @@ public class ProductionExecutionService {
  private static void requireSemiIdentity(Map<String,Object> source,Map<String,Object> target){if(!matchesSemiIdentity(source,target))throw new ServiceException("半成品的金属种类、规格或纯度与工单产品快照不匹配",409);}
  private void requirePrefix(long item,long sequence,Map<String,Object> identity){Object raw=identity.get("completedProcessIds");List<String> done=raw instanceof List<?> list?list.stream().map(Object::toString).toList():List.of();var required=previousProcesses(item,sequence).stream().map(String::valueOf).toList();if(!matchesStage(required,done))throw new ServiceException("来源加工阶段顺序不能承接目标工序；不得跳过或合并重复工序",409);}
  private List<Long> completedProcesses(Map<String,Object> e){var result=new ArrayList<>(previousProcesses(number(e.get("order_item_id")),number(e.get("sequence_no"))));result.add(number(e.get("process_id")));return result;}
+ static Long documentId(Object value,String field){
+  if(text(value).isBlank())return null;
+  try{long result=number(value.toString().strip());if(result<=0)throw new IllegalArgumentException();return result;}
+  catch(Exception e){throw new ServiceException(field+"须为正整数",400);}
+ }
+ public void prepareDocument(long factory,Map<String,Object> doc){
+  if(!Set.of("PRODUCTION_OUT","PROCESS_RAW_IN","SEMI_IN","PRODUCT_IN","RAW_RETURN","RECOVERY_RETURN").contains(text(doc.get("type"))))return;
+  var execution=linkedExecution(factory,doc);active(order(number(execution.get("order_id")),factory,true));
+ }
+ private Map<String,Object> linkedExecution(long factory,Map<String,Object> doc){
+  Long orderId=documentId(text(doc.get("orderId")).isBlank()?doc.get("productionOrderId"):doc.get("orderId"),"生产工单编号"),executionId=documentId(doc.get("executionId"),"加工批次编号");
+  if(executionId==null)throw new ServiceException("请选择加工批次",400);
+  var execution=execution(executionId,factory,true);
+  if(orderId!=null&&number(execution.get("order_id"))!=orderId)throw new ServiceException("加工批次与生产工单不一致，请重新选择",409);
+  if(!"OPEN".equals(execution.get("status")))throw new ServiceException("加工批次已取消或已结清，不能继续办理单据",409);
+  for(var field:List.of(new String[]{"orderItemId","order_item_id","产品组编号"},new String[]{"orderStepId","order_step_id","工序编号"},new String[]{"processorId","processor_id","加工人员编号"})){
+   Long supplied=documentId(doc.get(field[0]),field[2]);long actual=number(execution.get(field[1]));
+   if(supplied!=null&&supplied!=actual)throw new ServiceException(field[2]+"与加工批次不一致，请重新选择批次",409);
+   doc.put(field[0],Long.toString(actual));
+  }
+  orderId=number(execution.get("order_id"));doc.put("orderId",orderId.toString());doc.put("productionOrderId",orderId.toString());
+  if(Set.of("PROCESS_RAW_IN","SEMI_IN","PRODUCT_IN").contains(text(doc.get("type")))){
+   String expected=switch(text(execution.get("output_category"))){case "RAW"->"PROCESS_RAW_IN";case "SEMI"->"SEMI_IN";case "PRODUCT"->"PRODUCT_IN";default->throw new ServiceException("加工批次的冻结产出类别未配置，请核对工单工序",409);};
+   if(!expected.equals(text(doc.get("type")))){String label=switch(expected){case "PROCESS_RAW_IN"->"加工原材料入库";case "SEMI_IN"->"半成品入库";default->"成品入库";};throw new ServiceException("当前加工批次仅支持“"+label+"”，请编辑草稿更正单据类型并重新核对物料明细",409);}
+  }
+  return execution;
+ }
  /** Called before posting by the new document service; it already owns factory/stock locks. */
- public void validateDocument(Long f,Map<String,Object> doc,List<Map<String,Object>> lines){String type=text(doc.get("type"));if(!Set.of("PRODUCTION_OUT","PROCESS_RAW_IN","SEMI_IN","PRODUCT_IN","RAW_RETURN","RECOVERY_RETURN").contains(type))return;Long orderId=id(doc.getOrDefault("orderId",doc.get("productionOrderId"))),eid=id(doc.get("executionId"));if(orderId==null||eid==null)throw new ServiceException("生产单据必须关联工单和本次执行批次",400);var order=order(orderId,f,true);active(order);var e=execution(eid,f,true);if(number(e.get("order_id"))!=orderId||!"OPEN".equals(e.get("status")))throw new ServiceException("执行批次不属于工单或已经结算",409);if(doc.get("processorId")!=null&&number(doc.get("processorId"))!=number(e.get("processor_id")))throw new ServiceException("加工人员与执行批次不一致",400);doc.put("orderItemId",Long.toString(number(e.get("order_item_id"))));doc.put("orderStepId",Long.toString(number(e.get("order_step_id"))));doc.put("processorId",Long.toString(number(e.get("processor_id"))));
+ public void validateDocument(Long f,Map<String,Object> doc,List<Map<String,Object>> lines){String type=text(doc.get("type"));if(!Set.of("PRODUCTION_OUT","PROCESS_RAW_IN","SEMI_IN","PRODUCT_IN","RAW_RETURN","RECOVERY_RETURN").contains(type))return;var e=linkedExecution(f,doc);long orderId=number(e.get("order_id")),eid=number(e.get("id"));var order=order(orderId,f,true);active(order);
   BigDecimal total=BigDecimal.ZERO;long quantity=0;
   for(var line:lines){BigDecimal weight=documentWeight(type,line);if(!validDocumentWeight(type,line))throw new ServiceException("生产发出净重必须为正数，实收不得为负",400);total=total.add(weight);quantity+=productionQuantity(type,e,line);
    if(type.equals("RAW_RETURN")){Long sourceLine=id(line.get("issueLineId")),sourceStock=id(line.getOrDefault("stockId",line.get("inventoryId")));if(sourceLine==null||sourceStock==null||jdbc.queryForObject("SELECT COUNT(*) FROM metal_storage_issue_allocation a JOIN metal_storage_document d ON d.id=a.document_id WHERE a.line_id=? AND a.stock_id=? AND a.factory_id=? AND d.execution_id=? AND d.status='POSTED' AND d.type='PRODUCTION_OUT'",Integer.class,sourceLine,sourceStock,f,eid)==0)throw new ServiceException("原样退料必须引用本批实际领料明细和相同来源库存",409);}
@@ -140,9 +167,16 @@ public class ProductionExecutionService {
   var result=new LinkedHashMap<String,Object>();totals.forEach((k,v)->result.put(k,v.setScale(2).toPlainString()));result.put("externalInputQuantity",externalInputQuantity);result.put("inheritedSemiInputQuantity",inheritedSemiInputQuantity);result.put("finalOutputQuantity",finalOutputQuantity);result.put("referenceCompletedQuantity",referenceCompletedQuantity);return result;
  }
  private static void add(Map<String,BigDecimal> totals,String key,BigDecimal value){totals.put(key,totals.get(key).add(value));}
+ private static long documentQuantity(Object value,String field){
+  if(text(value).isBlank())return 0;
+  try{return number(value);}catch(ServiceException e){throw new ServiceException(field+"须为整数",400);}
+ }
  static long productionQuantity(String type,Map<String,Object> execution,Map<String,Object> line){
-  if(type.equals("PRODUCT_IN")&&"WEIGHT".equals(execution.get("measurement_mode"))){long value=number(line.get("referenceQuantity"));if(value<=0||value>Integer.MAX_VALUE)throw new ServiceException("按重成品须填写正整数参考完工件数，不能从重量推算",400);return value;}
-  return number(line.getOrDefault("actualQuantity",line.get("quantity")));
+  if(type.equals("PRODUCT_IN")&&"WEIGHT".equals(execution.get("measurement_mode"))){long value=documentQuantity(line.get("referenceQuantity"),"参考完工件数");if(value<=0||value>Integer.MAX_VALUE)throw new ServiceException("按重成品须填写正整数参考完工件数，不能从重量推算",400);return value;}
+  long value=documentQuantity(line.getOrDefault("actualQuantity",line.get("quantity")),"件数");
+  if(Set.of("PROCESS_RAW_IN","SEMI_IN","PRODUCT_IN").contains(type)&&"WEIGHT".equals(execution.get("measurement_mode"))&&value!=0)throw new ServiceException("计重工序不接受件数，请清空件数后重试",400);
+  if(Set.of("PROCESS_RAW_IN","SEMI_IN","PRODUCT_IN").contains(type)&&"PIECE".equals(execution.get("measurement_mode"))&&(value<=0||value>Integer.MAX_VALUE))throw new ServiceException("计件工序请填写范围内的正整数件数",400);
+  return value;
  }
  static boolean validDocumentWeight(String type,Map<String,Object> line){BigDecimal received=documentWeight(type,line);return type.equals("PRODUCTION_OUT")?received.signum()>=0&&amount(line.getOrDefault("sentWeight",line.get("netWeight"))).signum()>0:received.signum()>0;}
  static BigDecimal documentWeight(String type,Map<String,Object> line){return type.equals("PRODUCTION_OUT")?amount(line.getOrDefault("actualNetWeight",line.get("netWeight"))):amount(line.getOrDefault("sentWeight",line.getOrDefault("actualNetWeight",line.get("netWeight"))));}
