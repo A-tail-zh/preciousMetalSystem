@@ -38,7 +38,7 @@ class RawTaskReferenceTest {
   var jdbc=mock(JdbcTemplate.class);when(jdbc.queryForList(contains("FROM metal_type WHERE"),any(Object[].class))).thenReturn(List.of(Map.of("metal_type_id",1L)));
   when(jdbc.queryForList(contains("FROM metal_work_order_item"),any(Object[].class))).thenReturn(List.of(Map.of("item_id",8L)));
   when(jdbc.queryForList(contains("FROM metal_material_type"), eq(String.class), eq(7L), anyString())).thenAnswer(i->List.of(i.getArgument(3,String.class)));
-  var service=new MaterialService(mock(MaterialMapper.class),FactoryCatalogTestFixtures.scope(),jdbc);
+  var service=new MaterialService(mock(MaterialMapper.class),FactoryCatalogTestFixtures.scope(),jdbc,mock(StorageConfigurationService.class));
   assertTrue(WarehouseReferences.materialReferenced(jdbc,7L));
   assertTrue(assertThrows(ServiceException.class,()->service.deletable(material("粉料",1))).getMessage().contains("工单"));
   assertTrue(assertThrows(ServiceException.class,()->service.prepare(material("块料",1),material("粉料",1))).getMessage().contains("工单"));
@@ -48,7 +48,7 @@ class RawTaskReferenceTest {
  @Test void unreferencedMaterialsCanStillBeDeletedOrReclassified(){
   var jdbc=mock(JdbcTemplate.class);when(jdbc.queryForList(contains("FROM metal_type WHERE"),any(Object[].class))).thenReturn(List.of(Map.of("metal_type_id",1L)));
   when(jdbc.queryForList(contains("FROM metal_material_type"), eq(String.class), eq(7L), anyString())).thenAnswer(i->List.of(i.getArgument(3,String.class)));
-  var service=new MaterialService(mock(MaterialMapper.class),FactoryCatalogTestFixtures.scope(),jdbc);
+  var service=new MaterialService(mock(MaterialMapper.class),FactoryCatalogTestFixtures.scope(),jdbc,mock(StorageConfigurationService.class));
   assertFalse(WarehouseReferences.materialReferenced(jdbc,7L));assertDoesNotThrow(()->service.deletable(material("粉料",1)));assertDoesNotThrow(()->service.prepare(material("块料",2),material("粉料",1)));
  }
 }

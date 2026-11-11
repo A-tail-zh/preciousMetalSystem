@@ -54,6 +54,7 @@
      <el-button v-if="catalogTypeError" link type="primary" :disabled="catalogTypesBusy" @click="loadCatalogTypes">重试加载物料类型</el-button>
     </el-form-item>
     <el-form-item v-if="kind==='material'" label="物料分类"><el-input :model-value="materialCategoryDisplay" readonly aria-label="物料分类" /></el-form-item>
+    <CatalogConfiguration v-if="kind==='material'" kind="material" :form="form" :process-options="[]" :materials="[]" :readonly="readonly||saving||uncertain||needsReload"/>
     <template v-if="kind==='process'">
      <el-form-item label="工序类型" prop="processType"><div class="material-type-control"><el-select :loading="processTypesLoading" @visible-change="v=>{resetSelectScroll(v);if(v)void refreshProcessTypes()}" fit-input-width :teleported="false" v-model="form.processType"><el-option v-for="option in editTypeOptions" :key="option.id" :label="option.name" :value="Number(option.id)"/></el-select><ProcessTypeControl v-if="dialogOpen&&!readonly" inline :key="editEpoch" :factory-id="form.factoryId" @loaded="editTypeOptions=$event" @changed="editorProcessTypesChanged" @open="typeMaintenanceOpen=$event"/></div></el-form-item>
      <el-form-item label="工序描述"><el-input v-model="form.description" type="textarea" :rows="4" maxlength="2000"/></el-form-item>

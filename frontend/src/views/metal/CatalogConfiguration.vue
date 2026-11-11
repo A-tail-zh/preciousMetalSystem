@@ -1,7 +1,7 @@
 <template>
  <template v-if="kind==='material'">
-  <el-form-item label="材料形态" required><el-select v-model="config.form" aria-label="材料形态" :disabled="locked" @change="config.form==='POWDER'&&(config.measurementMode='WEIGHT')"><el-option v-for="(label,value) in forms" :key="value" :label="label" :value="value"/></el-select></el-form-item>
-  <el-form-item label="计量方式" required><el-select v-model="config.measurementMode" aria-label="计量方式" :disabled="locked||config.form==='POWDER'"><el-option label="计重" value="WEIGHT"/><el-option label="计件" value="PIECE"/></el-select></el-form-item>
+  <el-form-item label="材料形态" prop="storageConfiguration.form" :rules="[{required:true,message:'请选择材料形态',trigger:'change'}]"><el-select v-model="config.form" aria-label="材料形态" :disabled="locked" @change="config.form==='POWDER'&&(config.measurementMode='WEIGHT')"><el-option v-for="(label,value) in forms" :key="value" :label="label" :value="value"/></el-select></el-form-item>
+  <el-form-item label="计量方式" prop="storageConfiguration.measurementMode" :rules="[{required:true,message:'请选择计量方式',trigger:'change'}]"><el-select v-model="config.measurementMode" aria-label="计量方式" :disabled="locked||config.form==='POWDER'"><el-option label="计重" value="WEIGHT"/><el-option label="计件" value="PIECE"/></el-select></el-form-item>
  </template>
  <template v-else-if="kind==='product'">
   <el-divider>工序与产出配置</el-divider>

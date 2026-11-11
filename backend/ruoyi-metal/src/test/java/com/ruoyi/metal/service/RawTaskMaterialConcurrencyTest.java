@@ -63,7 +63,7 @@ class RawTaskMaterialConcurrencyTest {
      var editing=executor.submit(()->{try{var locks=WorkOrderService.class.getDeclaredMethod("lockDependencies",Long.class,List.class,Long.class);locks.setAccessible(true);locks.invoke(new WorkOrderService(editJdbc,null,null,null),f.work,List.of(),owner);editJdbc.queryForMap("SELECT work_order_id FROM metal_work_order WHERE work_order_id=? FOR UPDATE",f.work);editJdbc.queryForMap("SELECT material_id FROM metal_material WHERE material_id=? FOR UPDATE",f.material);return true;}catch(ReflectiveOperationException failure){throw new RuntimeException(failure);}});
      assertTrue(attempted.await(3,TimeUnit.SECONDS));
      var old=materialJdbc.queryForMap("SELECT material_type,metal_type_id FROM metal_material WHERE material_id=?",f.material);var previous=new MaterialRecord();previous.setId(f.material);previous.setMaterialType(old.get("material_type").toString());previous.setMetalTypeId(((Number)old.get("metal_type_id")).longValue());var form=new MaterialRecord();form.setId(f.material);form.setMaterialType("旧料".equals(previous.getMaterialType())?"块料":"旧料");form.setMetalTypeId(previous.getMetalTypeId());
-     try{assertThrows(ServiceException.class,()->new MaterialService(null,mock(FactoryScope.class),materialJdbc).prepare(form,previous));}finally{materialConnection.rollback();}
+     try{assertThrows(ServiceException.class,()->new MaterialService(null,mock(FactoryScope.class),materialJdbc,mock(StorageConfigurationService.class)).prepare(form,previous));}finally{materialConnection.rollback();}
      assertTrue(editing.get(10,TimeUnit.SECONDS));
     }finally{materialConnection.rollback();editConnection.rollback();executor.shutdownNow();}
    }

@@ -23,12 +23,13 @@ class MaterialServiceTest {
         when(jdbc.queryForList(contains("FROM metal_type WHERE"), any(Object[].class)))
                 .thenReturn(List.of(Map.of("metal_type_id", 1L)));
         when(jdbc.queryForList(contains("FROM metal_material_type"), eq(String.class), eq(7L), anyString())).thenAnswer(i->List.of("粉料","块料","旧料").contains(i.getArgument(3,String.class))?List.of(i.getArgument(3,String.class)):List.of());
-        service = new MaterialService(mock(MaterialMapper.class), FactoryCatalogTestFixtures.scope(), jdbc);
+        service = new MaterialService(mock(MaterialMapper.class), FactoryCatalogTestFixtures.scope(), jdbc, mock(StorageConfigurationService.class));
     }
 
     MaterialRecord material(String type, Long metal) {
         var row = new MaterialRecord();
         row.setFactoryId(7L);
+        row.setStorageConfiguration(Map.of("form","UNTREATED","measurementMode","WEIGHT"));
         row.setId(10L); row.setMaterialType(type); row.setMetalTypeId(metal);
         return row;
     }

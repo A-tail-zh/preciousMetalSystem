@@ -14,10 +14,25 @@ import com.ruoyi.common.exception.ServiceException;
 @Service
 public class MaterialService extends FactoryCatalogService<MaterialRecord> {
     private final org.springframework.jdbc.core.JdbcTemplate jdbc;
+    private final StorageConfigurationService storage;
 
-    public MaterialService(MaterialMapper mapper, FactoryScope scope, org.springframework.jdbc.core.JdbcTemplate jdbc) {
+    public MaterialService(MaterialMapper mapper, FactoryScope scope, org.springframework.jdbc.core.JdbcTemplate jdbc, StorageConfigurationService storage) {
         super(mapper, scope);
         this.jdbc = jdbc;
+        this.storage = storage;
+    }
+
+    @Override
+    protected void relations(MaterialRecord row) {
+        storage.writeCatalog("material", row);
+    }
+
+    @Override
+    protected void hydrate(java.util.List<MaterialRecord> rows) {
+        if (rows.size() == 1 && rows.get(0).getFactoryId() != null) {
+            var row = rows.get(0);
+            row.setStorageConfiguration(storage.catalogDetail("material", row.getId(), row.getFactoryId()));
+        }
     }
 
     /**
@@ -49,5 +64,8 @@ public class MaterialService extends FactoryCatalogService<MaterialRecord> {
                 || !Objects.equals(old.getMetalTypeId(), row.getMetalTypeId()))
                 && WarehouseReferences.materialReferenced(jdbc, old.getId()))
             throw new ServiceException("物料已有库存、仓储或原料工单引用，不能修改物料类型或金属类型，请另建物料");
+        if (row.getStorageConfiguration() == null && old == null)
+            throw new ServiceException("请选择材料形态和计量方式", 400);
+        storage.prepareCatalog("material", row);
     }
 }

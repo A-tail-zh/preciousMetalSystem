@@ -55,8 +55,8 @@ class MasterCrudTest {
                 when(jdbc.queryForList(contains("FROM metal_type WHERE"), any(Object[].class))).thenReturn(List.of(Map.of("metal_type_id", 1L)));
                 when(jdbc.queryForList(contains("FROM metal_material_type"), eq(String.class), eq(7L), anyString())).thenAnswer(i->"粉料".equals(i.getArgument(3,String.class))?List.of("粉料"):List.of());
                 MaterialMapper m = mock(MaterialMapper.class); mapper = m;
-                service = new MaterialService(m, scope, jdbc);
-                MaterialRecord r = new MaterialRecord();r.setFactoryId(7L); r.setCode("M"); r.setMaterialType("粉料");r.setMetalTypeId(1L); form = r;
+                service = new MaterialService(m, scope, jdbc, mock(StorageConfigurationService.class));
+                MaterialRecord r = new MaterialRecord();r.setFactoryId(7L); r.setStorageConfiguration(Map.of("form","UNTREATED","measurementMode","WEIGHT")); r.setCode("M"); r.setMaterialType("粉料");r.setMetalTypeId(1L); form = r;
             }
             case PROCESS -> {
                 when(jdbc.queryForObject(contains("metal_process_type"), eq(Integer.class), eq(1))).thenReturn(1);

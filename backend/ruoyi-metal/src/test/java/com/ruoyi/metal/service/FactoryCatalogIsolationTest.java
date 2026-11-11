@@ -27,7 +27,7 @@ class FactoryCatalogIsolationTest {
     @Test void publicMaterialCannotBeOpenedAsCurrentFactoryCatalog() {
         var mapper=mock(MaterialMapper.class);var row=new MaterialRecord();row.setId(8L);
         when(mapper.detail(8L)).thenReturn(row);
-        assertThrows(ServiceException.class,()->new MaterialService(mapper,scope(),mock(JdbcTemplate.class)).detail(8L));
+        assertThrows(ServiceException.class,()->new MaterialService(mapper,scope(),mock(JdbcTemplate.class),mock(StorageConfigurationService.class)).detail(8L));
     }
     @Test void publicProcessCannotBeOpenedAsCurrentFactoryCatalog() {
         var mapper=mock(ProcessMapper.class);var row=new ProcessRecord();row.setId(9L);
