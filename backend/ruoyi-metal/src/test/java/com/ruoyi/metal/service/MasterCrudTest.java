@@ -41,7 +41,7 @@ class MasterCrudTest {
             case PRODUCT -> {
                 ProductMapper m = mock(ProductMapper.class); mapper = m;
                 QuoteRuleService quoteRules=mock(QuoteRuleService.class);QuoteRule rule=new QuoteRule();rule.setPiValue(new java.math.BigDecimal("3.141592653589793"));when(quoteRules.get()).thenReturn(rule);when(quoteRules.metalName(any())).thenReturn("铱");when(quoteRules.pi(any())).thenReturn(rule.getPiValue());when(quoteRules.volumeRuleForMetal(any())).thenReturn(Map.of("piValue","3.14","curvedBottomFactor","1.03"));
-                service = new ProductService(m, scope, FactoryCatalogTestFixtures.productTypes(jdbc),quoteRules);
+                service = new ProductService(m, scope, FactoryCatalogTestFixtures.productTypes(jdbc),quoteRules,mock(StorageConfigurationService.class));
                 ProductRecord p = new ProductRecord();p.setFactoryId(7L); p.setName("Product"); p.setCode("P");
                 p.setCategory("铱环");p.setMetalTypeId(1L);p.setProductType("环");p.setCalculationVersion(2);
                 p.setDimensions(Map.of("outerDiameter", "12", "innerDiameter", "10", "thickness", "2")); form = p;
@@ -61,7 +61,7 @@ class MasterCrudTest {
             case PROCESS -> {
                 when(jdbc.queryForObject(contains("metal_process_type"), eq(Integer.class), eq(1))).thenReturn(1);
                 ProcessMapper m = mock(ProcessMapper.class); mapper = m;
-                service = new ProcessService(m, scope, jdbc);
+                service = new ProcessService(m, scope, jdbc, mock(StorageConfigurationService.class));
                 ProcessRecord p = new ProcessRecord();p.setFactoryId(7L); p.setName("Process"); p.setProcessType(1); form = p;
             }
         }
@@ -83,11 +83,11 @@ class MasterCrudTest {
         assertThrows(ServiceException.class, () -> service.create(form));
     }
     @ParameterizedTest @EnumSource(Kind.class) void listAndDetailReturnRecords(Kind kind) {
-        setup(kind); form.setId(9L); when(mapper.list(null)).thenReturn(List.of(form)); when(mapper.detail(9L)).thenReturn(form);
+        setup(kind); form.setId(9L); when(mapper.listFiltered(isNull(),any())).thenReturn(List.of(form)); when(mapper.detail(9L)).thenReturn(form);
         assertEquals(List.of(form), service.list()); assertSame(form, service.detail(9L));
     }
     @ParameterizedTest @EnumSource(Kind.class) void emptyListAndMissingDetail(Kind kind) {
-        setup(kind); when(mapper.list(null)).thenReturn(List.of()); assertTrue(service.list().isEmpty());
+        setup(kind); when(mapper.listFiltered(isNull(),any())).thenReturn(List.of()); assertTrue(service.list().isEmpty());
         assertThrows(ServiceException.class, () -> service.detail(9L)); verifyNoInteractions(jdbc);
     }
     @ParameterizedTest @EnumSource(Kind.class) void editUpdatesWithCurrentVersion(Kind kind) {

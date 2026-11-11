@@ -13,10 +13,12 @@ import com.ruoyi.common.exception.ServiceException;
 @Service
 public class ProcessService extends FactoryCatalogService<ProcessRecord> {
     private final JdbcTemplate jdbc;
+    private final StorageConfigurationService storage;
 
-    public ProcessService(ProcessMapper mapper, FactoryScope scope, JdbcTemplate jdbc) {
+    public ProcessService(ProcessMapper mapper, FactoryScope scope, JdbcTemplate jdbc, StorageConfigurationService storage) {
         super(mapper, scope);
         this.jdbc = jdbc;
+        this.storage = storage;
     }
 
     @Override
@@ -24,6 +26,12 @@ public class ProcessService extends FactoryCatalogService<ProcessRecord> {
         super.prepare(form,previous);
         scope.requireCatalog("process-type",form.getProcessType()==null?null:form.getProcessType().longValue(),form.getFactoryId());
         ProcessTypeService.requireType(jdbc, form.getProcessType());
+        storage.prepareCatalog("process", form);
+    }
+
+    @Override
+    protected void relations(ProcessRecord form) {
+        storage.writeCatalog("process", form);
     }
 
     @Override

@@ -21,7 +21,7 @@ class FactoryCatalogIsolationTest {
         var row=new ProductRecord();row.setId(7L);row.setCalculationVersion(2);row.setProductType("环");
         row.setDimensions(Map.of("outerDiameter","3","innerDiameter","1","thickness","1"));
         when(mapper.detail(7L)).thenReturn(row);
-        var service=new ProductService(mapper,scope(),mock(JdbcTemplate.class),mock(QuoteRuleService.class));
+        var service=new ProductService(mapper,scope(),mock(JdbcTemplate.class),mock(QuoteRuleService.class),mock(StorageConfigurationService.class));
         assertThrows(ServiceException.class,()->service.detail(7L));
     }
     @Test void publicMaterialCannotBeOpenedAsCurrentFactoryCatalog() {
@@ -32,6 +32,6 @@ class FactoryCatalogIsolationTest {
     @Test void publicProcessCannotBeOpenedAsCurrentFactoryCatalog() {
         var mapper=mock(ProcessMapper.class);var row=new ProcessRecord();row.setId(9L);
         when(mapper.detail(9L)).thenReturn(row);
-        assertThrows(ServiceException.class,()->new ProcessService(mapper,scope(),mock(JdbcTemplate.class)).detail(9L));
+        assertThrows(ServiceException.class,()->new ProcessService(mapper,scope(),mock(JdbcTemplate.class),mock(StorageConfigurationService.class)).detail(9L));
     }
 }
