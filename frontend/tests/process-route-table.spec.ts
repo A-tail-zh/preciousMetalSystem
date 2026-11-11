@@ -30,9 +30,9 @@ async function choose(page:Page,picker:Locator,name:string){
  await page.locator(`[id="${id}"]`).getByRole('option',{name,exact:true}).click()
 }
 
-test('seven-column route table preserves loss and process identity when moving and deleting',async({page,baseURL})=>{
+test('six-column route table preserves loss and process identity when moving and deleting',async({page,baseURL})=>{
  const {table,writes}=await openEditor(page,baseURL!)
- await expect(table.getByRole('columnheader')).toHaveText(['序号','加工工序','理论损耗(%)','计量方式','处理规则','产出类别','操作'])
+ await expect(table.getByRole('columnheader')).toHaveText(['序号','加工工序','理论损耗(%)','计量方式','产出类别','操作'])
  for(let i=0;i<2;i++)await table.getByRole('button',{name:'添加工序',exact:true}).click()
  await choose(page,table.getByRole('combobox',{name:'第1道加工工序',exact:true}),'普通一')
  await choose(page,table.getByRole('combobox',{name:'第2道加工工序',exact:true}),'普通二')
@@ -53,13 +53,13 @@ test('seven-column route table preserves loss and process identity when moving a
  expect(writes).toEqual([])
 })
 
-test('acid wash retains material details, fixed rules and derived measurement in the table',async({page,baseURL})=>{
+test('acid wash retains material details, fixed outputs and derived measurement in the table',async({page,baseURL})=>{
  const {editor,table,writes}=await openEditor(page,baseURL!)
  for(let i=0;i<2;i++)await table.getByRole('button',{name:'添加工序',exact:true}).click()
  await choose(page,table.getByRole('combobox',{name:'第1道加工工序',exact:true}),'酸洗')
  await choose(page,table.getByRole('combobox',{name:'第2道加工工序',exact:true}),'普通二')
- await expect(table.getByRole('textbox',{name:'第1道工序处理规则',exact:true})).toHaveValue('酸洗')
- await expect(table.getByRole('textbox',{name:'第1道工序处理规则',exact:true})).not.toBeEditable()
+ await expect(table.getByRole('columnheader',{name:'处理规则',exact:true})).toHaveCount(0)
+ await expect(table.getByRole('textbox',{name:'第1道工序处理规则',exact:true})).toHaveCount(0)
  await expect(table.getByRole('textbox',{name:'第1道工序产出类别',exact:true})).toHaveValue('原材料')
  await choose(page,table.getByRole('combobox',{name:'第1道工序产出物料',exact:true}),'M31 / 金属料')
  await expect(table.getByRole('textbox',{name:'第1道工序计量方式',exact:true})).toHaveValue('计重')
