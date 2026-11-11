@@ -5,6 +5,7 @@ import { login, logout, getInfo } from '@/api/login'
 import { getToken, setToken, removeToken } from '@/utils/auth'
 import { isHttp, isEmpty } from "@/utils/validate"
 import useLockStore from '@/store/modules/lock'
+import {runSessionCleanup} from '@/utils/session-cleanup'
 import defAva from '@/assets/images/profile.jpg'
 
 interface UserState {
@@ -102,7 +103,9 @@ const useUserStore = defineStore(
       clearSession() { this.sessionEpoch++; this.sessionReady=false; this.id=''; this.factoryId=null; cache.session.remove('sessionObj'); this.token=''; this.roles=[]; this.permissions=[]; removeToken() },
       // 退出系统
       async logOut(expectedToken=getToken()):Promise<boolean> {
-        if(!expectedToken||getToken()!==expectedToken)return false        try{await logout(expectedToken)}catch(error:any){
+        if(!expectedToken||getToken()!==expectedToken)return false
+        if(this.sessionReady)await runSessionCleanup()
+        try{await logout(expectedToken)}catch(error:any){
           if(getToken()!==expectedToken)return false
           if(error?.response?.status!==401&&error!=='无效的会话，或者会话已过期，请重新登录。')throw error
         }
