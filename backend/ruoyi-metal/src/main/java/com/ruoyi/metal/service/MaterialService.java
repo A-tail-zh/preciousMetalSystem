@@ -49,21 +49,13 @@ public class MaterialService extends FactoryCatalogService<MaterialRecord> {
     @Override
     protected void prepare(MaterialRecord row, MaterialRecord old) {
         super.prepare(row,old);
-        String type = TypeManagementService.validName(TypeManagementService.Kind.MATERIAL,row.getMaterialType());
-        if (old == null || !Objects.equals(old.getMaterialType(),type)) {
-            var names=jdbc.queryForList("SELECT name FROM metal_material_type WHERE factory_id=? AND name=? FOR UPDATE",String.class,row.getFactoryId(),type);
-            if(names.isEmpty())throw new ServiceException("所选物料类型不在当前工厂目录中，请重新选择",400);
-            type=names.get(0);
-        }
-        row.setMaterialType(type);
         scope.requireCatalog("metal",row.getMetalTypeId(),row.getFactoryId());
         if (row.getMetalTypeId() == null || row.getMetalTypeId() <= 0
                 || jdbc.queryForList("SELECT metal_type_id FROM metal_type WHERE metal_type_id=?", row.getMetalTypeId()).isEmpty())
             throw new ServiceException("请选择有效金属类型");
-        if (old != null && (!Objects.equals(old.getMaterialType(), type)
-                || !Objects.equals(old.getMetalTypeId(), row.getMetalTypeId()))
+        if (old != null && !Objects.equals(old.getMetalTypeId(), row.getMetalTypeId())
                 && WarehouseReferences.materialReferenced(jdbc, old.getId()))
-            throw new ServiceException("物料已有库存、仓储或原料工单引用，不能修改物料类型或金属类型，请另建物料");
+            throw new ServiceException("物料已有库存、仓储或原料工单引用，不能修改金属类型，请另建物料");
         if (row.getStorageConfiguration() == null && old == null)
             throw new ServiceException("请选择材料形态和计量方式", 400);
         storage.prepareCatalog("material", row);

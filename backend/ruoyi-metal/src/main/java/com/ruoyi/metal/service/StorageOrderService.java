@@ -68,7 +68,7 @@ public class StorageOrderService {
    }
    String name=text(identity.get("name"));if(name.isBlank())name=text(identity.get("materialType"));
    if(name.isBlank()&&!text(line.get("materialId")).isBlank()){
-    var materials=jdbc.queryForList("SELECT material_type name FROM metal_material WHERE factory_id=? AND material_id=?",factory,line.get("materialId"));
+    var materials=jdbc.queryForList("SELECT material_name name FROM metal_material WHERE factory_id=? AND material_id=?",factory,line.get("materialId"));
     if(!materials.isEmpty())name=text(materials.get(0).get("name"));
    }
    if(name.isBlank()&&!text(line.get("productId")).isBlank()){

@@ -57,7 +57,7 @@ export const masterConfigs = {
         endpoint: '/metal/material',
         permission: 'metal:material',
         width: 936,
-        columns: cols([['code', '物料编码', 132], ['materialType', '物料类型名称', 220], ['materialCategory', '物料分类', 110], ['specification', '规格型号', 136], ['metalTypeName', '金属类型', 120], ['creatorName', '创建人', 100], ['createTime', '创建时间', 140]])
+        columns: cols([['code', '物料编码', 132], ['name', '物料名称', 220], ['metalTypeName', '金属类型', 120], ['materialForm', '材料形态', 110], ['specification', '规格型号', 136], ['creatorName', '创建人', 100], ['createTime', '创建时间', 140]])
     },
     process: {
         title: '工序管理',

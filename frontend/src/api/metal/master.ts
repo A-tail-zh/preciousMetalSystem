@@ -3,7 +3,7 @@ export interface MasterRow {
   id: string; version: number; createBy: string; creatorName?:string; processTypeName?:string; createTime: string; updateTime: string
   metalTypeId?:string; metalTypeName?:string; productType?:string; calculationVersion?:number;
   code?: string; name?: string; description?: string; processType?: number
-  classificationLocked?: boolean; materialType?: string; materialCategory?:string|null; specification?: string; category?: string; dimensions?: Record<string,string>
+  materialForm?: string; classificationLocked?: boolean; materialType?: string; materialCategory?:string|null; specification?: string; category?: string; dimensions?: Record<string,string>
   volume?: string | null; purity?: string | null; weight?: string | null
   processes?: {processId:string; loss:string;lossUnit?:"PERCENT"|"G_PER_PIECE"; processName?:string;measurementMode?:'PIECE'|'WEIGHT'}[]
   factoryId?:string | null; factoryName?:string | null; productIds?:string[]; productNames?:string[]

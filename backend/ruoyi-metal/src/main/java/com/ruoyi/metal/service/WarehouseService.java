@@ -515,7 +515,7 @@ public class WarehouseService {
         if (category == null) throw fail("请选择库存分类");
         if (referenceId == null || referenceId <= 0) throw fail("请选择物料或产品");
         if ("RAW".equals(category))
-            return one("SELECT m.material_id id,m.material_code code,CONCAT(t.name,m.material_type) name,m.material_type,m.metal_type_id,t.name metal_type_name,m.specification FROM metal_material m JOIN metal_type t ON t.metal_type_id=m.metal_type_id WHERE m.material_id=? AND m.del_flag='0' FOR UPDATE", referenceId);
+            return one("SELECT m.material_id id,m.material_code code,m.material_name name,m.material_type,m.metal_type_id,t.name metal_type_name,m.specification FROM metal_material m JOIN metal_type t ON t.metal_type_id=m.metal_type_id WHERE m.material_id=? AND m.del_flag='0' FOR UPDATE", referenceId);
         if (Set.of("FINISHED", "SEMI").contains(category))
             return one("SELECT p.product_id id,p.product_code code,p.product_name name,p.specification,p.purity,p.product_type,p.metal_type_id,t.name metal_type_name FROM metal_product p JOIN metal_type t ON t.metal_type_id=p.metal_type_id WHERE p.product_id=? AND p.del_flag='0' FOR UPDATE", referenceId);
         throw fail("库存分类无效");
@@ -1624,7 +1624,7 @@ public class WarehouseService {
             case "people" ->
                     cleaned(rows("SELECT u.user_id id,COALESCE(NULLIF(u.nick_name,''),u.user_name) name,u.phonenumber phone," + PersonOptions.roles("u") + " role_names FROM sys_user u WHERE u.factory_id=? AND u.status='0' AND u.del_flag='0' ORDER BY u.user_id", factoryId));
             case "materials" ->
-                    cleaned(rows("SELECT m.material_id id,m.material_code code,CONCAT(t.name,m.material_type) name,m.material_type,m.metal_type_id,t.name metal_type_name,m.specification FROM metal_material m JOIN metal_type t ON t.metal_type_id=m.metal_type_id WHERE m.del_flag='0' AND m.factory_id=? AND t.factory_id=m.factory_id ORDER BY m.material_id",factoryId));
+                    cleaned(rows("SELECT m.material_id id,m.material_code code,m.material_name name,m.material_type,m.metal_type_id,t.name metal_type_name,m.specification FROM metal_material m JOIN metal_type t ON t.metal_type_id=m.metal_type_id WHERE m.del_flag='0' AND m.factory_id=? AND t.factory_id=m.factory_id ORDER BY m.material_id",factoryId));
             case "products" ->
                     cleaned(rows("SELECT product_id id,product_code code,product_name name,product_category category,specification FROM metal_product WHERE del_flag='0' AND factory_id=? ORDER BY product_id",factoryId));
             case "processes" ->

@@ -11,6 +11,7 @@ public class ListQuery {
  private Long metalTypeId;public Long getMetalTypeId(){return metalTypeId;}public void setMetalTypeId(Long v){metalTypeId=v;}
  private String productType;public String getProductType(){return productType;}public void setProductType(String v){productType=v==null||v.isBlank()?null:v.strip();}
  private String category;public String getCategory(){return category;}public void setCategory(String v){category=v==null||v.isBlank()?null:v.strip();}
+ private String materialForm;public String getMaterialForm(){return materialForm;}public void setMaterialForm(String v){materialForm=v==null||v.isBlank()?null:v.strip();}
  private String materialCategory;public String getMaterialCategory(){return materialCategory;}public void setMaterialCategory(String v){materialCategory=v==null||v.isBlank()?null:v.strip();}
  private String materialType;public String getMaterialType(){return materialType;}public void setMaterialType(String v){materialType=v==null||v.isBlank()?null:v.strip();}
  private String specification;public String getSpecification(){return specification;}public void setSpecification(String v){specification=v==null||v.isBlank()?null:v.strip();}
@@ -23,7 +24,7 @@ public class ListQuery {
  public static String pattern(String value){return value==null||value.isBlank()?null:"%"+value.replace("!","!!").replace("%","!%").replace("_","!_")+"%";}
  public LocalDateTime getStartTime(){return startDate==null||startDate.isBlank()?null:LocalDate.parse(startDate).atStartOfDay();}
  public LocalDateTime getEndExclusive(){return endDate==null||endDate.isBlank()?null:LocalDate.parse(endDate).plusDays(1).atStartOfDay();}
- public void validate(){if(materialCategory!=null&&!java.util.Set.of("旧料","粉料","块料").contains(materialCategory))throw new ServiceException("物料分类无效",400);try{var start=getStartTime();var end=getEndExclusive();if(start!=null&&end!=null&&!start.isBefore(end))throw new IllegalArgumentException();}catch(RuntimeException e){throw new ServiceException("日期区间无效，开始日期不能晚于结束日期");}
+ public void validate(){if(materialForm!=null&&!java.util.Set.of("POWDER","UNTREATED","METAL").contains(materialForm))throw new ServiceException("材料形态无效",400);if(materialCategory!=null&&!java.util.Set.of("旧料","粉料","块料").contains(materialCategory))throw new ServiceException("物料分类无效",400);try{var start=getStartTime();var end=getEndExclusive();if(start!=null&&end!=null&&!start.isBefore(end))throw new IllegalArgumentException();}catch(RuntimeException e){throw new ServiceException("日期区间无效，开始日期不能晚于结束日期");}
  for(Long id:new Long[]{factoryId,roleId,productId,metalTypeId})if(id!=null&&id<=0)throw new ServiceException("筛选编号无效");
  for(String text:new String[]{name,code,address,category,materialType,specification,productType,companyName,contactName,contactPhone})if(text!=null&&text.length()>500)throw new ServiceException("筛选文本过长");if(processType!=null&&processType<1)throw new ServiceException("工序类型无效");}
  public String getNamePattern(){return pattern(name);}

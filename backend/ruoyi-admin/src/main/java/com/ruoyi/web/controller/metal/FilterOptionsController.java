@@ -24,6 +24,7 @@ import java.util.*;import org.springframework.web.bind.annotation.*;import org.s
    case "product:name"->{table="metal_product";column="product_name";where="del_flag='0' AND factory_id IS NOT NULL";}
    case "line:code"->{table="metal_production_line";column="production_line_code";}
    case "line:name"->{table="metal_production_line";column="production_line_name";}
+   case "material:name"->{table="metal_material";column="material_name";where="del_flag='0' AND factory_id IS NOT NULL";}
    case "material:code"->{table="metal_material";column="material_code";where="del_flag='0' AND factory_id IS NOT NULL";}
    case "material:specification"->{table="metal_material";column="specification";where="del_flag='0' AND factory_id IS NOT NULL";}
    case "process:name"->{table="metal_process";column="process_name";where="del_flag='0' AND factory_id IS NOT NULL";}
