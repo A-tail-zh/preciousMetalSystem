@@ -1,0 +1,53 @@
+.pending-review-drawer{color:#303133;background:#fff;font-family:var(--business-font,'Microsoft YaHei',sans-serif)}
+.pending-review-drawer .el-drawer__header{margin:0;padding:18px 24px;border-bottom:1px solid #e7edf5;color:#25364a}
+.pending-review-drawer .el-drawer__title{font-size:16px;font-weight:600;line-height:28px}
+.pending-review-drawer .el-drawer__close-btn{width:32px;height:32px;border-radius:6px}
+.pending-review-drawer .el-drawer__close-btn:hover{background:#f0f5fc;color:#409eff}
+.pending-review-drawer .el-drawer__body{display:grid;flex:1;height:auto;min-height:0;box-sizing:border-box;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:auto minmax(0,1fr) auto;gap:20px 16px;padding:22px 24px 18px;overflow:hidden}
+.pending-review-drawer .el-drawer__body>.storage-filter{grid-column:1;grid-row:1;display:flex;flex-direction:column;align-items:stretch;gap:8px;min-width:0}
+.pending-review-drawer .storage-filter>span{font-size:12px;line-height:18px;color:#606266}
+.pending-review-drawer .storage-filter>.el-select{width:100%;min-width:0}
+.pending-review-drawer .el-drawer__body>.el-select{grid-column:2;grid-row:1;align-self:end;width:100%;min-width:0}
+.pending-review-drawer .el-drawer__body>.el-select:before{content:'处理范围';display:block;font-size:12px;line-height:18px;color:#606266;margin-bottom:8px}
+.pending-review-drawer .el-select__wrapper{min-height:36px;box-shadow:0 0 0 1px #dce3ee inset;border-radius:6px;background:#fafcff}
+.pending-review-drawer .el-select__wrapper.is-focused{box-shadow:0 0 0 1px #409eff inset}
+.pending-review-drawer .el-drawer__body:not(:has(>.el-select))>.storage-filter{grid-column:1/-1}
+.pending-review-drawer .el-drawer__body>.el-empty{grid-column:1/-1;grid-row:2;align-self:center;padding:28px 0}
+.pending-review-drawer .el-empty__image{width:80px}
+.pending-review-drawer .el-empty__description{margin-top:18px}
+.pending-review-drawer .el-empty__description p{font-size:13px;color:#909399}
+.pending-review-drawer .el-drawer__body>div:not(.storage-filter):not(.el-select):not(.el-empty):not(.el-pagination):not(.el-alert){grid-column:1/-1;grid-row:2;min-height:0;overflow:auto;padding:1px 2px}
+.pending-review-drawer .el-drawer__body>div:not(.storage-filter):not(.el-select):not(.el-empty):not(.el-pagination):not(.el-alert):empty{display:none}
+.pending-review-drawer .el-drawer__body>.el-pagination{grid-column:1/-1;grid-row:3;height:auto;min-height:32px;box-sizing:content-box;justify-content:flex-end;padding-top:16px;border-top:1px solid #e7edf5;--el-pagination-button-bg-color:#f4f7fc}
+.pending-review-drawer .el-drawer__body:has(>.el-empty)>.el-pagination{display:none}
+.pending-review-drawer .el-drawer__body:has(>.el-alert){grid-template-rows:auto auto minmax(0,1fr) auto}
+.pending-review-drawer .el-drawer__body>.el-alert{grid-column:1/-1;grid-row:2;padding-right:80px;align-self:start}
+.pending-review-drawer .el-drawer__body>.el-button{position:relative;z-index:1;grid-column:1/-1;grid-row:2;justify-self:end;align-self:center;margin-right:10px}
+.pending-review-drawer .el-drawer__body:has(>.el-alert)>.el-empty{display:none}
+.pending-review-drawer .el-drawer__body:has(>.el-alert)>div:not(.storage-filter):not(.el-select):not(.el-empty):not(.el-pagination):not(.el-alert){grid-row:3}
+.pending-review-drawer .el-drawer__body:has(>.el-alert)>.el-pagination{grid-row:4}
+.pending-review-drawer .el-drawer__body .review-message{display:flex;align-items:center;gap:14px;margin:0 0 12px;padding:14px 16px;border:1px solid #e2e8f0;border-radius:8px;background:#fff}
+.pending-review-drawer .el-drawer__body .review-message:hover{border-color:#b8d8ff;background:#f8fbff}
+.pending-review-drawer .el-drawer__body .review-message>button{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px 12px;flex:1;min-width:0;min-height:44px;padding:0;border:0;background:transparent;text-align:left;cursor:pointer;color:inherit}
+.pending-review-drawer .el-drawer__body .review-message>button:focus-visible{outline:2px solid #409eff;outline-offset:5px;border-radius:3px}
+.pending-review-drawer .el-drawer__body .review-message strong{justify-self:start;align-self:center;font-size:11px;font-weight:400;line-height:22px;padding:0 7px;border-radius:4px;background:#ecf5ff;color:#409eff}
+.pending-review-drawer .el-drawer__body .review-message span:first-of-type{grid-column:1/-1;grid-row:2;font-size:14px;font-weight:600;line-height:22px;color:#303133;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.pending-review-drawer .el-drawer__body .review-message span:last-of-type{grid-column:2;grid-row:1;align-self:center;font-size:11px;color:#909399;text-align:right}
+.pending-review-drawer .el-drawer__body .review-message>.el-button{flex:none;color:#409eff;background:#ecf5ff;border-color:#d9eaff;border-radius:5px;font-size:12px}
+@media(max-width:650px){
+ .pending-review-drawer .el-drawer__header{padding:14px 16px}
+ .pending-review-drawer .el-drawer__close-btn{width:44px;height:44px}
+ .pending-review-drawer .el-drawer__body{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr) auto;gap:16px;padding:18px 16px 16px}
+ .pending-review-drawer .el-drawer__body>.el-select{grid-column:1;grid-row:2}
+ .pending-review-drawer .el-drawer__body>.el-empty{grid-row:3}
+ .pending-review-drawer .el-drawer__body>div:not(.storage-filter):not(.el-select):not(.el-empty):not(.el-pagination):not(.el-alert){grid-row:3}
+ .pending-review-drawer .el-drawer__body>.el-pagination{grid-row:4}
+ .pending-review-drawer .el-drawer__body:has(>.el-alert){grid-template-rows:auto auto auto minmax(0,1fr) auto}
+ .pending-review-drawer .el-drawer__body>.el-alert,.pending-review-drawer .el-drawer__body>.el-button{grid-row:3}
+ .pending-review-drawer .el-drawer__body:has(>.el-alert)>div:not(.storage-filter):not(.el-select):not(.el-empty):not(.el-pagination):not(.el-alert){grid-row:4}
+ .pending-review-drawer .el-drawer__body:has(>.el-alert)>.el-pagination{grid-row:5}
+ .pending-review-drawer .el-drawer__body:not(:has(>.el-select)){grid-template-rows:auto minmax(0,1fr) auto}
+ .pending-review-drawer .el-drawer__body:not(:has(>.el-select))>.el-empty,.pending-review-drawer .el-drawer__body:not(:has(>.el-select))>div:not(.storage-filter):not(.el-select):not(.el-empty):not(.el-pagination):not(.el-alert){grid-row:2}
+ .pending-review-drawer .el-drawer__body:not(:has(>.el-select))>.el-pagination{grid-row:3}
+ .pending-review-drawer .el-drawer__body .review-message{padding:12px;gap:10px}.pending-review-drawer .el-drawer__body .review-message>button{gap:8px}.pending-review-drawer .el-drawer__body .review-message span:last-of-type{max-width:150px;overflow-wrap:anywhere}.pending-review-drawer .el-drawer__body .review-message>.el-button{min-height:44px}
+}
