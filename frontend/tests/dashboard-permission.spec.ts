@@ -27,7 +27,9 @@ for(const permissions of [['metal:dashboard:list'],['*:*:*']])test('authorized h
  await expect(page.locator('.summary-card').first()).toContainText('3单');await expect(page.locator('.dashboard canvas')).toHaveCount(4)
  await page.reload();await expect(page.locator('.dashboard-header')).toBeVisible()
  if(permissions.includes('*:*:*')){
-  await page.getByRole('button',{name:'后台管理',exact:true}).click();await expect(page).toHaveURL(/\/system\/role$/)
+  const managementPath=await page.evaluate(()=>(document.querySelector('#app') as any).__vue_app__.config.globalProperties.$pinia._s.get('permission').managementPath)
+  expect(managementPath).not.toBe('/401')
+  await page.getByRole('button',{name:'后台管理',exact:true}).click();await expect(page).toHaveURL(new URL(managementPath,page.url()).href)
   await page.getByRole('link',{name:'数据看板',exact:true}).click();await expect(page.locator('.dashboard-header')).toBeVisible()
  }else await expect(page.getByRole('button',{name:'后台管理',exact:true})).toBeDisabled()
 })

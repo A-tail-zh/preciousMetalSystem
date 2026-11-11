@@ -24,6 +24,8 @@ public class DashboardController extends BaseController {
   */
  @GetMapping("/dashboard") @PreAuthorize("@ss.hasPermi('metal:dashboard:list')") public AjaxResult dashboard(@RequestParam(required=false) Long factoryId){return success(service.dashboard(factoryId));}
  @GetMapping("/dashboard/factories") @PreAuthorize("@ss.hasPermi('metal:dashboard:list')") public AjaxResult dashboardFactories(){return success(service.dashboardFactories());}
+ @GetMapping("/dashboard/production-progress") @PreAuthorize("@ss.hasPermi('metal:dashboard:list')")
+ public AjaxResult productionProgress(@RequestParam(required=false) Long factoryId,@RequestParam(defaultValue="1") int pageNum,@RequestParam(defaultValue="3") int pageSize,@RequestParam(required=false) String orderNo,@RequestParam(required=false) String status){return success(service.productionProgress(factoryId,pageNum,pageSize,orderNo,status));}
  /**
   * 获取当前用户可访问的工厂选项。
   */

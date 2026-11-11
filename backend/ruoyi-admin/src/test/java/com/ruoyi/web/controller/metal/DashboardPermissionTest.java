@@ -23,10 +23,13 @@ class DashboardPermissionTest {
    when(permissions.hasPermi("metal:dashboard:list")).thenReturn(false);
    assertThrows(AccessDeniedException.class,()->controller.dashboard(null));
    assertThrows(AccessDeniedException.class,controller::dashboardFactories);
+   assertThrows(AccessDeniedException.class,()->controller.productionProgress(null,1,3,null,null));
    verifyNoInteractions(service);
    when(permissions.hasPermi("metal:dashboard:list")).thenReturn(true);
    controller.dashboard(7L);controller.dashboardFactories();
+   controller.productionProgress(7L,1,3,"GD","IN_PROGRESS");
    verify(service).dashboard(7L);verify(service).dashboardFactories();
+   verify(service).productionProgress(7L,1,3,"GD","IN_PROGRESS");
   }
  }
 }

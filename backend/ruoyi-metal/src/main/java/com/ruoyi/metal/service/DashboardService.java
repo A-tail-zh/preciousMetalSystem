@@ -1,6 +1,7 @@
 package com.ruoyi.metal.service;
 
 import java.util.*;
+import java.util.stream.Collectors;
 import java.time.*;
 import java.math.*;
 import java.time.format.DateTimeFormatter;
@@ -61,7 +62,7 @@ public class DashboardService {
         if(selectedFactory!=null){scope.check(selectedFactory);factory=selectedFactory;}
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Shanghai")), month = today.withDayOfMonth(1), start = today.minusDays(29);
         String w = filter(factory, "w"), r = filter(factory, "r"), q = filter(factory, "q");
-        var work = data("SELECT COUNT(*) total,COALESCE(SUM(w.status='IN_PROGRESS'),0) inProgress,COALESCE(SUM(w.status='COMPLETED'),0) completed FROM metal_work_order w WHERE w.del_flag='0'" + w).get(0);
+        var work = data("SELECT COUNT(*) total,COALESCE(SUM(w.status='IN_PROGRESS'),0) inProgress,COALESCE(SUM(w.status IN ('COMPLETED','EXCEPTION_COMPLETED')),0) completed FROM metal_production_order w WHERE w.deleted=0" + w).get(0);
         var warnings = data("SELECT COALESCE(SUM(w.status='PENDING'),0) pending,COALESCE(SUM(DATE(w.trigger_time)=?),0) newToday,COALESCE(SUM(DATE(w.handled_time)=? AND w.status='HANDLED'),0) handledToday FROM metal_warning_record w WHERE w.source_void=FALSE AND w.del_flag='0'" + w, today, today).get(0);
         Long quoteCount = jdbc.queryForObject("SELECT COUNT(*) FROM metal_saved_quotation q WHERE q.create_time>=? AND q.create_time<?" + q, Long.class, month, today.plusDays(1));
         var cats = data("SELECT q.category_labels categories,COUNT(*) quoteCount FROM metal_saved_quotation q WHERE q.create_time>=? AND q.create_time<?" + q + " GROUP BY q.category_labels ORDER BY MIN(q.quote_id)", month, today.plusDays(1));
@@ -97,6 +98,47 @@ public class DashboardService {
         var factories=own==null?data("SELECT CAST(factory_id AS CHAR) id,factory_name name FROM metal_factory WHERE del_flag='0' ORDER BY factory_id"):
             data("SELECT CAST(factory_id AS CHAR) id,factory_name name FROM metal_factory WHERE del_flag='0' AND factory_id=?",own);
         return Map.of("canSelectAll",scope.isAdmin(),"factories",factories);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public Map<String,Object> productionProgress(Long selectedFactory, int pageNum, int pageSize) {
+        return productionProgress(selectedFactory, pageNum, pageSize, null, null);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public Map<String,Object> productionProgress(Long selectedFactory, int pageNum, int pageSize, String orderNo, String status) {
+        if (pageNum < 1 || pageSize < 1 || pageSize > 50) throw new ServiceException("分页参数无效", 400);
+        if (orderNo != null && orderNo.length() > 32) throw new ServiceException("工单号最多32个字符", 400);
+        if (status != null && !status.isBlank() && !List.of("CREATED", "IN_PROGRESS").contains(status)) throw new ServiceException("工单状态无效", 400);
+        Long factory = scope.currentFactory();
+        if (selectedFactory != null) { scope.check(selectedFactory); factory = selectedFactory; }
+        String where = " WHERE w.deleted=0 AND w.status IN ('CREATED','IN_PROGRESS')";
+        var args = new ArrayList<Object>();
+        if (factory != null) { where += " AND w.factory_id=?"; args.add(factory); }
+        if (orderNo != null && !orderNo.isBlank()) { where += " AND w.order_no LIKE ? ESCAPE '!'"; args.add(com.ruoyi.metal.catalog.ListQuery.pattern(orderNo.strip())); }
+        if (status != null && !status.isBlank()) { where += " AND w.status=?"; args.add(status); }
+        long total = jdbc.queryForObject("SELECT COUNT(*) FROM metal_production_order w" + where, Long.class, args.toArray());
+        args.add(pageSize); args.add(((long)pageNum-1)*pageSize);
+        var orders = data("SELECT CAST(w.id AS CHAR) id,w.order_no orderNo,w.factory_name factoryName,w.status,w.flow_version flowVersion FROM metal_production_order w" + where + " ORDER BY w.create_time DESC,w.id DESC LIMIT ? OFFSET ?", args.toArray());
+        if (!orders.isEmpty()) {
+            Object[] ids = orders.stream().map(order -> order.get("id")).toArray();
+            String placeholders = String.join(",", Collections.nCopies(ids.length, "?"));
+            var products = data("SELECT CAST(i.id AS CHAR) id,CAST(i.order_id AS CHAR) orderId,CAST(i.quantity AS CHAR) plannedQuantity,CAST(i.product_snapshot AS CHAR) snapshot FROM metal_production_order_item i WHERE i.order_id IN (" + placeholders + ") ORDER BY i.order_id,i.sequence_no,i.id", ids);
+            var steps = data("SELECT CAST(s.id AS CHAR) id,CAST(s.item_id AS CHAR) itemId,s.process_name processName,s.measurement_mode measurementMode,s.output_category outputCategory,CAST(COALESCE((SELECT SUM(e.output_quantity) FROM metal_production_execution e WHERE e.factory_id=w.factory_id AND e.order_id=w.id AND e.order_item_id=i.id AND e.order_step_id=s.id AND e.status IN ('OPEN','CLOSED')),0) AS CHAR) completedQuantity FROM metal_production_order_step s JOIN metal_production_order_item i ON i.id=s.item_id JOIN metal_production_order w ON w.id=i.order_id WHERE w.id IN (" + placeholders + ") ORDER BY i.id,s.sequence_no,s.id", ids);
+            var byItem = steps.stream().collect(Collectors.groupingBy(step -> step.get("itemId").toString()));
+            var byOrder = products.stream().collect(Collectors.groupingBy(product -> product.get("orderId").toString()));
+            for (var product : products) {
+                product.remove("orderId");
+                var snapshot = JSON.parseObject(String.valueOf(product.remove("snapshot")));
+                product.put("productName", snapshot.getString("name")); product.put("specification", snapshot.getString("specification"));
+                var progress = byItem.getOrDefault(product.get("id").toString(), List.of());
+                var last = progress.isEmpty() ? null : progress.get(progress.size()-1);
+                product.put("completedQuantity", last != null && "PRODUCT".equals(last.get("outputCategory")) && "PIECE".equals(last.get("measurementMode")) ? last.get("completedQuantity") : null);
+                product.put("steps", progress);
+            }
+            for (var order : orders) order.put("products", byOrder.getOrDefault(order.get("id").toString(), List.of()));
+        }
+        return Map.of("rows", orders, "total", total);
     }
 
     @Transactional(rollbackFor = Exception.class, isolation = Isolation.REPEATABLE_READ)
