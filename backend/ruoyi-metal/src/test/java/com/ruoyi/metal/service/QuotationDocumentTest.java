@@ -24,7 +24,6 @@ class QuotationDocumentTest {
     };}
     private DashboardService service(){
         when(jdbc.queryForList(anyString(),any(Object[].class))).thenReturn(List.of());
-        when(jdbc.queryForList(eq("SELECT name FROM metal_product_type WHERE factory_id=? AND name=?"),eq(String.class),eq(1L),eq("杆"))).thenReturn(List.of("杆"));
         when(jdbc.queryForObject(contains("sequence_value"),eq(Integer.class),any(Object[].class))).thenReturn(0);
         when(jdbc.queryForObject(startsWith("SELECT quote_id"),eq(Long.class),any(Object[].class))).thenReturn(7L);
         when(jdbc.queryForObject(startsWith("SELECT factory_name"),eq(String.class),any(Object[].class))).thenReturn("测试工厂");
@@ -33,9 +32,10 @@ class QuotationDocumentTest {
     }
     private CalculationRequest item(String powder){return new CalculationRequest(null,Map.of("innerDiameter","0","outerDiameter","2","length","1"),2,1L,"杆","MATERIAL_CUSTOM",powder,"5","1");}
     private QuotationSaveRequest request(CalculationRequest... items){return new QuotationSaveRequest(UUID.randomUUID().toString(),1L,List.of(items));}
-    @Test void missingCatalogTypeKeepsValidationCodeAndDoesNotSave(){
-        var service=service();when(jdbc.queryForList(eq("SELECT name FROM metal_product_type WHERE factory_id=? AND name=?"),eq(String.class),eq(1L),eq("杆"))).thenReturn(List.of());
-        try(var security=mockStatic(SecurityUtils.class)){security.when(SecurityUtils::getUserId).thenReturn(1L);var error=assertThrows(com.ruoyi.common.exception.ServiceException.class,()->service.saveQuotation(request(item("10"))));assertEquals(400,error.getCode());assertTrue(error.getMessage().startsWith("第1项商品"));}
+    @Test void invalidFixedTypeKeepsValidationCodeAndDoesNotSave(){
+        var service=service();
+        var bad=new CalculationRequest(null,Map.of("innerDiameter","0","outerDiameter","2","length","1"),2,1L,"自定义","MATERIAL_CUSTOM","10","5","1");
+        try(var security=mockStatic(SecurityUtils.class)){security.when(SecurityUtils::getUserId).thenReturn(1L);var error=assertThrows(com.ruoyi.common.exception.ServiceException.class,()->service.saveQuotation(request(bad)));assertEquals(400,error.getCode());assertTrue(error.getMessage().startsWith("第1项商品"));}
         verify(jdbc,never()).update(startsWith("INSERT INTO metal_saved_quotation"),any(Object[].class));
     }
     @Test void saveFreezesCalculatedInputsPricesVersionsAndImageDigest(){

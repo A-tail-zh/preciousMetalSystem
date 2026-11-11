@@ -29,19 +29,15 @@ async function goods(page:Page){
 const calculate=(page:Page)=>page.getByRole('button',{name:'开始计算',exact:true}).click()
 const result=(page:Page)=>page.locator('.quote-results')
 
-test('factory product catalog replaces fixed choices and clears dimensions on factory change',async({page})=>{
+test('factory change clears dimensions while fixed product types stay available',async({page})=>{
  await setup(page);await expect(page.getByRole('combobox',{name:'产品类型',exact:true})).toBeDisabled();await factory(page);await goods(page);await factory(page,'工厂B');await expect(page.getByLabel('长度（cm）',{exact:true})).toHaveCount(0);
- await page.getByRole('combobox',{name:'产品类型',exact:true}).press('ArrowDown');await expect(page.getByRole('option',{name:'环',exact:true})).toBeVisible();await expect(page.getByRole('option',{name:'杆',exact:true})).toHaveCount(0)
+ await page.getByRole('combobox',{name:'产品类型',exact:true}).press('ArrowDown');await expect(page.getByRole('option',{name:'环',exact:true})).toBeVisible();await expect(page.getByRole('option',{name:'杆',exact:true})).toBeVisible()
 })
-test('empty catalog and load failure block new quotes without fixed fallback',async({page})=>{
- const state=await setup(page);state.types['11']=[];await factory(page);await expect(page.getByText('本厂暂无产品类型，请先在类型管理中添加。',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'开始计算',exact:true})).toBeDisabled();
- state.contextFailure=true;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(page.getByText('金属、产品类型及规则加载失败，正在自动重试。',{exact:false})).toBeVisible();state.contextFailure=false;state.types['11']=['杆'];await page.getByRole('button',{name:'重试',exact:true}).click();await goods(page);await calculate(page);await expect(result(page)).toBeVisible()
+test('metal rule load failure blocks calculation until retry succeeds',async({page})=>{
+ const state=await setup(page);await factory(page);state.contextFailure=true;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(page.getByText('金属及规则加载失败，正在自动重试。',{exact:false})).toBeVisible();state.contextFailure=false;await page.getByRole('button',{name:'重试',exact:true}).click();await goods(page);await calculate(page);await expect(result(page)).toBeVisible()
 })
-test('removed type keeps input but requires reselection and does not auto-save',async({page})=>{
- const state=await setup(page);await factory(page);await goods(page);state.types['11']=['环'];await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(page.getByText('所选类型已失效，请重新选择',{exact:true})).toBeVisible();await expect(page.getByLabel('长度（cm）',{exact:true})).toHaveValue('3');await expect(page.getByRole('button',{name:'开始计算',exact:true})).toBeDisabled();expect(state.saves).toHaveLength(0)
-})
-test('late context from previous factory cannot replace the current catalog',async({page})=>{
- const state=await setup(page);const gate=deferred();state.contextGate=gate;await factory(page);state.contextGate=undefined;await factory(page,'工厂B');gate.resolve();await page.getByRole('combobox',{name:'产品类型',exact:true}).press('ArrowDown');await expect(page.getByRole('option',{name:'环',exact:true})).toBeVisible();await expect(page.getByRole('option',{name:'杆',exact:true})).toHaveCount(0)
+test('late context from previous factory cannot replace the current metals',async({page})=>{
+ const state=await setup(page);const gate=deferred();state.contextGate=gate;await factory(page);state.contextGate=undefined;await factory(page,'工厂B');gate.resolve();await page.getByRole('combobox',{name:'产品类型',exact:true}).press('ArrowDown');await expect(page.getByRole('option',{name:'环',exact:true})).toBeVisible();await expect(page.getByRole('option',{name:'杆',exact:true})).toBeVisible()
 })
 
 test('admin explicitly chooses a factory and calculation saves the frozen quote in one request',async({page})=>{

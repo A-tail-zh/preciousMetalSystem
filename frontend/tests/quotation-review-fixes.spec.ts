@@ -65,7 +65,7 @@ test('QR-02 changed rules after refresh recovery save once and then remain stabl
 
 test('QR-02 lost response plus failed refresh recovers original UUID before saving changed rules',async({page})=>{
  const s=await setup(page);await fill(page);s.state.loseResponse=true;await calculate(page);await expect(page.getByRole('button',{name:'开始计算',exact:true})).toBeEnabled()
- s.state.contextFailure=true;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(page.getByText('金属、产品类型及规则加载失败，正在自动重试。',{exact:true})).toBeVisible();expect(s.calls).toHaveLength(1)
+ s.state.contextFailure=true;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(page.getByText('金属及规则加载失败，正在自动重试。',{exact:true})).toBeVisible();expect(s.calls).toHaveLength(1)
  s.state.contextFailure=false;s.state.version++;await refresh(page);await expect(total(page)).toContainText('84.00')
  expect(s.calls).toHaveLength(3);expect(s.calls[0]).toEqual(s.calls[1]);expect(s.calls[2].requestId).not.toBe(s.calls[0].requestId);expect(s.documents).toHaveLength(2);expect(s.errors).toEqual([])
 })

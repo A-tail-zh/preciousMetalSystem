@@ -13,7 +13,7 @@ public final class ProductTypes {
         return null;
     }
     public static String require(String type) {
-        if (!ALL.contains(type == null ? "" : type)) throw new ServiceException("请选择有效产品类型");
+        if (!ALL.contains(type == null ? "" : type)) throw new ServiceException("请选择有效产品类型",400);
         return type;
     }
     public static String geometry(String type) {

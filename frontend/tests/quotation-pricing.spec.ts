@@ -41,6 +41,7 @@ const calculate=(page:Page)=>page.getByRole('button',{name:'开始计算',exact:
 const total=(page:Page)=>page.locator('.quote-results .quote-total')
 test('history view stays blue and download is green; both actions work',async({page})=>{
  await setup(page)
+ await pick(page,page.locator('.quote-factory'),'所属工厂','工厂A')
  const row=page.locator('.history .el-table__row').first(),view=row.getByRole('button',{name:'查看',exact:true}),download=row.getByRole('button',{name:'下载',exact:true})
  await expect(view).toHaveCSS('background-color','rgb(64, 158, 255)')
  await expect(download).toHaveCSS('background-color','rgb(103, 194, 58)')

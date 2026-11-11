@@ -150,8 +150,7 @@ public class QuoteRuleService {
     public Map<String,Object> calculate(com.ruoyi.metal.catalog.CalculationRequest input,Long factory){
         Long resolved=scope.resolveFactory(factory);
         scope.requireCatalog("metal",input.metalTypeId(),resolved);
-        String type=ProductTypes.require(input.productType());
-        if(jdbc.queryForList("SELECT name FROM metal_product_type WHERE factory_id=? AND name=?",String.class,resolved,type).isEmpty())throw new ServiceException("所选产品类型未在本厂类型管理中配置，请重新选择",400);
+        ProductTypes.require(input.productType());
         return calculate(input);
     }
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
@@ -220,6 +219,6 @@ public class QuoteRuleService {
         Long factory=scope.resolveFactory(requested);
         List<Map<String, Object>> products = jdbc.queryForList("SELECT CAST(product_id AS CHAR) id,product_name name,product_category category,CAST(metal_type_id AS CHAR) metalTypeId,product_type productType,calculation_version calculationVersion,specification,dimensions FROM metal_product WHERE del_flag='0' AND factory_id=? ORDER BY product_id",factory);
         products.forEach(p -> p.put("dimensions", JSON.parseObject(p.get("dimensions").toString())));
-        return Map.of("metalTypes",metals(factory),"rules",rules(null,factory),"productTypes",jdbc.queryForList("SELECT name FROM metal_product_type WHERE factory_id=? ORDER BY name,id",String.class,factory),"products",products,"calculationEnabled",true,"pricingEnabled",true,"volumeRule",volumeRule(factory),"processingTypes",List.of("MATERIAL_CUSTOM","DIRECT_CUSTOM","SHORTAGE_CUSTOM").stream().map(type->Map.of("value",type,"label",processingName(type))).toList());
+        return Map.of("metalTypes",metals(factory),"rules",rules(null,factory),"productTypes",ProductTypes.ALL,"products",products,"calculationEnabled",true,"pricingEnabled",true,"volumeRule",volumeRule(factory),"processingTypes",List.of("MATERIAL_CUSTOM","DIRECT_CUSTOM","SHORTAGE_CUSTOM").stream().map(type->Map.of("value",type,"label",processingName(type))).toList());
     }
 }
