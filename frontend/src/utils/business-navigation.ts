@@ -1,7 +1,7 @@
 type NavigationUser = {id: string | number; sessionReady: boolean; permissions: string[]}
 type NavigationItem = {title: string; to: string; permission: string}
 const menuGroups=[
- {key:'base',title:'基础信息管理',items:[{title:'工厂管理',to:'/metal/factory',permission:'metal:factory:list'},{title:'类型管理',to:'/metal/type-management',permission:'metal:type-management:list'},{title:'产品管理',to:'/metal/product',permission:'metal:product:list'},{title:'产线管理',to:'/metal/production-line',permission:'metal:production-line:list'},{title:'物料管理',to:'/metal/material',permission:'metal:material:list'},{title:'工序管理',to:'/metal/process',permission:'metal:process:list'},{title:'客户管理',to:'/metal/customer',permission:'metal:customer:list'}]},
+ {key:'base',title:'基础信息管理',items:[{title:'工厂管理',to:'/metal/factory',permission:'metal:factory:list'},{title:'产品管理',to:'/metal/product',permission:'metal:product:list'},{title:'产线管理',to:'/metal/production-line',permission:'metal:production-line:list'},{title:'物料管理',to:'/metal/material',permission:'metal:material:list'},{title:'工序管理',to:'/metal/process',permission:'metal:process:list'},{title:'客户管理',to:'/metal/customer',permission:'metal:customer:list'}]},
  {key:'quote',title:'报价管理',items:[{title:'报价规则管理',to:'/metal/quote-rule',permission:'metal:quote-rule:list'},{title:'自动报价单',to:'/metal/quotation',permission:'metal:quotation:list'}]},
  {key:'orders',title:'工单管理',items:[{title:'生产工单管理',to:'/metal/production-order',permission:'metal:work-order:list'}]},
  {key:'warehouse',title:'仓储管理',items:[{title:'仓储管理',to:'/metal/storage-inventory',permission:'metal:inventory:list'},{title:'仓储工单管理',to:'/metal/storage-orders',permission:'metal:warehouse-order:list'},{title:'仓库管理',to:'/metal/storage-warehouses',permission:'metal:warehouse:list'}]},
@@ -12,7 +12,7 @@ const menuGroups=[
 export function businessNavigation(user: NavigationUser) {
  const can=(permission:string)=>user.sessionReady&&user.permissions.some(p=>p==='*:*:*'||p===permission)
  return menuGroups.map(group=>({...group,
-  items:group.items.filter(item=>(item.to==='/metal/type-management'?['metal','material','process'].some(k=>can(`metal:${k}-type:list`)):can(item.permission))&&(group.key!=='logs'||item.title==='操作日志'||String(user.id)==='1')),
+  items:group.items.filter(item=>can(item.permission)&&(group.key!=='logs'||item.title==='操作日志'||String(user.id)==='1')),
   entry:undefined as NavigationItem|undefined
  })).filter(group=>group.items.length||group.entry)
 }

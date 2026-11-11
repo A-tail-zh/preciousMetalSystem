@@ -1,6 +1,6 @@
 <template>
- <el-button v-if="allowed('metal:process-type:add')||allowed('metal:process-type:remove')" class="add-process-type list-action list-action--create" link type="primary" :disabled="!props.factoryId||saving" @click="open">添加工序类型</el-button>
- <el-dialog append-to-body v-model="opened" class="base-info-form-dialog" title="添加工序类型" width="min(480px,94vw)" :close-on-click-modal="false" :close-on-press-escape="!saving" :show-close="!saving">
+ <el-button v-if="allowed('metal:process-type:add')||allowed('metal:process-type:remove')" :class="inline?'inline-process-type':'add-process-type list-action list-action--create'" link type="primary" :disabled="!props.factoryId||saving" @click="open">{{inline?'维护工序类型':'添加工序类型'}}</el-button>
+ <el-dialog append-to-body v-model="opened" class="base-info-form-dialog" :title="inline?'维护工序类型':'添加工序类型'" width="min(480px,94vw)" :close-on-click-modal="false" :close-on-press-escape="!saving" :show-close="!saving">
   <el-form v-if="allowed('metal:process-type:add')" ref="formRef" :model="form" :rules="rules" label-position="left" label-width="112px" scroll-to-error :disabled="saving" @submit.prevent="save">
    <el-form-item label="工序类型名称" prop="name"><el-input v-model="form.name" placeholder="请输入工序类型名称" maxlength="100" show-word-limit @keyup.enter="save"/></el-form-item>
   </el-form>
@@ -17,8 +17,8 @@ import {textRules} from '@/utils/input-validation'
 import {useActionPermission} from '@/composables/useActionPermission'
 import useUserStore from '@/store/modules/user'
 import type {Option} from '@/api/metal/master'
-const props=defineProps<{factoryId?:string|null}>()
-const emit=defineEmits<{loaded:[Option[]];removed:[string]}>(),user=useUserStore(),permission=useActionPermission()
+const props=defineProps<{factoryId?:string|null;inline?:boolean}>()
+const emit=defineEmits<{loaded:[Option[]];removed:[string];changed:[options:Option[],addedId?:string];open:[value:boolean]}>(),user=useUserStore(),permission=useActionPermission()
 const opened=ref(false),saving=ref(false),formRef=ref<FormInstance>(),form=reactive({name:''})
 const rules={name:textRules('工序类型名称',100,true)}
 type ProcessTypeOption=Option&{version:number}
@@ -27,7 +27,7 @@ let readEpoch=0,editEpoch=0,disposed=false,scheduled=false
 const identity=()=>JSON.stringify([props.factoryId,user.sessionReady,user.token,String(user.id),[...user.permissions].sort()])
 const session=()=>!disposed&&user.sessionReady&&!!user.token&&user.token===getToken()
 const allowed=(p:string)=>session()&&permission.has(p)
-watch(opened,value=>{if(!value){++editEpoch;saving.value=false;form.name=''}},{flush:'sync'})
+watch(opened,value=>{emit('open',value);if(!value){++editEpoch;saving.value=false;form.name=''}},{flush:'sync'})
 function invalidate(){++readEpoch;++editEpoch;opened.value=false;saving.value=false;options.value=[];emit('loaded',options.value)}
 function scheduleLoad(){if(scheduled||disposed)return;scheduled=true;queueMicrotask(()=>{scheduled=false;void load()})}
 async function load(){
@@ -46,7 +46,7 @@ async function save(){
   if(!valid())return
   ++readEpoch // Invalidate pre-creation reads before publishing the new option.
   options.value=[...options.value.filter(o=>o.id!==result.data.id),result.data].sort((a,b)=>Number(a.id)-Number(b.id));emit('loaded',options.value)
-  ElMessage.success('工序类型添加成功');opened.value=false;void load()
+  emit('changed',options.value,result.data.id);ElMessage.success('工序类型添加成功');opened.value=false;void load()
  }catch{void load()}finally{if(current===editEpoch)saving.value=false}
 }
 async function remove(row:ProcessTypeOption){
@@ -58,7 +58,7 @@ async function remove(row:ProcessTypeOption){
   if(!valid())return
   await request({url:`/metal/process/types/${row.id}`,method:'delete',params:{factoryId:props.factoryId,version:row.version},isContextCurrent:valid})
   if(!valid())return
-  ++readEpoch;options.value=options.value.filter(o=>o.id!==row.id);emit('loaded',options.value);emit('removed',row.id)
+  ++readEpoch;options.value=options.value.filter(o=>o.id!==row.id);emit('loaded',options.value);emit('removed',row.id);emit('changed',options.value)
   ElMessage.success('工序类型已删除');void load()
  }catch{void load()}finally{if(current===editEpoch)saving.value=false}
 }
@@ -70,5 +70,5 @@ onMounted(()=>{emit('loaded',options.value);scheduleLoad();window.addEventListen
 onBeforeUnmount(()=>{disposed=true;invalidate();window.removeEventListener('focus',checkSession);window.removeEventListener('storage',checkSession);document.removeEventListener('visibilitychange',checkSession)})
 </script>
 <style scoped>
-.add-process-type{white-space:nowrap;height:35px;padding:0 8px}.type-management-table{margin-top:16px;width:100%}
+.inline-process-type{height:20px;padding:0;white-space:nowrap}.add-process-type{white-space:nowrap;height:35px;padding:0 8px}.type-management-table{margin-top:16px;width:100%}
 </style>

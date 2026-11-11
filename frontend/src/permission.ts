@@ -20,6 +20,7 @@ const isWhiteList = (path: string): boolean => {
 }
 
 router.beforeEach(async (to, from) => {
+  if(to.path==='/metal/type-management')return {path:'/metal/material',replace:true};
   if(to.path==='/metal/process-batch')return {path:'/metal/warehouse-order',replace:true};
   if(to.path==='/metal/warning-rule')return {path:'/metal/warning-record',replace:true};
   NProgress.start()
@@ -67,6 +68,7 @@ router.beforeEach(async (to, from) => {
         return { path: '/' }
       }
     }
+    if(to.path==='/metal/material'&&!auth.hasPermi('metal:material:list'))return {path:'/401',replace:true}
     if (to.path === '/' || (to.path === '/index' && !auth.hasPermi('metal:dashboard:list'))) {
       NProgress.done()
       return { path: to.path === '/' && auth.hasPermi('metal:dashboard:list') ? '/index' : usePermissionStore().managementPath, replace: true }

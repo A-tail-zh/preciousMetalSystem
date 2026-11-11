@@ -44,15 +44,18 @@
     <el-form-item v-if="['line','staff','role','product','material','process'].includes(kind)" label="所属工厂" prop="factoryId"><el-select :class="{'line-factory-select':kind==='line'}" @visible-change="resetSelectScroll" fit-input-width :teleported="false" v-model="form.factoryId" :clearable="isAdmin" placeholder="请选择所属工厂" :disabled="saving||uncertain||!isAdmin||(['product','material','process'].includes(kind)&&!!form.id)||(['staff','role'].includes(kind)&&form.id==='1')" @change="factoryChanged" style="width:100%"><el-option v-for="o in factories" :key="o.id" :value="o.id" :label="o.name"/></el-select></el-form-item>
     <el-form-item v-if="kind==='line'" label="关联产品"><el-select class="line-product-select" @visible-change="resetSelectScroll" fit-input-width :teleported="false" v-model="form.productIds" multiple filterable style="width:100%"><el-option v-for="o in products" :key="o.id" :value="o.id" :label="o.name"/></el-select></el-form-item>
     <el-form-item v-if="kind==='material'" label="物料类型名称" prop="materialType" :error="catalogTypeError||(!catalogTypesBusy&&catalogTypesLoaded&&form.materialType&&!catalogTypeAllowed?'所选类型已失效，请重新选择':'')">
-     <el-select @visible-change="v=>{resetSelectScroll(v);if(v)void loadCatalogTypes()}" fit-input-width :teleported="false" v-model="form.materialType" :disabled="form.classificationLocked||!form.factoryId" :loading="catalogTypesBusy" :placeholder="form.factoryId?'请选择物料类型名称':'请先选择所属工厂'" no-data-text="本厂暂无物料类型，请先在类型管理中添加" style="width:100%">
+     <div class="material-type-control">
+     <el-select @visible-change="v=>{resetSelectScroll(v);if(v)void loadCatalogTypes()}" fit-input-width :teleported="false" v-model="form.materialType" :disabled="form.classificationLocked||!form.factoryId" :loading="catalogTypesBusy" :placeholder="form.factoryId?'请选择物料类型名称':'请先选择所属工厂'" no-data-text="本厂暂无物料类型，请在此维护或联系管理员">
       <el-option v-for="option in catalogTypeOptions" :key="option.id" :value="option.name" :label="option.name"/>
       <el-option v-if="form.materialType&&!catalogTypeOptions.some(o=>o.name===form.materialType)" :value="form.materialType" :label="form.materialType+(readonly?'':form.id&&form.materialType===originalCatalogType?'（历史类型）':'（已失效，请重新选择）')" disabled/>
      </el-select>
+     <MaterialTypeControl v-if="dialogOpen&&!readonly" :key="editEpoch" :factory-id="form.factoryId" :factory-name="factories.find(f=>f.id===form.factoryId)?.name??''" :disabled="saving||uncertain||needsReload||!!form.classificationLocked" @changed="materialTypesChanged" @open="typeMaintenanceOpen=$event"/>
+     </div>
      <el-button v-if="catalogTypeError" link type="primary" :disabled="catalogTypesBusy" @click="loadCatalogTypes">重试加载物料类型</el-button>
     </el-form-item>
     <el-form-item v-if="kind==='material'" label="物料分类"><el-input :model-value="materialCategoryDisplay" readonly aria-label="物料分类" /></el-form-item>
     <template v-if="kind==='process'">
-     <el-form-item label="工序类型" prop="processType"><el-select :loading="processTypesLoading" @visible-change="v=>{resetSelectScroll(v);if(v)void refreshProcessTypes()}" fit-input-width :teleported="false" v-model="form.processType" style="width:100%"><el-option v-for="option in editTypeOptions" :key="option.id" :label="option.name" :value="Number(option.id)"/></el-select></el-form-item>
+     <el-form-item label="工序类型" prop="processType"><div class="material-type-control"><el-select :loading="processTypesLoading" @visible-change="v=>{resetSelectScroll(v);if(v)void refreshProcessTypes()}" fit-input-width :teleported="false" v-model="form.processType"><el-option v-for="option in editTypeOptions" :key="option.id" :label="option.name" :value="Number(option.id)"/></el-select><ProcessTypeControl v-if="dialogOpen&&!readonly" inline :key="editEpoch" :factory-id="form.factoryId" @loaded="editTypeOptions=$event" @changed="editorProcessTypesChanged" @open="typeMaintenanceOpen=$event"/></div></el-form-item>
      <el-form-item label="工序描述"><el-input v-model="form.description" type="textarea" :rows="4" maxlength="2000"/></el-form-item>
     </template>
     <el-form-item v-if="kind==='material'" label="规格型号"><el-input v-model="form.specification" maxlength="200"/></el-form-item>
@@ -125,6 +128,7 @@ import type {MasterRow,Option} from '@/api/metal/master'
 import {masterConfigs,productFields,processTypes} from './master-config'
 import type {MasterKind} from './master-config'
 import MetalTypeSelect from './MetalTypeSelect.vue'
+import MaterialTypeControl from './MaterialTypeControl.vue'
 import {businessValue,decimalText} from '@/utils/business-decimal'
 import ProcessTypeControl from './ProcessTypeControl.vue'
 const processTypeControl=ref<InstanceType<typeof ProcessTypeControl>>()
@@ -203,8 +207,8 @@ watch(()=>[dialogOpen.value,readonly.value,form.factoryId,form.metalTypeId,form.
  },250)
 })
 onBeforeUnmount(cancelPreview)
-const permissionActionNames:Record<string,string>={query:'查看',add:'新增',edit:'修改',remove:'删除',adjust:'调整',reverse:'冲销',import:'导入',settle:'结算',handle:'处理'}
-const menuTree=computed(()=>{const indexed=new Map(menus.value.map(m=>[m.id,{...m,name:m.name.replace(/\/([A-Za-z]+)$/,(_,action:string)=>'/'+(permissionActionNames[action]??action)),children:[] as Option[]}])) ;const roots:Option[]=[];for(const m of indexed.values()){const parent=indexed.get(m.parentId??'');if(parent)parent.children.push(m);else roots.push(m)}return roots})
+const permissionActionNames:Record<string,string>={query:'查看',add:'新增',edit:'修改',remove:'删除',adjust:'调整',reverse:'冲销',import:'导入',settle:'结算',handle:'处理',list:'列表',export:'导出',accept:'验收',approve:'审核通过',batchLogout:'批量强退',cancel:'取消',changeStatus:'修改状态',code:'生成代码',configure:'配置','exception-close':'关闭异常','exception-review':'复核异常',execute:'执行',forceLogout:'强制退出',handover:'交接',manage:'管理','partial-close':'部分结清',preview:'预览',receive:'接收',reject:'驳回',reopen:'重新打开',resetPwd:'重置密码',resubmit:'重新提交',return:'退回',unlock:'解锁','verify-origin':'核对来源','weight-export':'重量导出'}
+const menuTree=computed(()=>{const indexed=new Map(menus.value.map(m=>[m.id,{...m,name:m.name.replace(/([A-Za-z]+(?:-[A-Za-z]+)*)$/,(_,action:string)=>permissionActionNames[action]??action),children:[] as Option[]}])) ;const roots:Option[]=[];for(const m of indexed.values()){const parent=indexed.get(m.parentId??'');if(parent)parent.children.push(m);else roots.push(m)}return roots})
 function checkMenu(node:Option,state:{checkedKeys:(string|number)[]}){
  const checked=state.checkedKeys.some(key=>String(key)===String(node.id))
  const visit=(children:Option[])=>{for(const child of children){treeRef.value?.setChecked(child.id,checked,false);visit(child.children??[])}}
@@ -234,7 +238,7 @@ async function readList(background:boolean,refresh?:InventoryRefreshContext){
  catch{if(current())loadFailed.value=true;return false}
  finally{if(valid()){loading.value=false;if(manualPending){manualPending=false;void load()}}}
 }
-function reset(){processTypesEpoch++;processTypesLoading.value=false;processTypesFailed.value=false;catalogTypeEpoch++;catalogTypeOptions.value=[];catalogTypesBusy.value=false;catalogTypesLoaded.value=false;catalogTypeError.value='';originalCatalogType.value=undefined;metalMutation.value=false;treeRef.value?.setCheckedKeys([]);for(const key of Object.keys(form))delete(form as Record<string,unknown>)[key];Object.assign(form,blank());formRef.value?.clearValidate()}
+function reset(){processTypesEpoch++;processTypesLoading.value=false;processTypesFailed.value=false;catalogTypeEpoch++;catalogTypeOptions.value=[];catalogTypesBusy.value=false;catalogTypesLoaded.value=false;catalogTypeError.value='';originalCatalogType.value=undefined;metalMutation.value=false;typeMaintenanceOpen.value=false;treeRef.value?.setCheckedKeys([]);for(const key of Object.keys(form))delete(form as Record<string,unknown>)[key];Object.assign(form,blank());formRef.value?.clearValidate()}
 function categoryChanged(){form.calculationVersion=2;form.dimensions=Object.fromEntries(dimensionFields.value.map(d=>[d.key,'']));form.volume=null;form.weight=null}
 const editLoading=ref(false),editError=ref(false),rolesLoading=ref(false)
 let editEpoch=0,roleEpoch=0,disposed=false,retryEdit:()=>void=()=>{},openedId='',openedVersion:number|undefined,openedOptions:Record<string,any>={}
@@ -242,6 +246,8 @@ const needsReload=ref(false),uncertain=ref(false)
 function resetAccess(){++sequence;++operationEpoch;++editEpoch;++roleEpoch;manualPending=false;loading.value=false;loadFailed.value=false;rows.value=[];selected.value=[];total.value=0;tableRef.value?.clearSelection();editLoading.value=false;rolesLoading.value=false;editError.value=false;dialogOpen.value=false;passwordOpen.value=false;passwordRow.value=undefined;newPassword.value='';saving.value=false;deleting.value=false;statusBusy.value='';exporting.value=false;needsReload.value=false;uncertain.value=false;reset()}
 const processTypesLoading=ref(false),processTypesFailed=ref(false)
 let processTypesEpoch=0
+function editorProcessTypesChanged(options:Option[],addedId?:string){editTypeOptions.value=options;openedOptions={...openedOptions,types:JSON.parse(JSON.stringify(options))};if(addedId)form.processType=Number(addedId);else if(form.processType&&!options.some(o=>String(o.id)===String(form.processType)))form.processType=undefined;void processTypeControl.value?.refresh()}
+async function materialTypesChanged(name?:string){const edit=editEpoch,factory=form.factoryId;await loadCatalogTypes();if(edit===editEpoch&&factory===form.factoryId&&dialogOpen.value&&name&&!form.classificationLocked&&catalogTypeOptions.value.some(o=>o.name===name))form.materialType=name}
 async function refreshProcessTypes(){
  if(kind!=='process'||!dialogOpen.value||!form.factoryId)return
  const round=++processTypesEpoch,editor=editEpoch,factory=form.factoryId,account=identity()
@@ -269,7 +275,7 @@ async function editorOptions(draft:Partial<MasterRow>,view:boolean,current:()=>b
  if(kind==='staff'&&draft.id==='1')opts.roles=[{id:'1',name:'超级管理员'}]
  return opts
 }
-const metalMutation=ref(false)
+const metalMutation=ref(false),typeMaintenanceOpen=ref(false)
 function metalChanged(options:Option[]){
  if(!dialogOpen.value)return
  const previous=new Map((openedOptions.rules??[]).map((rule:Record<string,any>)=>[String(rule.metalTypeId),rule]))
@@ -277,12 +283,12 @@ function metalChanged(options:Option[]){
 }
 async function probeEditor(refresh:InventoryRefreshContext){
  const optionsBaseline=openedOptions,round=editEpoch,account=identity(),password=passwordOpen.value,id=password?passwordRow.value?.id:openedId,version=password?passwordRow.value?.version:openedVersion
- const current=()=>!disposed&&refresh.isCurrent()&&round===editEpoch&&account===identity()&&sessionCurrent()&&!saving.value&&!uncertain.value&&!metalMutation.value&&optionsBaseline===openedOptions&&(password?passwordOpen.value:dialogOpen.value)
+ const current=()=>!disposed&&refresh.isCurrent()&&round===editEpoch&&account===identity()&&sessionCurrent()&&!saving.value&&!uncertain.value&&!metalMutation.value&&!typeMaintenanceOpen.value&&optionsBaseline===openedOptions&&(password?passwordOpen.value:dialogOpen.value)
  if(id){const response=await masterDetail(config.endpoint,id,!can(config.permission+':query'),current,true);if(current()&&response.data.version!==version)needsReload.value=true}
  if(!password&&current()&&['material','product'].includes(kind))await loadCatalogTypes()
  if(!password&&current()){const options=await editorOptions(form,readonly.value,current,true);if(current()&&JSON.stringify(options)!==JSON.stringify(openedOptions))needsReload.value=true}
 }
-const {failed:refreshFailed}=useInventoryRefresh(refresh=>readList(true,refresh),computed(()=>dialogOpen.value||passwordOpen.value),{allowed:canRead,reset:resetAccess},{probe:probeEditor,paused:computed(()=>loading.value||saving.value||deleting.value||!!statusBusy.value||exporting.value||editLoading.value||rolesLoading.value||uncertain.value||metalMutation.value)})
+const {failed:refreshFailed}=useInventoryRefresh(refresh=>readList(true,refresh),computed(()=>dialogOpen.value||passwordOpen.value),{allowed:canRead,reset:resetAccess},{probe:probeEditor,paused:computed(()=>loading.value||saving.value||deleting.value||!!statusBusy.value||exporting.value||editLoading.value||rolesLoading.value||uncertain.value||metalMutation.value||typeMaintenanceOpen.value)})
 function cancelEdit(){if(saving.value||uncertain.value)return;++editEpoch;++roleEpoch;editLoading.value=false;rolesLoading.value=false;editError.value=false;dialogOpen.value=false}
 watch(dialogOpen,open=>{if(!open&&!saving.value){++editEpoch;++roleEpoch;editLoading.value=false;rolesLoading.value=false}}, {flush:'sync'})
 onBeforeUnmount(()=>{disposed=true;++editEpoch;++roleEpoch;++sequence;++operationEpoch})
@@ -311,7 +317,7 @@ async function openEditor(row?:MasterRow,view=false){
 async function openAdd(){await openEditor()}
 async function openRecord(row:MasterRow,view=false){await openEditor(row,view)}
 function moveStep(index:number,direction:number){if(readonly.value||saving.value)return;const list=form.processes!;if(index+direction<0||index+direction>=list.length)return;[list[index],list[index+direction]]=[list[index+direction],list[index]]}
-async function submit(){if(['material','product'].includes(kind)&&!catalogTypeReady.value)return;if(needsReload.value||uncertain.value||saving.value||editLoading.value||rolesLoading.value||!dialogOpen.value||readonly.value||!can(`${config.permission}:${form.id?'edit':'add'}`))return;const epoch=editEpoch,account=identity(),current=()=>!disposed&&epoch===editEpoch&&account===identity()&&can(`${config.permission}:${openedId?'edit':'add'}`)&&dialogOpen.value;saving.value=true;try{if(!await formRef.value?.validate().catch(()=>false)||!current()||needsReload.value||String(form.id??'')!==openedId)return;if(kind==='product'){if(form.dimensions?.outerDiameter&&Number(form.dimensions.outerDiameter)<=Number(form.dimensions.innerDiameter)){ElMessage.error('外径必须大于内径');return}const steps=form.processes??[];if(steps.some(s=>!s.processId||!decimalOk(s.loss)||(s.lossUnit!=='G_PER_PIECE'&&Number(s.loss)>100))||new Set(steps.map(s=>s.processId)).size!==steps.length){ElMessage.error('请选择不重复工序并填写0至100的损耗百分比');return}}
+async function submit(){if(typeMaintenanceOpen.value)return;if(['material','product'].includes(kind)&&!catalogTypeReady.value)return;if(needsReload.value||uncertain.value||saving.value||editLoading.value||rolesLoading.value||!dialogOpen.value||readonly.value||!can(`${config.permission}:${form.id?'edit':'add'}`))return;const epoch=editEpoch,account=identity(),current=()=>!disposed&&epoch===editEpoch&&account===identity()&&can(`${config.permission}:${openedId?'edit':'add'}`)&&dialogOpen.value;saving.value=true;try{if(!await formRef.value?.validate().catch(()=>false)||!current()||needsReload.value||String(form.id??'')!==openedId)return;if(kind==='product'){if(form.dimensions?.outerDiameter&&Number(form.dimensions.outerDiameter)<=Number(form.dimensions.innerDiameter)){ElMessage.error('外径必须大于内径');return}const steps=form.processes??[];if(steps.some(s=>!s.processId||!decimalOk(s.loss)||(s.lossUnit!=='G_PER_PIECE'&&Number(s.loss)>100))||new Set(steps.map(s=>s.processId)).size!==steps.length){ElMessage.error('请选择不重复工序并填写0至100的损耗百分比');return}}
  const payload=JSON.parse(JSON.stringify(form)) as Partial<MasterRow>;delete payload.createBy;delete payload.createTime;delete payload.updateTime;delete payload.factoryName;delete payload.roleNames;delete payload.productNames;if(kind==='product'){delete payload.specification;delete payload.category;delete payload.volume;delete payload.weight}if(kind==='material')delete payload.name;if(kind==='line'&&!payload.factoryId)payload.factoryId=null;if(kind==='role')payload.menuIds=treeRef.value?.getCheckedKeys().map(String)??[];for(const key of ['volume','purity','weight'] as const)if(payload[key]==='')payload[key]=null;const added=!openedId;if(openedId)payload.version=openedVersion;await masterSave(config.endpoint,payload,current);if(!current())return;ElMessage.success(added?'添加成功':'修改成功');dialogOpen.value=false;if(added)query.pageNum=['process','material'].includes(kind)?Math.max(1,Math.ceil((total.value+1)/query.pageSize)):1;await load()}catch(error:any){if(current()){uncertain.value=!!error?.isAxiosError&&(!error.response||error.response.status>=500);if(/版本|重新加载|刷新/.test(error?.message??''))needsReload.value=true;applyFieldErrors(formRef.value,error)}}finally{if(!disposed&&epoch===editEpoch&&account===identity())saving.value=false}}
 function mutationCurrent(permission:string){const round=++operationEpoch,account=identity();return()=>!disposed&&round===operationEpoch&&account===identity()&&can(permission)}
 async function remove(targets:MasterRow[]){if(deleting.value||saving.value||statusBusy.value||uncertain.value||!targets.length||!can(`${config.permission}:remove`))return;const ids=targets.map(r=>r.id),current=mutationCurrent(`${config.permission}:remove`);deleting.value=true;try{await ElMessageBox.confirm(`确认删除选中的${ids.length}条记录？`,'删除确认',{type:'warning',confirmButtonText:'确定',cancelButtonText:'取消'});if(!current())return;await masterRemove(config.endpoint,ids,current);if(!current())return;ElMessage.success('删除成功');query.pageNum=Math.min(query.pageNum,Math.max(1,Math.ceil((total.value-ids.length)/query.pageSize)));await load()}catch{}finally{if(current())deleting.value=false}}
@@ -374,3 +380,10 @@ onMounted(load)
 /* Preview updates must not move the save button while a dimension input blurs. */
 .calculation-feedback{min-height:40px;line-height:20px;font-size:12px;color:var(--el-text-color-secondary);margin:0 0 12px}
 .mode-field{min-width:0;margin:0}.mode-field :deep(.el-form-item__label){height:22px;line-height:22px;margin:0 0 8px;padding:0}.mode-field :deep(.el-form-item__content){margin-left:0;min-height:32px}@media(min-width:641px) and (max-width:1100px){.process-step{grid-template-columns:18px minmax(0,1fr) minmax(0,145px) auto}.process-step .mode-field{grid-column:2 / span 2;grid-row:2}.process-step-actions{grid-column:4;grid-row:1}}</style>
+
+<style scoped>
+.material-type-control{display:flex;align-items:center;gap:12px;width:100%;min-width:0}
+.material-type-control .el-select{flex:1;min-width:0}
+.material-type-control :deep(.el-button){flex-shrink:0}
+@media(max-width:600px){.material-type-control{flex-wrap:wrap}.material-type-control .el-select{flex-basis:100%;width:100%}}
+</style>

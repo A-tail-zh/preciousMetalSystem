@@ -21,8 +21,8 @@ async function setup(page:Page,admin=false){
  })
  await page.goto('/metal/material');await expect(page.locator('.master-table')).toBeVisible();return state
 }
-async function choose(page:Page,root:Locator,label:string,name:string){await root.getByRole('combobox',{name:new RegExp(label+'$')}).press('ArrowDown');await page.getByRole('option',{name,exact:true}).click()}
-async function add(page:Page){await page.getByRole('button',{name:'添加',exact:true}).click();const d=page.getByRole('dialog',{name:'添加物料',exact:true});await d.getByLabel('物料编码',{exact:true}).fill('CUSTOM');return d}
+async function choose(page:Page,root:Locator,label:string,name:string){const field=root.getByRole('combobox',{name:new RegExp(label+'$')});await field.press('ArrowDown');await page.locator('#'+await field.getAttribute('aria-controls')).getByRole('option',{name,exact:true}).click()}
+async function add(page:Page){const search=page.getByRole('search'),factory=search.getByRole('combobox',{name:'所属工厂',exact:true});if(await factory.count())await choose(page,search,'所属工厂','甲厂');await page.getByRole('button',{name:'添加',exact:true}).click();const d=page.getByRole('dialog',{name:'添加物料',exact:true});await d.getByLabel('物料编码',{exact:true}).fill('CUSTOM');return d}
 
 test('material-only account selects custom factory type for entry and filter',async({page})=>{
  const state=await setup(page),d=await add(page)
@@ -40,7 +40,7 @@ test('failed option refresh preserves input, blocks save and supports retry',asy
  state.failed=false;await d.getByRole('button',{name:'重试加载物料类型',exact:true}).click();await expect(d.getByRole('button',{name:'确定',exact:true})).toBeEnabled()
 })
 test('switching factory clears choices and ignores a late prior-factory response',async({page})=>{
- const state=await setup(page,true),d=await add(page);state.holdFactory='7'
+ const state=await setup(page,true),d=await add(page);await choose(page,d,'所属工厂','乙厂');state.holdFactory='7'
  await choose(page,d,'所属工厂','甲厂');await expect.poll(()=>state.started).toBe(true)
  await choose(page,d,'所属工厂','乙厂');state.holdFactory='';state.release()
  await choose(page,d,'物料类型名称','丝材');await d.getByRole('combobox',{name:/物料类型名称$/}).press('ArrowDown')
@@ -64,7 +64,7 @@ test('removed selection is preserved but cannot be saved until reselected',async
 test('empty directory never falls back to fixed options and unscoped admin filter is disabled',async({page})=>{
  const state=await setup(page,true);await expect(page.getByRole('search').getByRole('combobox',{name:/物料类型名称$/})).toBeDisabled()
  state.options['7']=[];const d=await add(page);await choose(page,d,'所属工厂','甲厂');await d.getByRole('combobox',{name:/物料类型名称$/}).press('ArrowDown')
- await expect(d.getByText('本厂暂无物料类型，请先在类型管理中添加',{exact:true})).toBeVisible();await expect(page.getByRole('option',{name:'粉料',exact:true})).toHaveCount(0);await expect(d.getByRole('button',{name:'确定',exact:true})).toBeDisabled()
+ await expect(d.getByText('本厂暂无物料类型，请在此维护或联系管理员',{exact:true})).toBeVisible();await expect(page.getByRole('option',{name:'粉料',exact:true})).toHaveCount(0);await expect(d.getByRole('button',{name:'确定',exact:true})).toBeDisabled()
 })
 
 test('material category follows selected type, resets with factory, and stays readonly',async({page})=>{
@@ -77,9 +77,9 @@ test('material category follows selected type, resets with factory, and stays re
 })
 
 test('category filter submits each classification and reset clears it',async({page})=>{
- const state=await setup(page,true),search=page.getByRole('search')
+ const state=await setup(page,true),search=page.getByRole('search');await choose(page,search,'所属工厂','甲厂')
  await expect(page.getByRole('columnheader',{name:'物料类型名称',exact:true})).toBeVisible()
  await expect(page.getByRole('columnheader',{name:'物料分类',exact:true})).toBeVisible()
  for(const category of ['旧料','粉料','块料']){await choose(page,search,'物料分类',category);await search.getByRole('button',{name:'查询',exact:true}).click();await expect.poll(()=>decodeURIComponent(state.queries.at(-1)??'')).toContain('materialCategory='+category)}
- await search.getByRole('button',{name:'重置',exact:true}).click();await expect(search.getByRole('combobox',{name:'物料分类',exact:true})).toHaveValue('');await expect.poll(()=>state.queries.at(-1)??'').not.toContain('materialCategory')
+ await search.getByRole('button',{name:'重置',exact:true}).click();await expect(search.getByRole('combobox',{name:'物料分类',exact:true})).toHaveValue('');await expect(search.getByRole('button',{name:'查询',exact:true})).toBeDisabled();await choose(page,search,'所属工厂','甲厂');await expect.poll(()=>state.queries.at(-1)??'').not.toContain('materialCategory')
 })

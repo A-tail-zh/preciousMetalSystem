@@ -45,13 +45,15 @@ class TypeManagementTest {
         assertNull(TypeManagementService.validCategory(TypeManagementService.Kind.METAL,null));
         assertThrows(ServiceException.class,()->TypeManagementService.validCategory(TypeManagementService.Kind.PRODUCT,"粉料"));
     }
-    @Test void referencedMaterialCategoryCannotBeChanged(){
+    @Test void referencedMaterialCannotBeRenamedReclassifiedOrDeleted(){
         var jdbc=mock(JdbcTemplate.class);var scope=mock(FactoryScope.class);
         when(scope.isAdmin()).thenReturn(true);when(scope.resolveFactory(7L)).thenReturn(7L);
         when(jdbc.queryForList("SELECT id id,name,version,material_category materialCategory FROM metal_material_type WHERE id=? AND factory_id=? FOR UPDATE",10L,7L)).thenReturn(List.of(Map.of("id",10L,"name","测试料","version",0,"materialCategory","粉料")));
         when(jdbc.queryForList("SELECT material_id FROM metal_material WHERE factory_id=? AND material_type=? LIMIT 1 FOR UPDATE",7L,"测试料")).thenReturn(List.of(Map.of("material_id",1L)));
         var service=new TypeManagementService(jdbc,scope);
         assertEquals(409,assertThrows(ServiceException.class,()->service.edit("material",10L,new TypeManagementService.Write(7L,"测试料",0,"块料"))).getCode());
+        assertEquals(409,assertThrows(ServiceException.class,()->service.edit("material",10L,new TypeManagementService.Write(7L,"改名",0,"粉料"))).getCode());
+        assertEquals(409,assertThrows(ServiceException.class,()->service.remove("material",new TypeManagementService.Delete(7L,List.of(new TypeManagementService.Item(10L,0))))).getCode());
         verify(jdbc,never()).update(anyString(),any(Object[].class));
     }
     @Test void processReferenceBlocksRenameAndAtomicBatchDelete(){
@@ -66,5 +68,16 @@ class TypeManagementTest {
         verify(jdbc,never()).update(anyString(),any(Object[].class));
         assertEquals("type_name",TypeManagementService.Kind.of("process").nameColumn());
         assertEquals("打磨",TypeManagementService.validName(TypeManagementService.Kind.PROCESS," 打磨 "));
+    }
+    @Test void materialPermissionDoesNotGrantTypeWrites(){
+        var jdbc=mock(JdbcTemplate.class);var scope=mock(FactoryScope.class);
+        try(var security=mockStatic(com.ruoyi.common.utils.SecurityUtils.class)){
+            security.when(()->com.ruoyi.common.utils.SecurityUtils.hasPermi("metal:material:add")).thenReturn(true);
+            var service=new TypeManagementService(jdbc,scope);
+            assertEquals(403,assertThrows(ServiceException.class,()->service.create("material",new TypeManagementService.Write(7L,"新料",null,"粉料"))).getCode());
+            assertEquals(403,assertThrows(ServiceException.class,()->service.edit("material",10L,new TypeManagementService.Write(7L,"新料",0,"粉料"))).getCode());
+            assertEquals(403,assertThrows(ServiceException.class,()->service.remove("material",new TypeManagementService.Delete(7L,List.of(new TypeManagementService.Item(10L,0))))).getCode());
+            verifyNoInteractions(jdbc);
+        }
     }
 }
