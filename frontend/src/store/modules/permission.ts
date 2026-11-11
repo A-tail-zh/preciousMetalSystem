@@ -2,6 +2,8 @@ import useUserStore from '@/store/modules/user'
 import {businessNavigation} from '@/utils/business-navigation'
 import {isRetiredBusinessRoute} from '@/utils/retired-business'
 import {getToken} from '@/utils/auth'
+import {getInfo} from '@/api/login'
+import {isHttp} from '@/utils/validate'
 import auth from '@/plugins/auth'
 import router, { constantRoutes, dynamicRoutes } from '@/router'
 import { getRouters } from '@/api/menu'
@@ -53,6 +55,9 @@ const usePermissionStore = defineStore(
         const sidebarRoutes=filterAsyncRouter(sdata)
         const rewriteRoutes=filterAsyncRouter(rdata,false,true)
         const defaultRoutes=filterAsyncRouter(defaultData)
+        for(const route of dynamicRoutes){
+          if('name' in route&&route.name&&router.hasRoute(route.name as string))router.removeRoute(route.name as string)
+        }
         const asyncRoutes=filterDynamicRoutes(dynamicRoutes)
         asyncRoutes.forEach(route=>router.addRoute(route))
         this.setRoutes(rewriteRoutes)
@@ -60,6 +65,37 @@ const usePermissionStore = defineStore(
         this.setDefaultRoutes(sidebarRoutes)
         this.setTopbarRoutes(defaultRoutes)
         return rewriteRoutes
+      },
+      async refreshPermissions(): Promise<boolean> {
+        const expectedToken=getToken()
+        const user=useUserStore()
+        if(!expectedToken||!user.sessionReady)return false
+        try{
+          const res=await getInfo()
+          if(getToken()!==expectedToken)return false
+          if(res.roles&&res.roles.length>0){
+            user.roles=res.roles
+            user.permissions=res.permissions
+          }else{
+            user.roles=['ROLE_DEFAULT']
+            user.permissions=[]
+          }
+          if(res.user){
+            user.id=res.user.userId||user.id
+            user.name=res.user.userName||user.name
+            user.nickName=res.user.nickName||user.nickName
+          }
+        }catch{
+          return false
+        }
+        try{
+          const accessRoutes=await this.generateRoutes(expectedToken)
+          if(getToken()!==expectedToken)return false
+          accessRoutes.forEach((route:any)=>{if(!isHttp(route.path))router.addRoute(route)})
+          return true
+        }catch{
+          return false
+        }
       }
     }
   })

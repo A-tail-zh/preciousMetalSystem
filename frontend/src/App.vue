@@ -5,6 +5,9 @@
 <script setup lang="ts">
 import useSettingsStore from '@/store/modules/settings'
 import { handleThemeStyle } from '@/utils/theme'
+import { usePermissionSync } from '@/composables/usePermissionSync'
+
+usePermissionSync()
 
 onMounted(() => {
   nextTick(() => {

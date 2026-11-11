@@ -10,6 +10,7 @@ import {copyText} from '@/utils/clipboard'
 import {containsSensitiveData} from '@/utils/sensitive-request'
 import { saveAs } from 'file-saver'
 import useUserStore from '@/store/modules/user'
+import {changesAccess,notifyPermissionChange} from '@/utils/permission-change'
 
 try { if (containsSensitiveData(cache.session.getJSON('sessionObj'))) cache.session.remove('sessionObj') } catch { cache.session.remove('sessionObj') }
 
@@ -116,6 +117,7 @@ service.interceptors.response.use((res: any) => {
       if(!res.config?.quiet)ElNotification.error({ title: msg })
       return Promise.reject(Object.assign(new Error(msg), {fieldErrors:res.data.fieldErrors??[],code}))
     } else {
+      if(changesAccess(res.config?.url,res.config?.method))notifyPermissionChange()
       return  Promise.resolve(res.data)
     }
   },
