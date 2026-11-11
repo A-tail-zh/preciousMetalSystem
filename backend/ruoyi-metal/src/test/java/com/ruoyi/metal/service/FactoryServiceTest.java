@@ -90,6 +90,18 @@ class FactoryServiceTest {
         when(mapper.lockFactory(1L)).thenReturn(factory(1)); service.delete(new Long[]{1L,1L},"admin");
         verify(mapper,times(1)).delete(1L,"admin");
     }
+    @Test void builtinsDoNotBlockEmptyFactoryDeletionButCustomTypesDo() {
+        var jdbc=mock(org.springframework.jdbc.core.JdbcTemplate.class);
+        when(jdbc.queryForObject(anyString(),eq(Integer.class),any(Object[].class))).thenReturn(0);
+        when(mapper.lockFactory(1L)).thenReturn(factory(1));
+        var guarded=new FactoryService(mapper,mock(com.ruoyi.metal.security.FactoryScope.class),jdbc);
+        guarded.delete(new Long[]{1L},"admin");
+        String sql="SELECT COUNT(*) FROM metal_process_type WHERE factory_id=? AND builtin_code IS NULL";
+        verify(jdbc).queryForObject(sql,Integer.class,1L);
+        when(jdbc.queryForObject(sql,Integer.class,1L)).thenReturn(1);
+        assertThrows(ServiceException.class,()->guarded.delete(new Long[]{1L},"admin"));
+        verify(mapper,times(1)).delete(1L,"admin");
+    }
     @Test void activeCustomersPreventFactoryDeletion() {
         var scope=mock(com.ruoyi.metal.security.FactoryScope.class);
         var jdbc=mock(org.springframework.jdbc.core.JdbcTemplate.class);
@@ -116,8 +128,13 @@ class FactoryServiceTest {
         when(jdbc.queryForObject(anyString(),eq(Integer.class),any(Object[].class))).thenReturn(0);
         doAnswer(i->{((FactoryRequest)i.getArgument(0)).setFactoryId(8L);return 1;}).when(mapper).insert(any(),anyString());
         when(jdbc.update(startsWith("INSERT INTO metal_factory_volume_rule"),any(Object[].class))).thenReturn(1);
+        when(jdbc.update(startsWith("INSERT INTO metal_process_type"),any(Object[].class))).thenReturn(1);
         var guarded=new FactoryService(mapper,scope,jdbc);assertEquals("8",guarded.create(form(List.of()),"admin"));
         var order=inOrder(jdbc);order.verify(jdbc).update(startsWith("INSERT INTO metal_volume_rule"),eq("admin"));order.verify(jdbc).update(startsWith("INSERT INTO metal_factory_volume_rule"),eq(8L),eq("admin"));
+        order.verify(jdbc).update(startsWith("INSERT INTO metal_process_type"),eq(8L),eq("酸洗"),eq("ACID_WASH"),eq("admin"),eq("admin"));
+        order.verify(jdbc).update(startsWith("INSERT INTO metal_process_type"),eq(8L),eq("融定"),eq("SMELTING"),eq("admin"),eq("admin"));
+        when(jdbc.update(startsWith("INSERT INTO metal_process_type"),any(Object[].class))).thenReturn(0);
+        assertEquals(503,assertThrows(ServiceException.class,()->guarded.create(form(List.of()),"admin")).getCode());
         when(jdbc.update(startsWith("INSERT INTO metal_factory_volume_rule"),any(Object[].class))).thenReturn(0);
         assertEquals(503,assertThrows(ServiceException.class,()->guarded.create(form(List.of()),"admin")).getCode());
     }

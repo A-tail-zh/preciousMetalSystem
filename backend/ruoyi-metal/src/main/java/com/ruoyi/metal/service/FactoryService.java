@@ -68,6 +68,9 @@ public class FactoryService {
         // A business-data reset must not leave new factories without shared formula parameters.
         jdbc.update("INSERT INTO metal_volume_rule(rule_id,pi_value,curved_bottom_factor,update_by) VALUES(1,3.14,1.03,?) ON DUPLICATE KEY UPDATE rule_id=rule_id",actor);
         if(jdbc.update("INSERT INTO metal_factory_volume_rule(factory_id,pi_value,curved_bottom_factor,update_by) SELECT ?,pi_value,curved_bottom_factor,? FROM metal_volume_rule WHERE rule_id=1",form.getFactoryId(),actor)!=1)throw new ServiceException("工厂体积计算参数初始化失败，请重试",503);
+        for(var type:List.of(Map.entry("酸洗","ACID_WASH"),Map.entry("融定","SMELTING"))){
+            if(jdbc.update("INSERT INTO metal_process_type(factory_id,type_name,builtin_code,create_by,update_by) VALUES(?,?,?,?,?)",form.getFactoryId(),type.getKey(),type.getValue(),actor,actor)!=1)throw new ServiceException("工厂内置工序类型初始化失败，请重试",503);
+        }
         return form.getFactoryId().toString();
     }
 
@@ -104,7 +107,7 @@ public class FactoryService {
             Long id=Long.valueOf(f.getFactoryId());
             WorkOrderReferences.factory(jdbc,id);WarehouseReferences.factory(jdbc,id);
             for(String table:List.of("metal_product","metal_material","metal_process","metal_process_type","metal_type","metal_product_type","metal_material_type")){
-                String active=Set.of("metal_product","metal_material","metal_process").contains(table)?" AND del_flag='0'":"";
+                String active=table.equals("metal_process_type")?" AND builtin_code IS NULL":Set.of("metal_product","metal_material","metal_process").contains(table)?" AND del_flag='0'":"";
                 if(jdbc.queryForObject("SELECT COUNT(*) FROM "+table+" WHERE factory_id=?"+active,Integer.class,id)>0)throw new ServiceException("工厂下存在基础目录，请先核对："+f.getFactoryName());
             }
             if (jdbc.queryForObject("SELECT COUNT(*) FROM metal_customer WHERE factory_id=? AND del_flag='0'",Integer.class,id)>0)
