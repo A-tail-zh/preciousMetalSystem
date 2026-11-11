@@ -58,10 +58,6 @@
         </div>
       </el-form-item>
     </el-form>
-    <!--  底部  -->
-    <div class="el-login-footer">
-      <span>{{ footerContent }}</span>
-    </div>
   </div>
 </template>
 
@@ -70,12 +66,10 @@ import { getCodeImg } from "@/api/login"
 import Cookies from "js-cookie"
 import { encrypt, decrypt } from "@/utils/jsencrypt"
 import useUserStore from '@/store/modules/user'
-import defaultSettings from '@/settings'
 import type { CaptchaInfoResult } from '@/types/api/login'
 import type { LoginForm } from '@/types/api/login'
 
 const title = import.meta.env.VITE_APP_TITLE
-const footerContent = defaultSettings.footerContent
 const userStore = useUserStore()
 const router = useRouter()
 const proxy = getCurrentInstance()!.proxy!
@@ -162,8 +156,9 @@ getCookie()
   justify-content: center;
   align-items: center;
   height: 100%;
-  background-image: url("../assets/images/login-background.jpg");
+  background-image: url("../assets/images/login-slate-gray.png");
   background-size: cover;
+  background-position: center;
 }
 .title {
   margin: 0px auto 30px auto;
@@ -203,25 +198,13 @@ getCookie()
     vertical-align: middle;
   }
 }
-.el-login-footer {
-  height: 40px;
-  line-height: 40px;
-  position: fixed;
-  bottom: 0;
-  width: 100%;
-  text-align: center;
-  color: #fff;
-  font-family: Arial;
-  font-size: 12px;
-  letter-spacing: 1px;
-}
 .login-code-img {
   height: 40px;
   padding-left: 12px;
 }
 
 html.dark .login {
-  background-image: linear-gradient(rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.55)), url("../assets/images/login-background.jpg");
+  background-image: linear-gradient(rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.55)), url("../assets/images/login-slate-gray.png");
   .login-form {
     background: var(--el-bg-color-overlay) !important;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);

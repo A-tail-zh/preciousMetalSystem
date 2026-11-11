@@ -9,7 +9,7 @@
   <el-form-item label="商品数量" :prop="`items.${index}.quantity`" :rules="integerRules('商品数量')"><el-input aria-label="商品数量" v-model="item.quantity" inputmode="numeric"/></el-form-item>
   <el-form-item v-for="field in weightFields(item)" :key="field.key" :label="field.label+'（g）'" :prop="`items.${index}.${field.key}`" :rules="[fieldRule(v=>decimalError(v,field.label))]"><BusinessDecimalInput :aria-label="field.label+'（g）'" v-model="item[field.key]" inputmode="decimal"/></el-form-item>
   <el-form-item v-for="d in dimensions(item)" :key="d.key" :label="d.label+'（'+(d.unit??'cm')+'）'" :prop="`items.${index}.dimensions.${d.key}`" :rules="[fieldRule(v=>decimalError(v,d.label,{positive:!d.allowZero}))]"><BusinessDecimalInput :aria-label="d.label+'（'+(d.unit??'cm')+'）'" v-model="item.dimensions[d.key]" inputmode="decimal"/></el-form-item>
-  <el-button v-if="items.length>1" link type="danger" @click="items.splice(index,1)">移除商品</el-button>
+  <el-button v-if="items.length>1" class="remove-goods" link type="danger" aria-label="移除商品" title="移除商品" @click="items.splice(index,1)"><span aria-hidden="true">×</span></el-button>
  </div>
  <div class="calculate-row"><el-button type="primary" @click="items.push(blank())">添加商品</el-button><el-button type="primary" :loading="calculating" :disabled="loading||loadError||!typesLoaded||(!pendingPayload&&(!productTypes.length||invalidTypes))||factoryLoading||!factoryId||!canSave" @click="calculate(false)">开始计算</el-button></div>
  </el-form>
@@ -103,4 +103,5 @@ onBeforeUnmount(()=>{disposed=true;sessionEpoch++;invalidate();loadEpoch++;listE
 </script>
 <style scoped>
 .quote-page{padding:16px;background:var(--business-canvas);box-sizing:border-box;min-height:calc(var(--design-height,100vh) - 56px)}.goods-item{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:0 24px;background:#fff;padding:24px;margin-top:16px;border:1px solid var(--business-border);border-radius:8px;max-width:1100px}.goods-item :deep(.el-input),.goods-item :deep(.el-select){width:100%}.goods-item .el-form-item{min-width:0}.notice{grid-column:1/-1;color:#909399}.calculate-row{display:flex;gap:12px;margin-top:16px;flex-wrap:wrap}.result-table{margin-top:24px}.history{margin-top:32px}.history-query{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px}.history-query .el-input,.history-query .el-select{width:240px;max-width:100%}.quote-results{margin-top:24px}.quote-factory{max-width:650px;margin-top:16px}.quote-factory .el-select{width:100%}.history .el-pagination{margin-top:16px;max-width:100%;overflow-x:auto}@media(max-width:700px){.goods-item{grid-template-columns:minmax(0,1fr);padding:16px}.quote-page{padding:12px}}
+.goods-item{position:relative;padding-top:36px}.goods-item .remove-goods{position:absolute;top:4px;right:6px;width:28px;height:28px;padding:0;font-size:24px;line-height:1}
 </style>
