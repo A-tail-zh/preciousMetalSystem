@@ -44,6 +44,7 @@ async function logout() {
 .prototype-sidebar { background:#fff; width:var(--business-sidebar-width,220px); padding:0; margin:0; border-radius:0; line-height:normal; font-family:inherit; height:var(--design-height,100vh); position:sticky; top:0; flex-shrink:0; display:flex; flex-direction:column; border-right:1px solid var(--business-border); }
 .prototype-main { flex:1; min-width:0; }
 .prototype-header { height:var(--business-header-height,56px); background:#fff; display:flex; justify-content:flex-end; align-items:center; gap:8px; padding:0 20px; font-size:14px; }
+@media(min-width:769px){.prototype-header :deep(.pending-review-badge .pending-review-trigger){height:25px;min-height:25px}}
 .avatar { position:relative; background:#367ced; border-radius:50%; width:40px; height:40px; }
 .avatar i { position:absolute; width:16px; height:21px; background:#9dbfff; left:10px; top:11px; border-radius:50%; transform:rotate(-30deg); }
 .avatar b { position:absolute; width:9px; height:9px; background:#e2ecff; left:21px; top:12px; border-radius:50%; }
