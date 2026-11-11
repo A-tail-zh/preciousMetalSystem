@@ -6,6 +6,7 @@
         <el-input
           v-model="loginForm.username"
           type="text"
+          :maxlength="11"
           size="large"
           auto-complete="off"
           placeholder="账号"
