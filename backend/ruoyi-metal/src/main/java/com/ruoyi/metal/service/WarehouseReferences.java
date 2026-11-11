@@ -35,12 +35,21 @@ public final class WarehouseReferences {
      * 检查物料是否存在库存引用。
      */
     public static void material(JdbcTemplate j, Long id) {
-        if (materialReferenced(j, id)) throw new ServiceException("物料已有库存、仓储或原料工单引用，不能删除");
+        if (productOutputReferenced(j, id)) throw new ServiceException("物料已被有效产品工序配置为产出物料，请先调整产品工序配置后再删除");
+        if (materialReferenced(j, id)) throw new ServiceException("物料已有库存、仓储或生产工单引用，不能删除");
+    }
+
+    private static boolean productOutputReferenced(JdbcTemplate j, Long id) {
+        return !j.queryForList("SELECT pp.product_id FROM metal_product_process pp JOIN metal_product p ON p.product_id=pp.product_id WHERE pp.output_material_id=? AND p.del_flag='0' LIMIT 1 FOR SHARE", id).isEmpty();
     }
 
     public static boolean materialReferenced(JdbcTemplate j, Long id) {
         // Current reads must see an inbound committed while the material row lock was waiting.
-        return !j.queryForList("SELECT inventory_id FROM metal_inventory WHERE reference_id=? AND category='RAW' LIMIT 1 FOR SHARE", id).isEmpty()
+        return productOutputReferenced(j, id)
+                || !j.queryForList("SELECT id FROM metal_storage_stock WHERE material_id=? LIMIT 1 FOR SHARE", id).isEmpty()
+                || !j.queryForList("SELECT l.id FROM metal_storage_document_line l JOIN metal_storage_document d ON d.id=l.document_id AND d.factory_id=l.factory_id WHERE JSON_UNQUOTE(JSON_EXTRACT(l.data,'$.materialId'))=CAST(? AS CHAR) AND d.deleted=0 AND d.status NOT IN ('CANCELLED','REVERSED') LIMIT 1 FOR SHARE", id).isEmpty()
+                || !j.queryForList("SELECT s.id FROM metal_production_order_step s JOIN metal_production_order_item i ON i.id=s.item_id JOIN metal_production_order o ON o.id=i.order_id WHERE s.output_material_id=? AND o.deleted=0 LIMIT 1 FOR SHARE", id).isEmpty()
+                || !j.queryForList("SELECT inventory_id FROM metal_inventory WHERE reference_id=? AND category='RAW' LIMIT 1 FOR SHARE", id).isEmpty()
                 || !j.queryForList("SELECT line_id FROM metal_warehouse_order_line WHERE reference_id=? AND category='RAW' LIMIT 1 FOR SHARE", id).isEmpty()
                 || !j.queryForList("SELECT i.item_id FROM metal_work_order_item i JOIN metal_work_order w ON w.work_order_id=i.work_order_id WHERE i.material_id=? AND w.task_type='RAW_PROCESSING' AND w.del_flag='0' LIMIT 1 FOR SHARE", id).isEmpty()
                 || pending(j,id,true);
