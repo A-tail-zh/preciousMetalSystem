@@ -22,7 +22,7 @@ import {useRoute} from 'vue-router'
 import {businessNavigation} from '@/utils/business-navigation'
 import useUserStore from '@/store/modules/user'
 const emit=defineEmits(['navigate','logout']),route=useRoute(),user=useUserStore()
-const expanded=reactive<Record<string,boolean>>({base:true,quote:true,warehouse:true,user:true,alert:true,logs:true})
+const expanded=reactive<Record<string,boolean>>({base:true,quote:true,orders:true,warehouse:true,user:true,alert:true,logs:true})
 const groups=computed(()=>businessNavigation(user))
 function can(permission: string) { return user.sessionReady&&user.permissions.some((p: string) => p === '*:*:*' || p === permission) }
 </script>

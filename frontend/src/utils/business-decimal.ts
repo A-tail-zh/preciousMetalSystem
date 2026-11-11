@@ -9,6 +9,12 @@ export function roundDecimal(value:unknown):string {
  return (negative&&cents!==0n?'-':'')+digits.slice(0,-2)+'.'+digits.slice(-2)
 }
 export function decimalText(value:unknown){return value==null||value===''?'—':roundDecimal(value)}
+export const purityError='纯度须为0至100，最多两位小数'
+export function optionalPurityValid(value:unknown){
+ const text=String(value??'').trim()
+ if(!text)return true
+ return /^\d{1,14}(\.\d{1,2})?$/.test(text)&&Number(text)<=100
+}
 const fields=new Set(['handoverDifference','keeperReceivedWeight','processorOutputWeight','processorReturnedWeight','plannedNetWeight','processorNetWeight','reservedWeight','bookWeight','area','volume','purity','weight','basePrice','piValue','density','powderPrice','nonPowderPrice','shortagePrice','lossPrice','netWeight','grossWeight','impurity','deltaWeight','deltaGrossWeight','deltaImpurity','balanceWeight','totalNetWeight','availableWeight','remainingWeight','releasedWeight','unreleasedWeight','outputWeight','issuedWeight','returnedWeight','lossWeight','averageLoss','theoreticalLoss','thresholdValue','thresholdMin','thresholdMax','tolerance','lossRatePercent','unitPrice','totalPrice','unitWeight','totalWeight','rawIssuedWeight','semiIssuedWeight','rawReturnedWeight','semiReturnedWeight','processRawReturnedWeight','netInputWeight','settledLossWeight','provisionalDifferenceWeight','settledNetInputWeight','balanceDifferenceWeight'])
 export function businessValue(value:unknown,key:string){return fields.has(key)?decimalText(value):value??''}
 export function decimalColumn(_row:unknown,column:{property?:string},value:unknown){return String(businessValue(value,column.property??''))}

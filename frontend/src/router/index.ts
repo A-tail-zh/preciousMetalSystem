@@ -95,6 +95,38 @@ export const dynamicRoutes = [
   },
   */
   {
+    path: '/metal/production-order',
+    name: 'ProductionOrderRoot',
+    component: Layout,
+    hidden: true,
+    permissions: ['metal:work-order:list'],
+    children: [{path:'',component:()=>import('@/views/metal/production-order/index.vue'),name:'ProductionOrder',meta:{title:'生产工单管理',noCache:true}}]
+  },
+  {
+    path: '/metal/storage-inventory',
+    name: 'StorageInventoryRoot',
+    component: Layout,
+    hidden: true,
+    permissions: ['metal:inventory:list'],
+    children: [{path:'',component:()=>import('@/views/metal/storage-inventory/index.vue'),name:'StorageInventory',meta:{title:'仓储管理',noCache:true}}]
+  },
+  {
+    path: '/metal/storage-orders',
+    name: 'StorageOrdersRoot',
+    component: Layout,
+    hidden: true,
+    permissions: ['metal:warehouse-order:list'],
+    children: [{path:'',component:()=>import('@/views/metal/storage-orders/index.vue'),name:'StorageOrders',meta:{title:'仓储工单管理',noCache:true}}]
+  },
+  {
+    path: '/metal/storage-warehouses',
+    name: 'StorageWarehousesRoot',
+    component: Layout,
+    hidden: true,
+    permissions: ['metal:warehouse:list'],
+    children: [{path:'',component:()=>import('@/views/metal/storage-warehouses/index.vue'),name:'StorageWarehouses',meta:{title:'仓库管理',noCache:true}}]
+  },
+  {
     path: '/system/user-auth',
     component: Layout,
     hidden: true,

@@ -29,6 +29,7 @@ export interface AuthUserQueryParams extends UserQueryParams {
 
 /** 用户信息 */
 export interface SysUser extends BaseEntity {
+  factoryId?: string | number | null
   loginIp?: string
   loginDate?: string
   version?: number;

@@ -1,0 +1,3 @@
+<template><el-alert v-if="operation.error.value" :title="operation.error.value" type="error" :closable="false"/><div v-if="operation.pending.value" class="operation-status"><el-button :loading="operation.busy.value" @click="operation.verify">核实保存结果</el-button><el-button v-if="operation.notFound.value" :disabled="operation.busy.value" @click="operation.retry">重试原请求</el-button></div></template>
+<script setup lang="ts">import type {useOperation} from './client';defineProps<{operation:ReturnType<typeof useOperation>}>()</script>
+<style scoped>.operation-status{display:flex;gap:10px;margin:12px 0}</style>

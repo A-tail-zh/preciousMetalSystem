@@ -11,6 +11,7 @@ interface UserState {
   sessionReady: boolean
   sessionEpoch: number
   token: string | undefined
+  factoryId: string | number | null
   id: string | number
   name: string
   nickName: string
@@ -26,6 +27,7 @@ const useUserStore = defineStore(
       sessionReady: false,
       sessionEpoch: 0,
       token: getToken(),
+      factoryId: null,
       id: '',
       name: '',
       nickName: '',
@@ -73,6 +75,7 @@ const useUserStore = defineStore(
               this.permissions = []
             }
             this.id = user.userId || ''
+            this.factoryId = user.factoryId ?? null
             this.name = user.userName || ''
             this.nickName = user.nickName || ''
             this.avatar = avatar
@@ -96,11 +99,10 @@ const useUserStore = defineStore(
           })
         })
       },
-      clearSession() { this.sessionEpoch++; this.sessionReady=false; this.id=''; cache.session.remove('sessionObj'); this.token=''; this.roles=[]; this.permissions=[]; removeToken() },
+      clearSession() { this.sessionEpoch++; this.sessionReady=false; this.id=''; this.factoryId=null; cache.session.remove('sessionObj'); this.token=''; this.roles=[]; this.permissions=[]; removeToken() },
       // 退出系统
       async logOut(expectedToken=getToken()):Promise<boolean> {
-        if(!expectedToken||getToken()!==expectedToken)return false
-        try{await logout(expectedToken)}catch(error:any){
+        if(!expectedToken||getToken()!==expectedToken)return false        try{await logout(expectedToken)}catch(error:any){
           if(getToken()!==expectedToken)return false
           if(error?.response?.status!==401&&error!=='无效的会话，或者会话已过期，请重新登录。')throw error
         }

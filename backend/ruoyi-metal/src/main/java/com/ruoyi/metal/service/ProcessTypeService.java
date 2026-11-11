@@ -46,4 +46,11 @@ public class ProcessTypeService {
   catch(DuplicateKeyException e){throw new ServiceException("工序类型已存在，请勿重复添加");}
   return Map.of("id",String.valueOf(key.getKey()),"name",normalized);
  }
+ public static String semantic(JdbcTemplate jdbc,Integer typeId,long factory){
+  if(typeId==null)throw new ServiceException("请选择工序类型");
+  var rows=jdbc.queryForList("SELECT builtin_code FROM metal_process_type WHERE type_id=? AND factory_id=?",typeId,factory);
+  if(rows.isEmpty())throw new ServiceException("工序类型不存在或不属于本厂");
+  Object code=rows.get(0).get("builtin_code");
+  return code==null?"NORMAL":code.toString();
+ }
 }

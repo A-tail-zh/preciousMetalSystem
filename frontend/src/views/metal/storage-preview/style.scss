@@ -1,0 +1,28 @@
+.storage-page {
+  padding:20px;min-width:0;
+  .storage-filter {display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:12px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:16px;}
+  .storage-filter .el-select,.storage-filter .el-input {width:180px;}
+  .storage-filter .el-button+.el-button {margin-left:0;}
+  .storage-pagination {display:flex;justify-content:center;margin-top:20px;}
+  .el-table .cell {word-break:normal;}
+}
+.storage-grid {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 24px;}
+.storage-dialog {max-width:94vw;max-height:90vh;display:flex;flex-direction:column;margin:5vh auto!important;}
+.storage-dialog .el-dialog__body {overflow:auto;padding:16px 22px;}
+.storage-dialog .el-dialog__footer {border-top:1px solid #e2e8f0;padding-top:16px;}
+.storage-dialog .el-form-item {padding-left:12px;min-width:0;}
+.storage-dialog .el-form-item__label {position:relative;text-align:left;}
+.storage-dialog .el-form-item.is-required .el-form-item__label:before {position:absolute;left:-12px;margin:0;}
+.storage-dialog .el-input__inner {text-align:left;}
+.storage-dialog .el-select,.storage-dialog .el-input-number,.storage-dialog .el-date-editor.el-input {width:100%;}
+.storage-dialog h3 {font-size:15px;color:#25364a;border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin:6px 0 20px;}
+.storage-dialog .wide {grid-column:1/-1;}
+@media(max-width:650px){.storage-grid{grid-template-columns:minmax(0,1fr)}.storage-page .storage-filter .el-select,.storage-page .storage-filter .el-input{width:100%;}.storage-dialog .el-dialog__body{padding:12px;}}
+
+.storage-page .storage-filter .storage-filter {padding:0;border:0;margin:0;border-radius:0;}
+@media(max-width:650px){.storage-page{padding:12px}.storage-pagination{overflow:auto;justify-content:flex-start!important}}
+
+.storage-page .storage-filter > .el-select,.storage-page .storage-filter > .el-input {width:150px;flex:0 0 150px;}
+.storage-page .storage-filter > .el-date-editor {width:260px;flex:0 0 260px;min-width:0;}
+.storage-page .storage-filter > span {white-space:nowrap;}
+@media(max-width:650px){.storage-page .storage-filter > .el-select,.storage-page .storage-filter > .el-input,.storage-page .storage-filter > .el-date-editor{width:100%;flex-basis:100%;}}
