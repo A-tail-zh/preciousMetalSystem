@@ -30,6 +30,7 @@ class MaterialClassificationLockMapperTest {
 
     @BeforeEach void setup() throws Exception {
         connection = WarehouseIntegrationEnvironment.dataSource().getConnection();
+        execute("CREATE TEMPORARY TABLE sys_user(user_id BIGINT PRIMARY KEY,user_name VARCHAR(64),nick_name VARCHAR(100))");
         execute("CREATE TEMPORARY TABLE metal_type(metal_type_id BIGINT PRIMARY KEY,name VARCHAR(100))");
         execute("CREATE TEMPORARY TABLE metal_material(material_id BIGINT PRIMARY KEY,material_code VARCHAR(64),"
                 + "material_type VARCHAR(30),specification VARCHAR(200),metal_type_id BIGINT,create_by VARCHAR(64),"

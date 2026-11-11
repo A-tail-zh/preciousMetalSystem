@@ -6,9 +6,9 @@
 <result property="name" column="process_name"/>
 <result property="description" column="description"/>
 <result property="processType" column="process_type"/><result property="processTypeName" column="process_type_name"/>
-<result property="createBy" column="create_by"/><result property="createTime" column="create_time"/><result property="updateTime" column="update_time"/><result property="version" column="version"/>
+<result property="creatorName" column="creator_name"/><result property="createBy" column="create_by"/><result property="createTime" column="create_time"/><result property="updateTime" column="update_time"/><result property="version" column="version"/>
 </resultMap>
-<sql id="columns">r.process_id,r.factory_id,(SELECT factory_name FROM metal_factory WHERE factory_id=r.factory_id) factory_name,r.process_name,r.description,r.process_type,(SELECT type_name FROM metal_process_type WHERE type_id=r.process_type) process_type_name,r.create_by,r.create_time,r.update_by,r.update_time,r.version</sql>
+<sql id="columns">r.process_id,r.factory_id,(SELECT factory_name FROM metal_factory WHERE factory_id=r.factory_id) factory_name,r.process_name,r.description,r.process_type,(SELECT type_name FROM metal_process_type WHERE type_id=r.process_type) process_type_name,r.create_by,COALESCE((SELECT CASE WHEN u.user_id=1 THEN '管理员' ELSE NULLIF(TRIM(u.nick_name),'') END FROM sys_user u WHERE u.user_name COLLATE utf8mb4_unicode_ci=r.create_by LIMIT 1),'人员资料不可用') creator_name,r.create_time,r.update_by,r.update_time,r.version</sql>
 <select id="list" resultMap="Record">SELECT <include refid="columns"/> FROM metal_process r WHERE r.del_flag='0' AND r.factory_id IS NOT NULL <if test="factoryId != null">AND r.factory_id=#{factoryId}</if> ORDER BY r.process_id ASC</select>
 <select id="listFiltered" resultMap="Record">SELECT <include refid="columns"/> FROM metal_process r WHERE r.del_flag='0' AND r.factory_id IS NOT NULL <if test="factoryId != null">AND r.factory_id=#{factoryId}</if> <if test="q.name != null">AND r.process_name LIKE #{q.namePattern} ESCAPE '!'</if>
 <if test="q.processType != null">AND r.process_type =#{q.processType}</if>

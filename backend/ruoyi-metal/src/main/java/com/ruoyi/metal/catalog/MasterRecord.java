@@ -12,6 +12,11 @@ public class MasterRecord extends BaseEntity {
     private Long id;
     @Min(0)
     private Integer version;
+    @com.fasterxml.jackson.annotation.JsonProperty(access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private String creatorName;
+
+    public String getCreatorName(){return creatorName;}
+    public void setCreatorName(String value){creatorName=value;}
 
     public Long getId() {
         return id;

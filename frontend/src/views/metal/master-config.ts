@@ -43,28 +43,28 @@ export const masterConfigs = {
         endpoint: '/metal/production-line',
         permission: 'metal:production-line',
         width: 708,
-        columns: cols([['code', '产线编号', 72], ['name', '产线名称', 72], ['factoryName','工厂名称',140], ['productNames', '产品名称', 128], ['createBy', '创建人', 72], ['createTime', '创建时间', 128]])
+        columns: cols([['code', '产线编号', 72], ['name', '产线名称', 72], ['factoryName','工厂名称',140], ['productNames', '产品名称', 128], ['creatorName', '创建人', 72], ['createTime', '创建时间', 128]])
     },
     product: {
         title: '产品管理',
         endpoint: '/metal/product',
         permission: 'metal:product',
         width: 990,
-        columns: cols([['code', '产品编号', 70], ['name', '产品名称', 110], ['metalTypeName','金属类型',100], ['productType','产品类型',120], ['specification', '规格型号', 220], ['volume', '产品体积', 76], ['purity', '纯度', 56], ['weight', '理论成品净重（g）', 135], ['createBy', '创建人', 64], ['createTime', '创建时间', 130]])
+        columns: cols([['code', '产品编号', 70], ['name', '产品名称', 110], ['metalTypeName','金属类型',100], ['productType','产品类型',120], ['specification', '规格型号', 220], ['volume', '产品体积', 76], ['purity', '纯度', 56], ['weight', '理论成品净重（g）', 135], ['creatorName', '创建人', 64], ['createTime', '创建时间', 130]])
     },
     material: {
         title: '物料管理',
         endpoint: '/metal/material',
         permission: 'metal:material',
         width: 936,
-        columns: cols([['code', '物料编码', 132], ['materialType', '物料类型名称', 220], ['materialCategory', '物料分类', 110], ['specification', '规格型号', 136], ['metalTypeName', '金属类型', 120], ['createBy', '创建人', 100], ['createTime', '创建时间', 140]])
+        columns: cols([['code', '物料编码', 132], ['materialType', '物料类型名称', 220], ['materialCategory', '物料分类', 110], ['specification', '规格型号', 136], ['metalTypeName', '金属类型', 120], ['creatorName', '创建人', 100], ['createTime', '创建时间', 140]])
     },
     process: {
         title: '工序管理',
         endpoint: '/metal/process',
         permission: 'metal:process',
         width: 990,
-        columns: cols([['id', '工序ID', 98], ['name', '工序名称', 130], ['processTypeName','工序类型',120], ['description', '工序描述', 250], ['createBy', '创建人', 130], ['updateTime', '更新时间', 146]])
+        columns: cols([['id', '工序ID', 98], ['name', '工序名称', 130], ['processTypeName','工序类型',120], ['description', '工序描述', 250], ['creatorName', '创建人', 130], ['updateTime', '更新时间', 146]])
     },
     staff: {
         title: '人员管理',
