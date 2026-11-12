@@ -9,6 +9,7 @@ import com.ruoyi.metal.service.StorageConfigurationService;
 public class StorageConfigurationController {
  private final StorageConfigurationService service;
  public StorageConfigurationController(StorageConfigurationService service){this.service=service;}
+ @GetMapping("/materials") public AjaxResult materials(@RequestParam(required=false) Long factoryId){return AjaxResult.success(service.materialsForFactory(factoryId));}
  @GetMapping("/{kind}/{id}") public AjaxResult detail(@PathVariable String kind,@PathVariable long id,@RequestParam(required=false) Long factoryId){return AjaxResult.success(service.detail(kind,id,factoryId));}
  @PutMapping("/{kind}/{id}") @Log(title="维护仓储工艺配置",businessType=BusinessType.UPDATE) public AjaxResult save(@PathVariable String kind,@PathVariable long id,@RequestBody Map<String,Object> input){return AjaxResult.success(service.save(kind,id,input));}
 }

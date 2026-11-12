@@ -120,11 +120,14 @@ public class LineService extends MasterService<LineRecord> {
 
     /**
      * 检查业务引用和保护规则，不满足删除条件时抛出异常。
+     * 已逻辑删除的生产工单仅保留产线名称快照，删除前释放外键，避免挡住产线清理。
      */
     @Override
     protected void deletable(LineRecord row) {
         WorkOrderReferences.lineDelete(jdbc, row.getId());
         if (jdbc.queryForObject("SELECT COUNT(*) FROM metal_line_product WHERE production_line_id=?", Integer.class, row.getId()) > 0)
-            throw new ServiceException("请先解除产线的产品关联：" + row.getName());
+            throw new ServiceException("请先解除该产线关联的产品");
+        jdbc.update("UPDATE metal_production_order SET production_line_id=NULL WHERE production_line_id=? AND deleted=1", row.getId());
+        jdbc.update("UPDATE metal_work_order SET production_line_id=NULL WHERE production_line_id=? AND del_flag='2'", row.getId());
     }
 }

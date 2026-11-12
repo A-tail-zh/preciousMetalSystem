@@ -96,6 +96,7 @@ public class ProductionOrderService {
         var row=one("SELECT version,status,deleted,first_issue_confirmed_at,flow_version FROM metal_production_order WHERE id=? AND factory_id=? FOR UPDATE",id,factory);
         if(((Number)row.get("deleted")).intValue()!=0||!"CREATED".equals(row.get("status")))throw new ServiceException("工单已删除或当前状态不允许修改",409);
         if(row.get("first_issue_confirmed_at")!=null)throw new ServiceException("工单已实际领料，不能编辑或删除",409);
+        if(!jdbc.queryForList("SELECT id FROM metal_production_batch WHERE factory_id=? AND order_id=? FOR UPDATE",factory,id).isEmpty())throw new ServiceException("工单已有统一生产批次，产品与冻结路线不能编辑或删除",409);
         if(jdbc.queryForObject("SELECT COUNT(*) FROM metal_storage_document WHERE order_id=? AND factory_id=? AND type<>'CUSTOMER_IN' AND deleted=0 AND status IN ('DRAFT','PENDING_REVIEW','RETURNED')",Integer.class,id,factory)>0)throw new ServiceException("工单有待处理的领料或加工单据，请先撤销后修改",409);
         if(version==null||version<0||((Number)row.get("version")).intValue()!=version)throw new ServiceException("工单已被修改，请重新打开核对",409);
     }

@@ -7,6 +7,11 @@ test('retired navigation is absent for administrators and ordinary accounts', ()
     const entries = businessNavigation({id: 1, sessionReady: true, permissions}).flatMap(group => [...group.items, ...(group.entry ? [group.entry] : [])])
     expect(entries.some(item => isRetiredBusinessRoute(item.to))).toBe(false)
     expect(entries.some(item => item.to === '/metal/product')).toBe(true)
+    expect(entries.some(item => item.to === '/metal/production-order')).toBe(true)
+    expect(entries.some(item => item.to === '/metal/storage-warehouses')).toBe(true)
+    expect(entries.some(item => item.to === '/metal/storage-inventory')).toBe(true)
+    expect(entries.map(item => item.to)).not.toContain('/metal/work-order')
+    expect(entries.map(item => item.to)).not.toContain('/metal/warehouse')
   }
 })
 
@@ -15,7 +20,7 @@ test('dynamic routes are excluded by full path or backend component name', () =>
     expect(isRetiredBusinessRoute(`/metal/${name}`)).toBe(true)
     expect(isRetiredBusinessRoute(name, `metal/${name}/index`)).toBe(true)
   }
-  for (const name of ['product', 'factory', 'quotation', 'work-order-new']) {
+  for (const name of ['product', 'factory', 'quotation', 'production-order', 'storage-warehouses', 'storage-orders', 'storage-inventory']) {
     expect(isRetiredBusinessRoute(`/metal/${name}`, `metal/${name}/index`)).toBe(false)
   }
 })

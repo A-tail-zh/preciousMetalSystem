@@ -2,7 +2,7 @@ import {test,expect,type Page} from '@playwright/test'
 const modules=[['factory','工厂名称','factory'],['product','产品编号','product'],['production-line','产线编号','production-line'],['process','工序名称','process'],['customer','客户名称','customer']] as const
 async function setup(page:Page,path:string,permission:string,admin:boolean){
  const lists:string[]=[];await page.context().addCookies([{name:'Admin-Token',value:'catalog-isolation',url:String(test.info().project.use.baseURL)}]);
- await page.route('**/dev-api/**',async route=>{const u=new URL(route.request().url()),p=u.pathname.replace('/dev-api','');let r:any={code:200,data:[],rows:[],total:0};
+ await page.route('**/{dev-api,prod-api}/**',async route=>{const u=new URL(route.request().url()),p=u.pathname.replace(/^\/(?:dev|prod)-api/,'');let r:any={code:200,data:[],rows:[],total:0};
  if(p==='/getInfo')r={code:200,user:{userId:admin?1:2,userName:'test'},roles:[admin?'admin':'staff'],permissions:[`metal:${permission}:list`,`metal:${permission}:add`,...(permission==='process'?['metal:process-type:add']:[])]};
  else if(p==='/getRouters')r.data=[{path:'/metal',component:'Layout',children:[{path,component:`metal/${path}/index`}]}];
  else if(p.endsWith('/factories')){if(admin)expect(u.searchParams.has('factoryId')).toBe(false);r.data=r.rows=admin?[{id:'7',name:'甲厂'},{id:'8',name:'乙厂'}]:[{id:'7',name:'甲厂'}]}
@@ -19,7 +19,7 @@ for(const [path,label,permission]of modules){
   await expect(field).toBeDisabled();await expect(page.getByRole('button',{name:'查询',exact:true})).toBeDisabled();expect(lists).toHaveLength(0);
   await expect(page.getByText(/请先选择所属工厂，再/)).toHaveCount(0);
   await page.waitForTimeout(5500);await expect(page.getByText(/列表更新失败/)).toHaveCount(0);expect(lists).toHaveLength(0);
-  if(path==='process')await expect(page.getByRole('button',{name:'添加工序类型',exact:true})).toBeDisabled();
+  if(path==='process')await expect(page.getByRole('button',{name:'维护工序类型',exact:true})).toBeDisabled();
   if(path==='factory')await expect(page.getByRole('button',{name:'添加',exact:true})).toBeEnabled();else await expect(page.getByRole('button',{name:'添加',exact:true})).toBeDisabled();
   await page.getByRole('combobox',{name:'所属工厂',exact:true}).press('ArrowDown');await page.getByRole('option',{name:'甲厂',exact:true}).click();await expect.poll(()=>lists.at(-1)).toContain('factoryId=7');await expect(page.getByText(/列表更新失败/)).toHaveCount(0);await field.fill('旧条件');
   await page.getByRole('combobox',{name:'所属工厂',exact:true}).press('ArrowDown');await page.getByRole('option',{name:'乙厂',exact:true}).click();await expect.poll(()=>lists.at(-1)).toContain('factoryId=8');await expect(field).toHaveValue('');expect(lists.at(-1)).not.toContain(encodeURIComponent('旧条件'));

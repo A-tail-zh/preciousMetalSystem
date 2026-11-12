@@ -17,6 +17,7 @@ import com.ruoyi.common.exception.ServiceException;
 public class ProductService extends FactoryCatalogService<ProductRecord> {
     private final JdbcTemplate jdbc;
     private final QuoteRuleService quoteRules;
+    private final StorageConfigurationService storage;
     public static final Map<String, List<String>> DIMENSIONS = Map.of(
             "铱坩埚弧底", List.of("innerDiameter", "innerHeight", "wallThickness", "bottomThickness", "rHeight"),
             "铱坩埚平底", List.of("innerDiameter", "innerHeight", "wallThickness", "bottomThickness"),
@@ -24,10 +25,11 @@ public class ProductService extends FactoryCatalogService<ProductRecord> {
             "铱环", List.of("outerDiameter", "innerDiameter", "height"), "铱杆实心", List.of("diameter", "length"),
             "铱杆空心", List.of("outerDiameter", "innerDiameter", "length"));
 
-    public ProductService(ProductMapper mapper, FactoryScope scope, JdbcTemplate jdbc, QuoteRuleService quoteRules) {
+    public ProductService(ProductMapper mapper, FactoryScope scope, JdbcTemplate jdbc, QuoteRuleService quoteRules, StorageConfigurationService storage) {
         super(mapper, scope);
         this.jdbc = jdbc;
         this.quoteRules = quoteRules;
+        this.storage = storage;
     }
 
     /**
@@ -47,11 +49,6 @@ public class ProductService extends FactoryCatalogService<ProductRecord> {
         }else{
             if(row.getMetalTypeId()==null)throw new ServiceException("请选择金属类型");
             ProductTypes.require(row.getProductType());
-        }
-        if(old==null||priorVersion!=currentVersion||!Objects.equals(old.getProductType()==null&&priorVersion==1?ProductTypes.legacy(old.getCategory()):old.getProductType(),row.getProductType())){
-            var types=jdbc.queryForList("SELECT name FROM metal_product_type WHERE factory_id=? AND name=? FOR UPDATE",String.class,row.getFactoryId(),row.getProductType());
-            if(types.isEmpty())throw new ServiceException("所选产品类型不在当前工厂目录中，请重新选择",400);
-            row.setProductType(types.get(0));
         }
         String metalName=quoteRules.metalName(row.getMetalTypeId());
         scope.requireCatalog("metal",row.getMetalTypeId(),row.getFactoryId());
@@ -100,6 +97,7 @@ public class ProductService extends FactoryCatalogService<ProductRecord> {
         }
         if (row.getProcesses() == null || row.getProcesses().size() > 100)
             throw new ServiceException("工序配置无效，最多100道工序");
+        syncProcessModes(row);
         for(int i=0;i<row.getProcesses().size();i++){
             String mode=SemiMeasurementRules.mode(row.getProcesses().get(i).getMeasurementMode());
             if(i==row.getProcesses().size()-1&&mode.equals("WEIGHT"))throw new ServiceException("最后一道工序产出成品，须按件管理");
@@ -119,6 +117,19 @@ public class ProductService extends FactoryCatalogService<ProductRecord> {
                 types.put(((Number)process.get("process_id")).longValue(),Objects.toString(process.get("type_name"),""));
             if(types.size()!=ids.size())throw new ServiceException("工序类型不存在，请重新选择有效工序");
             ProcessingPolicy.route("PRODUCTION",ids.stream().map(types::get).toList(),row.getProcesses().stream().map(ProductStep::getMeasurementMode).toList());
+        }
+        if(storage!=null)storage.prepareCatalog("product", row);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void syncProcessModes(ProductRecord row) {
+        if (row.getStorageConfiguration() == null || row.getProcesses() == null) return;
+        Object raw = row.getStorageConfiguration().get("steps");
+        if (!(raw instanceof List<?> steps) || steps.size() != row.getProcesses().size()) return;
+        for (int i = 0; i < steps.size(); i++) {
+            if (!(steps.get(i) instanceof Map<?, ?> step)) continue;
+            Object mode = step.get("measurementMode");
+            if (mode != null) row.getProcesses().get(i).setMeasurementMode(mode.toString());
         }
     }
 
@@ -164,6 +175,7 @@ public class ProductService extends FactoryCatalogService<ProductRecord> {
         int order = 0;
         for (ProductStep step : row.getProcesses())
             jdbc.update("INSERT INTO metal_product_process(product_id,process_id,sequence_no,theoretical_loss,measurement_mode,loss_unit) VALUES(?,?,?,?,?,?)", row.getId(), step.getProcessId(), ++order, step.getLoss(),step.getMeasurementMode(),step.getLossUnit());
+        if(storage!=null)storage.writeCatalog("product", row);
     }
 
     /**
@@ -188,6 +200,10 @@ public class ProductService extends FactoryCatalogService<ProductRecord> {
             s.setProcessName(r.getString("process_name"));
             indexed.get(r.getLong("product_id")).getProcesses().add(s);
         }, rows.stream().map(ProductRecord::getId).toArray());
+        if (rows.size() == 1) {
+            ProductRecord row = rows.get(0);
+            if (storage!=null && row.getFactoryId() != null) row.setStorageConfiguration(storage.catalogDetail("product", row.getId(), row.getFactoryId()));
+        }
     }
 
     /**

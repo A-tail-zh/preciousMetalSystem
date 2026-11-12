@@ -37,6 +37,9 @@ class StorageReservationServiceTest {
    if((sql.contains("SUM(r.weight)")||sql.contains("SELECT r.weight,r.quantity")))return List.of(Map.of("weight",BigDecimal.ZERO,"quantity",0));
    if(sql.contains("batch_no,w.name"))return List.of(Map.of("batch_no","BATCH-2","warehouse_name","原料仓"));
    if(sql.contains("metal_customer"))return List.of(Map.of("customer_id",8,"customer_name","客户甲"));
+   if(sql.startsWith("SELECT * FROM metal_storage_batch_slice"))return List.of(Map.of("id",20L,"stock_id",2L,"slice_kind","UNASSIGNED","version",0,"weight",new BigDecimal("100.00"),"quantity",piece?10:0));
+   if(sql.startsWith("SELECT weight,quantity FROM metal_storage_batch_slice"))return List.of(Map.of("weight",new BigDecimal("100.00"),"quantity",piece?10:0));
+   if(sql.contains("SELECT o.weight,o.quantity FROM metal_storage_batch_slice_owner")){String w=((Number)a[3]).longValue()==0?factoryWeight:customerWeight;return List.of(Map.of("weight",new BigDecimal(w),"quantity",piece?10:0));}
    if(sql.contains("SELECT weight,quantity FROM metal_storage_ownership")){String w=((Number)a[2]).longValue()==0?factoryWeight:customerWeight;return List.of(Map.of("weight",new BigDecimal(w),"quantity",piece?10:0));}
    if(sql.contains("SELECT net_weight weight"))return List.of(Map.of("weight",new BigDecimal("100.00"),"quantity",piece?10:0));
    if(sql.contains("SELECT s.*,w.status"))return List.of(Map.of("id",2,"warehouse_id",3,"warehouse_status","0","warehouse_deleted","0","category","RAW","measurement_mode",piece?"PIECE":"WEIGHT"));
@@ -113,7 +116,7 @@ class StorageReservationServiceTest {
  @Test void productionConfirmationRequiresBatchAndUsesExistingStageValidatorBeforePersisting(){
   var jdbc=balances(false,"100.00","0.00");
   when(jdbc.queryForList(startsWith("SELECT customer_id FROM metal_production_order"),any(Object[].class))).thenReturn(List.of(Map.of("customer_id",8)));
-  when(jdbc.queryForList(startsWith("SELECT order_id FROM metal_production_execution"),any(Object[].class))).thenReturn(List.of(Map.of("order_id",10)));
+  when(jdbc.queryForList(startsWith("SELECT order_id,batch_id,status FROM metal_production_execution"),any(Object[].class))).thenReturn(List.of(Map.of("order_id",10,"status","OPEN")));
   var scope=mock(FactoryScope.class);when(scope.resolveFactory(1L)).thenReturn(1L);when(scope.isAdmin()).thenReturn(true);var production=mock(ProductionExecutionService.class);doThrow(new ServiceException("执行批次已经结算或阶段不匹配")).when(production).validateDocument(eq(1L),anyMap(),anyList());var service=new StorageReservationService(jdbc,scope,production);
   var body=new LinkedHashMap<String,Object>(Map.of("factoryId",1,"requestId",key(),"sessionId",key(),"reservationVersion",0,"type","PRODUCTION_OUT","orderId",10,"lines",List.of(line("10.00",0,8))));
   try(var security=mockStatic(com.ruoyi.common.utils.SecurityUtils.class)){security.when(com.ruoyi.common.utils.SecurityUtils::getUserId).thenReturn(9L);assertThrows(ServiceException.class,()->service.replace(body));verifyNoInteractions(production);body.put("executionId",11);assertThrows(ServiceException.class,()->service.replace(body));verify(production).validateDocument(eq(1L),anyMap(),anyList());verify(jdbc,never()).update(anyString(),any(Object[].class));}

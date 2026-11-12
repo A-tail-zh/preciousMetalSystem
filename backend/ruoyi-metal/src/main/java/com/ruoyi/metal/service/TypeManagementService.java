@@ -32,8 +32,12 @@ public class TypeManagementService {
     private final JdbcTemplate jdbc;
     private final FactoryScope scope;
     public TypeManagementService(JdbcTemplate jdbc,FactoryScope scope){this.jdbc=jdbc;this.scope=scope;}
-    private Kind allow(String kind,String action){Kind k=Kind.of(kind);if(!scope.isAdmin()&&!SecurityUtils.hasPermi(k.permission+action))throw new ServiceException("没有当前类型的操作权限",403);return k;}
-    public List<String> formulas(){allow("product","list");return ProductTypes.ALL;}
+    private static void rejectMovedKinds(Kind k){
+        if(k==Kind.PRODUCT)throw new ServiceException("产品类型已改为系统固定配置",400);
+        if(k==Kind.PROCESS)throw new ServiceException("工序类型请在工序管理中维护",400);
+    }
+    private Kind allow(String kind,String action){Kind k=Kind.of(kind);rejectMovedKinds(k);if(!scope.isAdmin()&&!SecurityUtils.hasPermi(k.permission+action))throw new ServiceException("没有当前类型的操作权限",403);return k;}
+    public List<String> formulas(){throw new ServiceException("产品类型已改为系统固定配置",400);}
     private String select(Kind k){return "SELECT CAST(t."+k.pk+" AS CHAR) id,t."+k.nameColumn()+" name,"+(k==Kind.MATERIAL?"t.material_category materialCategory,":"")+"CAST(t.factory_id AS CHAR) factoryId,f.factory_name factoryName,t.version,t.create_time createTime,t.update_time updatedAt FROM "+k.table+" t JOIN metal_factory f ON f.factory_id=t.factory_id AND f.del_flag='0'";}
     public Page list(String kind,Long requested,String name,int page,int size){
         Kind k=allow(kind,"list");Long factory=scope.resolveFactory(requested);

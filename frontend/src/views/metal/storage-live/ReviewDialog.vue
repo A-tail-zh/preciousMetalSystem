@@ -3,6 +3,8 @@
   <OperationStatus :operation="operation"/>
   <el-form v-if="review" :disabled="readonly||operation.busy.value||!!operation.pending.value" label-position="top">
    <div class="review-heading"><strong>{{review.number}}</strong><el-tag>{{typeNames[review.type]}}</el-tag></div>
+   <el-alert v-if="review.finishProcessing" :title="`本单复验通过后结束本次加工；申报确认损耗 ${review.confirmedLossWeight} g。${review.finishReason||''} 实收有变化时请退回重新核对余额。`" type="warning" :closable="false"/>
+   <el-alert v-if="review.type==='PRODUCT_IN'&&Number(review.acceptedProductQuantity||0)+review.lines.reduce((sum:number,l:any)=>sum+Number(l.measurementMode==='PIECE'?l.actualQuantity:l.referenceQuantity||0),0)>Number(review.productPlan??Infinity)" title="本次实际成品入库将超过工单计划，请核对；确认后按实际数量登记。" type="warning" :closable="false"/>
    <p v-if="review.type==='REVERSAL'">冲销原单据：{{review.reverseDocumentNumber||review.reverseDocumentId}} · {{review.reason}}</p>
    <el-alert v-if="!['ADJUSTMENT','OWNERSHIP_RETURN','REVERSAL'].includes(review.type)&&review.lines.some((row:any)=>!['WEIGHT','PIECE'].includes(row.measurementMode))" title="明细计量方式缺失，请重新加载并核对配置" type="warning" :closable="false"/>
    <el-table :data="review.lines" row-key="id" :expand-row-keys="expandedReviewRows" @expand-change="(_row:any,rows:any[])=>expandedReviewRows=rows.map(r=>String(r.id))" border class="review-lines" :row-class-name="({row}:any)=>row.allocations?.length?'':'no-review-sources'">

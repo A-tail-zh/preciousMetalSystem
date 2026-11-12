@@ -18,6 +18,7 @@ interface UserState {
   nickName: string
   avatar: string
   roles: string[]
+  roleNames: string[]
   permissions: string[]
 }
 
@@ -34,6 +35,7 @@ const useUserStore = defineStore(
       nickName: '',
       avatar: '',
       roles: [],
+      roleNames: [],
       permissions: []
     }),
     actions: {
@@ -41,6 +43,7 @@ const useUserStore = defineStore(
       login(userInfo: { username: string; password: string; code: string; uuid: string }) {
         this.sessionEpoch++
         this.sessionReady=false
+        this.roleNames=[]
         const username = userInfo.username.trim()
         const password = userInfo.password
         const code = userInfo.code
@@ -64,6 +67,7 @@ const useUserStore = defineStore(
           getInfo().then(res => {
             if(getToken()!==sessionToken||this.sessionEpoch!==sessionEpoch){reject(new Error("会话已失效或切换"));return}
             const user = res.user
+            this.roleNames = [...new Set((user.roles || []).map(role => role.roleName?.trim()).filter((name): name is string => !!name))]
             let avatar = user.avatar || ''
             if (!isHttp(avatar)) {
               avatar = (isEmpty(avatar)) ? defAva : import.meta.env.VITE_APP_BASE_API + avatar
@@ -100,7 +104,7 @@ const useUserStore = defineStore(
           })
         })
       },
-      clearSession() { this.sessionEpoch++; this.sessionReady=false; this.id=''; this.factoryId=null; cache.session.remove('sessionObj'); this.token=''; this.roles=[]; this.permissions=[]; removeToken() },
+      clearSession() { this.sessionEpoch++; this.sessionReady=false; this.id=''; this.factoryId=null; cache.session.remove('sessionObj'); this.token=''; this.roles=[]; this.roleNames=[]; this.permissions=[]; removeToken() },
       // 退出系统
       async logOut(expectedToken=getToken()):Promise<boolean> {
         if(!expectedToken||getToken()!==expectedToken)return false

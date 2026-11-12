@@ -7,7 +7,7 @@
         <FactoryNavigation @navigate="mobileMenuOpen=false" @logout="logout"/>
       </el-drawer>
       <div class="prototype-main">
-        <header class="prototype-header"><el-button v-if="isMobile" class="mobile-menu-toggle" aria-label="打开导航菜单" aria-haspopup="dialog" aria-controls="mobile-factory-navigation" :aria-expanded="mobileMenuOpen" @click="mobileMenuOpen=true"><el-icon><Menu/></el-icon><span>菜单</span></el-button><h1 class="page-heading">{{pageTitle}}</h1><div class="header-pending-reviews"><PendingReviews /></div><el-dropdown trigger="click" placement="bottom-end" @command="logout"><button class="profile-menu-trigger" type="button" aria-label="账户菜单"><span class="avatar"><i></i><b></b></span><span>{{ user.nickName || user.name || '管理员' }}</span></button><template #dropdown><el-dropdown-menu><el-dropdown-item command="logout">退出登录</el-dropdown-item></el-dropdown-menu></template></el-dropdown></header>
+        <header class="prototype-header"><el-button v-if="isMobile" class="mobile-menu-toggle" aria-label="打开导航菜单" aria-haspopup="dialog" aria-controls="mobile-factory-navigation" :aria-expanded="mobileMenuOpen" @click="mobileMenuOpen=true"><el-icon><Menu/></el-icon><span>菜单</span></el-button><h1 class="page-heading">{{pageTitle}}</h1><div class="header-pending-reviews"><PendingReviews /></div><el-dropdown trigger="click" placement="bottom-end" @command="logout"><button class="profile-menu-trigger" type="button" aria-label="账户菜单"><span class="avatar"><i></i><b></b></span><span class="profile-name" :title="profileLabel">{{ profileLabel }}</span></button><template #dropdown><el-dropdown-menu><el-dropdown-item command="logout">退出登录</el-dropdown-item></el-dropdown-menu></template></el-dropdown></header>
         <main><slot /></main>
       </div>
     </div>
@@ -24,6 +24,7 @@ import {useWindowSize,useMediaQuery} from '@vueuse/core'
 import {ElMessageBox} from 'element-plus'
 import useUserStore from '@/store/modules/user'
 const user = useUserStore(), router = useRouter(), route = useRoute()
+const profileLabel=computed(()=>{const name=user.nickName||user.name||'管理员';return user.roleNames.length?`${name}（${user.roleNames.join('、')}）`:name})
 const pageTitle=computed(()=>typeof route.meta.title==='string'?route.meta.title:'贵金属加工系统')
 const {height}=useWindowSize()
 const isMobile=useMediaQuery('(max-width: 768px)'),isLandscape=useMediaQuery('(orientation: landscape)'),mobileMenuOpen=ref(false)
@@ -40,6 +41,8 @@ async function logout() {
 <style scoped>
 .profile-menu-trigger{display:flex;align-items:center;gap:10px;border:0;background:transparent;cursor:pointer;color:inherit;font:inherit;padding:4px}
 
+.profile-name{max-width:280px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.profile-menu-trigger .avatar{flex-shrink:0}
 .prototype-frame { background:var(--business-canvas); min-height:var(--design-height,100vh); padding:0; font-family:var(--business-font); }
 .prototype-shell { display:flex; min-height:var(--design-height,100vh); background:var(--business-canvas); }
 .prototype-sidebar { background:#fff; width:var(--business-sidebar-width,220px); padding:0; margin:0; border-radius:0; line-height:normal; font-family:inherit; height:var(--design-height,100vh); position:sticky; top:0; flex-shrink:0; display:flex; flex-direction:column; border-right:1px solid var(--business-border); }

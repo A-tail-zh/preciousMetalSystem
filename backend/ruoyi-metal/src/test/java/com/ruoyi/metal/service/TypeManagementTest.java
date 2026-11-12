@@ -28,16 +28,17 @@ class TypeManagementTest {
         assertEquals("粉料",TypeManagementService.validName(TypeManagementService.Kind.MATERIAL,"粉料"));
         assertThrows(ServiceException.class,()->TypeManagementService.validName(TypeManagementService.Kind.METAL," "));
     }
-    @Test void productQuotationSnapshotBlocksRenameAndDelete(){
+    @Test void fixedProductTypeManagementIsRejected(){
         var jdbc=mock(JdbcTemplate.class);var scope=mock(FactoryScope.class);
         when(scope.isAdmin()).thenReturn(true);when(scope.resolveFactory(7L)).thenReturn(7L);
-        when(jdbc.queryForList("SELECT id id,name,version FROM metal_product_type WHERE id=? AND factory_id=? FOR UPDATE",10L,7L)).thenReturn(List.of(Map.of("id",10L,"name","环","version",0)));
-        when(jdbc.queryForObject(anyString(),eq(Integer.class),any(Object[].class))).thenReturn(0);
-        when(jdbc.queryForObject(contains("metal_saved_quotation"),eq(Integer.class),eq(7L),eq("环"))).thenReturn(1);
         var service=new TypeManagementService(jdbc,scope);
-        assertEquals(409,assertThrows(ServiceException.class,()->service.edit("product",10L,new TypeManagementService.Write(7L,"杆",0,null))).getCode());
-        assertEquals(409,assertThrows(ServiceException.class,()->service.remove("product",new TypeManagementService.Delete(7L,List.of(new TypeManagementService.Item(10L,0))))).getCode());
+        assertEquals(400,assertThrows(ServiceException.class,()->service.list("product",7L,"",1,16)).getCode());
+        assertEquals(400,assertThrows(ServiceException.class,()->service.create("product",new TypeManagementService.Write(7L,"环",0,null))).getCode());
+        assertEquals(400,assertThrows(ServiceException.class,()->service.edit("product",10L,new TypeManagementService.Write(7L,"杆",0,null))).getCode());
+        assertEquals(400,assertThrows(ServiceException.class,()->service.remove("product",new TypeManagementService.Delete(7L,List.of(new TypeManagementService.Item(10L,0))))).getCode());
+        assertEquals(400,assertThrows(ServiceException.class,()->service.formulas()).getCode());
         verify(jdbc,never()).update(anyString(),any(Object[].class));
+        verify(jdbc,never()).queryForList(anyString(),any(Object[].class));
     }
     @Test void materialCategoryAcceptsOnlyExactThreeChoices(){
         for(String category:List.of("旧料","粉料","块料"))assertEquals(category,TypeManagementService.validCategory(TypeManagementService.Kind.MATERIAL,category));
@@ -56,18 +57,17 @@ class TypeManagementTest {
         assertEquals(409,assertThrows(ServiceException.class,()->service.remove("material",new TypeManagementService.Delete(7L,List.of(new TypeManagementService.Item(10L,0))))).getCode());
         verify(jdbc,never()).update(anyString(),any(Object[].class));
     }
-    @Test void processReferenceBlocksRenameAndAtomicBatchDelete(){
+    @Test void processTypeManagementIsRejected(){
         var jdbc=mock(JdbcTemplate.class);var scope=mock(FactoryScope.class);
         when(scope.isAdmin()).thenReturn(true);when(scope.resolveFactory(7L)).thenReturn(7L);
-        for(long id:List.of(10L,11L))when(jdbc.queryForList("SELECT type_id id,type_name name,version FROM metal_process_type WHERE type_id=? AND factory_id=? FOR UPDATE",id,7L)).thenReturn(List.of(Map.of("id",id,"name","打磨"+id,"version",0)));
-        when(jdbc.queryForList("SELECT process_id FROM metal_process WHERE process_type=? LIMIT 1 FOR UPDATE",11L)).thenReturn(List.of(Map.of("process_id",1L)));
         var service=new TypeManagementService(jdbc,scope);
-        assertEquals(409,assertThrows(ServiceException.class,()->service.edit("process",11L,new TypeManagementService.Write(7L,"清洗",0,null))).getCode());
-        assertEquals(409,assertThrows(ServiceException.class,()->service.remove("process",new TypeManagementService.Delete(7L,List.of(new TypeManagementService.Item(10L,0),new TypeManagementService.Item(11L,0))))).getCode());
-        assertEquals(409,assertThrows(ServiceException.class,()->service.remove("process",new TypeManagementService.Delete(7L,List.of(new TypeManagementService.Item(10L,1))))).getCode());
+        assertEquals(400,assertThrows(ServiceException.class,()->service.list("process",7L,"",1,16)).getCode());
+        assertEquals(400,assertThrows(ServiceException.class,()->service.create("process",new TypeManagementService.Write(7L,"打磨",0,null))).getCode());
+        assertEquals(400,assertThrows(ServiceException.class,()->service.edit("process",10L,new TypeManagementService.Write(7L,"清洗",0,null))).getCode());
+        assertEquals(400,assertThrows(ServiceException.class,()->service.remove("process",new TypeManagementService.Delete(7L,List.of(new TypeManagementService.Item(10L,0))))).getCode());
         verify(jdbc,never()).update(anyString(),any(Object[].class));
+        verify(jdbc,never()).queryForList(anyString(),any(Object[].class));
         assertEquals("type_name",TypeManagementService.Kind.of("process").nameColumn());
-        assertEquals("打磨",TypeManagementService.validName(TypeManagementService.Kind.PROCESS," 打磨 "));
     }
     @Test void materialPermissionDoesNotGrantTypeWrites(){
         var jdbc=mock(JdbcTemplate.class);var scope=mock(FactoryScope.class);

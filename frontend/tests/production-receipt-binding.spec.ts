@@ -6,7 +6,7 @@ test('receipt types derive from frozen output categories and never guess unknown
 })
 
 async function choose(page:Page,picker:Locator,name:string){
- await picker.press('ArrowDown');const id=await picker.getAttribute('aria-controls')
+ await expect(picker).toBeEnabled();await picker.press('ArrowDown');const id=await picker.getAttribute('aria-controls')
  await page.locator(`[id="${id}"]`).getByRole('option',{name,exact:true}).click()
 }
 
@@ -37,25 +37,25 @@ async function fixture(page:Page,baseURL:string,legacy=false,missingBatch=false)
  return {dialog,mutations}
 }
 
-for(const [batch,expected] of [['PC6 / 金环 / 酸洗','加工原材料入库'],['PC7 / 金环 / 融定','半成品入库'],['PC8 / 金环 / 成型','成品入库']])test(`batch ${batch} automatically fixes receipt type and linked IDs`,async({page,baseURL})=>{
+for(const [id,record,expected] of [['6','历史记录 / 酸洗 / 加工甲 / 6','加工原材料入库'],['7','历史记录 / 融定 / 加工乙 / 7','半成品入库'],['8','历史记录 / 成型 / 加工丙 / 8','成品入库']])test(`processing record ${record} automatically fixes receipt type and linked IDs`,async({page,baseURL})=>{
  const {dialog,mutations}=await fixture(page,baseURL!)
  await choose(page,dialog.getByRole('combobox',{name:'单据类型',exact:true}),'半成品入库')
  await choose(page,dialog.getByRole('combobox',{name:'生产工单',exact:true}),'GD7')
- await choose(page,dialog.getByRole('combobox',{name:'加工批次',exact:true}),batch)
+ await choose(page,dialog.getByRole('combobox',{name:'工序加工记录',exact:true}),record)
  const picker=dialog.getByRole('combobox',{name:'单据类型',exact:true});await picker.press('ArrowDown')
- await expect(page.locator(`[id="${await picker.getAttribute('aria-controls')}"]`).getByRole('option')).toHaveText([expected]);await picker.press('Escape')
- await expect(dialog.getByRole('textbox',{name:'批次加工人员',exact:true})).toHaveValue(batch.startsWith('PC6')?'加工甲':batch.startsWith('PC7')?'加工乙':'加工丙')
+ await expect(page.locator(`[id="${await picker.getAttribute('aria-controls')}"]`).getByRole('option')).toHaveText(expected==='半成品入库'?[expected,'加工原材料入库']:[expected]);await picker.press('Escape')
+ await expect(dialog.getByRole('textbox',{name:'批次加工人员',exact:true})).toHaveValue(id==='6'?'加工甲':id==='7'?'加工乙':'加工丙')
  await choose(page,dialog.getByRole('combobox',{name:'指定复验人员',exact:true}),'仓管')
  await dialog.getByRole('button',{name:'保存草稿',exact:true}).click();await expect(dialog).not.toBeVisible()
  expect(mutations).toHaveLength(1);const saved=mutations[0].body
- expect(saved.orderItemId).toBe('31');expect(saved.orderStepId).toBe(batch.startsWith('PC6')?'41':batch.startsWith('PC7')?'42':'43');expect(saved.processorId).toBe(batch.startsWith('PC6')?'81':batch.startsWith('PC7')?'82':'83')
- expect(saved.type).toBe(receiptTypeFor(batch.startsWith('PC6')?'RAW':batch.startsWith('PC7')?'SEMI':'PRODUCT'))
+ expect(saved.orderItemId).toBe('31');expect(saved.orderStepId).toBe(id==='6'?'41':id==='7'?'42':'43');expect(saved.processorId).toBe(id==='6'?'81':id==='7'?'82':'83')
+ expect(saved.type).toBe(receiptTypeFor(id==='6'?'RAW':id==='7'?'SEMI':'PRODUCT'))
 })
 
 test('legacy wrong-type draft has a clear warning and can explicitly correct type without rebinding batch',async({page,baseURL})=>{
  const {dialog,mutations}=await fixture(page,baseURL!,true)
  await expect(dialog.getByRole('alert').filter({hasText:'加工原材料入库'}).first()).toBeVisible()
- await expect(dialog.getByRole('combobox',{name:'加工批次',exact:true})).toBeDisabled()
+ await expect(dialog.getByRole('combobox',{name:'工序加工记录',exact:true})).toBeDisabled()
  await dialog.getByRole('button',{name:'提交复验',exact:true}).click();expect(mutations).toHaveLength(0)
  await choose(page,dialog.getByRole('combobox',{name:'单据类型',exact:true}),'加工原材料入库')
  await page.getByRole('dialog',{name:'确认变更',exact:true}).getByRole('button',{name:'确定',exact:true}).click()
@@ -66,8 +66,8 @@ test('legacy wrong-type draft has a clear warning and can explicitly correct typ
 
 test('legacy draft without a bound batch can select one and save all linked fields',async({page,baseURL})=>{
  const {dialog,mutations}=await fixture(page,baseURL!,true,true)
- await expect(dialog.getByRole('combobox',{name:'加工批次',exact:true})).toBeEnabled()
- await choose(page,dialog.getByRole('combobox',{name:'加工批次',exact:true}),'PC7 / 金环 / 融定')
+ await expect(dialog.getByRole('combobox',{name:'工序加工记录',exact:true})).toBeEnabled()
+ await choose(page,dialog.getByRole('combobox',{name:'工序加工记录',exact:true}),'历史记录 / 融定 / 加工乙 / 7')
  await dialog.getByRole('button',{name:'保存草稿',exact:true}).click();await expect(dialog).not.toBeVisible()
  expect(mutations[0].body).toMatchObject({type:'SEMI_IN',executionId:'7',orderItemId:'31',orderStepId:'42',processorId:'82'})
 })

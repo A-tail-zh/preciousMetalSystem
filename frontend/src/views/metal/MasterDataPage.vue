@@ -55,13 +55,12 @@
     <template v-if="kind==='product'">
      <el-form-item v-if="readonly" label="规格型号"><el-input class="product-specification-input" :model-value="form.specification??automaticSpecification" type="textarea" :autosize="{minRows:1}" readonly/></el-form-item>
      <el-form-item label="金属类型" prop="metalTypeId" :rules="[requiredRule('金属类型',true,true)]"><MetalTypeSelect v-if="dialogOpen" :key="editEpoch" v-model="form.metalTypeId" :factory-id="form.factoryId" :disabled="readonly||saving||legacyProduct" @loaded="metalOptions=$event" @changed="metalChanged" @mutating="metalMutation=$event"/></el-form-item>
-     <el-form-item label="产品类型" prop="productType" :rules="[requiredRule('产品类型',true,true)]" :error="catalogTypeError||(!catalogTypesBusy&&catalogTypesLoaded&&form.productType&&!catalogTypeAllowed?'所选类型已失效，请重新选择':'')">
-      <el-select v-model="productTypeChoice" style="width:100%" :disabled="!form.factoryId" :loading="catalogTypesBusy" :placeholder="form.factoryId?'请选择产品类型':'请先选择所属工厂'" no-data-text="本厂暂无产品类型，请先在类型管理中添加" @visible-change="v=>{resetSelectScroll(v);if(v)void loadCatalogTypes()}" @change="categoryChanged">
+     <el-form-item label="产品类型" prop="productType" :rules="[requiredRule('产品类型',true,true)]" :error="!legacyProduct&&form.productType&&!productTypes.includes(form.productType)?'所选类型已失效，请重新选择':''">
+      <el-select v-model="productTypeChoice" style="width:100%" :disabled="!form.factoryId" :placeholder="form.factoryId?'请选择产品类型':'请先选择所属工厂'" @visible-change="resetSelectScroll" @change="categoryChanged">
        <el-option v-if="legacyProduct" :value="'legacy:'+form.productType" :label="form.productType+'（旧版）'" disabled/>
-       <el-option v-for="option in catalogTypeOptions" :key="option.id" :value="option.name" :label="option.name"/>
-       <el-option v-if="!legacyProduct&&form.productType&&!catalogTypeOptions.some(o=>o.name===form.productType)" :value="form.productType" :label="form.productType+(readonly?'':form.id&&form.productType===originalCatalogType?'（历史类型）':'（已失效，请重新选择）')" disabled/>
+       <el-option v-for="type in productTypes" :key="type" :value="type" :label="type"/>
+       <el-option v-if="!legacyProduct&&form.productType&&!productTypes.includes(form.productType)" :value="form.productType" :label="form.productType+(readonly?'':'（已失效，请重新选择）')" disabled/>
       </el-select>
-      <el-button v-if="catalogTypeError" link type="primary" :disabled="catalogTypesBusy" @click="loadCatalogTypes">重试加载产品类型</el-button>
      </el-form-item>
      <p v-if="legacyProduct" class="process-hint">旧版产品保留原字段及计算值。修改几何信息请明确选择新版产品类型并补齐字段；有业务引用时仍受保护。</p>
      <el-form-item :rules="[requiredRule(`${dimension.label}（${dimension.unit??'cm'}）`,true,false),{validator:positiveDecimal,trigger:'blur'}]" v-for="dimension in dimensionFields" :key="dimension.key" :label="`${dimension.label}（${dimension.unit??'cm'}）`" :prop="`dimensions.${dimension.key}`"><BusinessDecimalInput v-model="form.dimensions![dimension.key]" :disabled="legacyProduct" inputmode="decimal"/></el-form-item>
@@ -82,15 +81,16 @@
      <el-form-item label="显示顺序" prop="roleSort"><el-input-number v-model="form.roleSort" :min="0" :precision="0"/></el-form-item>
     </template>
     <el-form-item v-if="['staff','role'].includes(kind)" label="状态"><el-switch v-model="form.status" active-value="0" inactive-value="1" :disabled="form.id==='1'"/></el-form-item>
-    <el-form-item v-if="kind==='role'" label="菜单和按钮权限"><div class="role-permission-tree" role="region" aria-label="菜单和按钮权限列表" tabindex="0"><el-tree ref="treeRef" :data="menuTree" node-key="id" :props="{label:'name',children:'children'}" show-checkbox check-strictly default-expand-all @check="checkMenu"/></div></el-form-item>
+    <el-form-item v-if="kind==='role'" label="菜单和按钮权限"><div class="role-permission-tree" role="region" aria-label="菜单和按钮权限列表" tabindex="0"><el-tree :key="editEpoch" ref="treeRef" :data="menuTree" :default-checked-keys="form.menuIds??[]" node-key="id" :props="{label:'name',children:'children'}" show-checkbox check-strictly default-expand-all @check="checkMenu"/></div></el-form-item>
    </el-form>
-   <el-alert v-if="needsReload" title="资料已变化，请关闭后重新加载并核对，当前输入已保留" type="warning" :closable="false"/><el-alert v-if="uncertain" title="提交结果待确认，当前输入已保留；请先核实结果，避免重复新增" type="warning" :closable="false"/><el-button v-if="uncertain" :disabled="saving" @click="acknowledgeUnknown">已核实结果，关闭草稿</el-button><template #footer><el-button :disabled="saving||uncertain" @click="dialogOpen=false">{{readonly?'关闭':'取消'}}</el-button><el-button v-if="!readonly" type="primary" :loading="saving" :disabled="needsReload||uncertain||(kind==='product'&&!catalogTypeReady)" @click="submit">确定</el-button></template>
+   <el-alert v-if="needsReload" title="资料已变化，请关闭后重新加载并核对，当前输入已保留" type="warning" :closable="false"/><el-alert v-if="uncertain" title="提交结果待确认，当前输入已保留；请先核实结果，避免重复新增" type="warning" :closable="false"/><el-button v-if="uncertain" :disabled="saving" @click="acknowledgeUnknown">已核实结果，关闭草稿</el-button><template #footer><el-button :disabled="saving||uncertain" @click="dialogOpen=false">{{readonly?'关闭':'取消'}}</el-button><el-button v-if="!readonly" type="primary" :loading="saving" :disabled="needsReload||uncertain||(kind==='product'&&!productTypeReady)" @click="submit">确定</el-button></template>
   </el-dialog>
   <el-dialog v-model="passwordOpen" title="重置密码" width="500px" :close-on-click-modal="false" :show-close="!saving" :close-on-press-escape="!saving"><el-alert v-if="needsReload" title="资料已变化，请关闭后重新加载并核对" type="warning" :closable="false"/><el-input v-model="newPassword" type="password" show-password placeholder="请输入至少8位的新密码" autocomplete="new-password"/><template #footer><el-button :disabled="saving" @click="passwordOpen=false">取消</el-button><el-button type="primary" :loading="saving" :disabled="needsReload||uncertain" @click="resetPassword">确定</el-button></template></el-dialog>
  </section>
 </template>
 <script setup lang="ts">
 import BusinessDecimalInput from '@/components/BusinessDecimalInput.vue'
+import CatalogConfiguration from './CatalogConfiguration.vue'
 
 import {requiredRule} from '@/utils/input-validation'
 import {textRules,decimalError,fieldRule,applyFieldErrors,passwordError} from '@/utils/input-validation'
@@ -110,11 +110,10 @@ import type {FormInstance,FormRules,TreeInstance,TableInstance} from 'element-pl
 import useUserStore from '@/store/modules/user'
 import {masterList,masterDetail,masterSave,masterRemove,masterAction,masterOptions} from '@/api/metal/master'
 import type {MasterRow,Option} from '@/api/metal/master'
-import {masterConfigs,productFields,processTypes} from './master-config'
+import {masterConfigs,productFields,productTypes,processTypes} from './master-config'
 import type {MasterKind} from './master-config'
 import MetalTypeSelect from './MetalTypeSelect.vue'
 import {businessValue,decimalText} from '@/utils/business-decimal'
-import CatalogConfiguration from './CatalogConfiguration.vue'
 import ProcessTypeControl from './ProcessTypeControl.vue'
 const processTypeControl=ref<InstanceType<typeof ProcessTypeControl>>()
 const typeOptions=ref<Option[]>([]),editTypeOptions=ref<Option[]>([]),listFactory=ref('')
@@ -141,20 +140,7 @@ const formRef=ref<FormInstance>(),treeRef=ref<TreeInstance>(),tableRef=ref<Table
 const factories=ref<Option[]>([]),products=ref<Option[]>([]),processes=ref<Option[]>([]),roles=ref<Option[]>([]),menus=ref<Option[]>([]),routeMaterials=ref<Record<string,any>[]>([])
 const blank=():Partial<MasterRow>=>({name:'',code:'',specification:'',description:'',dimensions:{},processes:[],storageConfiguration:kind==='product'?{steps:[]}:undefined,productIds:[],roleIds:[],menuIds:[],status:'0',roleSort:0,volume:null,purity:null,weight:null,...(kind==='product'?{calculationVersion:2}:{})})
 const form=reactive<Partial<MasterRow>>(blank())
-const catalogTypeOptions=ref<Option[]>([]),catalogTypesBusy=ref(false),catalogTypesLoaded=ref(false),catalogTypeError=ref(''),originalCatalogType=ref<string>()
-const catalogTypeKey=kind==='product'?'productType':'materialType'
-const catalogLabel=kind==='product'?'产品类型':'物料类型'
-let catalogTypeEpoch=0
-const catalogTypeAllowed=computed(()=>!!form[catalogTypeKey]&&(catalogTypeOptions.value.some(o=>o.name===form[catalogTypeKey])||!!form.id&&form[catalogTypeKey]===originalCatalogType.value&&(kind!=='product'||form.calculationVersion===originalProduct.value?.calculationVersion)))
-const catalogTypeReady=computed(()=>!!form.factoryId&&catalogTypesLoaded.value&&!catalogTypesBusy.value&&!catalogTypeError.value&&catalogTypeAllowed.value)
-async function loadCatalogTypes(){
- if(kind!=='product'||!dialogOpen.value||readonly.value||!form.factoryId||saving.value||uncertain.value||!sessionCurrent())return
- const round=++catalogTypeEpoch,edit=editEpoch,factory=form.factoryId,account=identity()
- const current=()=>!disposed&&round===catalogTypeEpoch&&edit===editEpoch&&dialogOpen.value&&factory===form.factoryId&&account===identity()&&sessionCurrent()
- catalogTypesBusy.value=true;catalogTypeError.value='';catalogTypesLoaded.value=false
- try{const result=await masterOptions(kind==='product'?'product-types':'material-types',{factoryId:factory},current,true);if(current()){catalogTypeOptions.value=result.data;catalogTypesLoaded.value=true}}
- catch(error:any){if(current()){catalogTypeOptions.value=[];catalogTypeError.value=error.message||catalogLabel+'加载失败，请重试'}}finally{if(current())catalogTypesBusy.value=false}
-}
+const productTypeReady=computed(()=>!!form.factoryId&&(legacyProduct.value||(!form.productType?false:productTypes.includes(form.productType))))
 
 const dimensionFields=computed(()=>productFields(form))
 const automaticSpecification=computed(()=>dimensionFields.value.filter(d=>form.dimensions?.[d.key]).map(d=>d.label+form.dimensions![d.key]+(d.unit??'cm')).join('；'))
@@ -215,7 +201,7 @@ async function readList(background:boolean,refresh?:InventoryRefreshContext){
  catch{if(current())loadFailed.value=true;return false}
  finally{if(valid()){loading.value=false;if(manualPending){manualPending=false;void load()}}}
 }
-function reset(){processTypesEpoch++;processTypesLoading.value=false;processTypesFailed.value=false;catalogTypeEpoch++;catalogTypeOptions.value=[];catalogTypesBusy.value=false;catalogTypesLoaded.value=false;catalogTypeError.value='';originalCatalogType.value=undefined;metalMutation.value=false;typeMaintenanceOpen.value=false;treeRef.value?.setCheckedKeys([]);for(const key of Object.keys(form))delete(form as Record<string,unknown>)[key];Object.assign(form,blank());formRef.value?.clearValidate()}
+function reset(){processTypesEpoch++;processTypesLoading.value=false;processTypesFailed.value=false;metalMutation.value=false;typeMaintenanceOpen.value=false;treeRef.value?.setCheckedKeys([]);for(const key of Object.keys(form))delete(form as Record<string,unknown>)[key];Object.assign(form,blank());formRef.value?.clearValidate()}
 function categoryChanged(){form.calculationVersion=2;form.dimensions=Object.fromEntries(dimensionFields.value.map(d=>[d.key,'']));form.volume=null;form.weight=null}
 const editLoading=ref(false),editError=ref(false),rolesLoading=ref(false)
 let editEpoch=0,roleEpoch=0,disposed=false,retryEdit:()=>void=()=>{},openedId='',openedVersion:number|undefined,openedOptions:Record<string,any>={}
@@ -261,7 +247,6 @@ async function probeEditor(refresh:InventoryRefreshContext){
  const optionsBaseline=openedOptions,round=editEpoch,account=identity(),password=passwordOpen.value,id=password?passwordRow.value?.id:openedId,version=password?passwordRow.value?.version:openedVersion
  const current=()=>!disposed&&refresh.isCurrent()&&round===editEpoch&&account===identity()&&sessionCurrent()&&!saving.value&&!uncertain.value&&!metalMutation.value&&!typeMaintenanceOpen.value&&optionsBaseline===openedOptions&&(password?passwordOpen.value:dialogOpen.value)
  if(id){const response=await masterDetail(config.endpoint,id,!can(config.permission+':query'),current,true);if(current()&&response.data.version!==version)needsReload.value=true}
- if(!password&&current()&&kind==='product')await loadCatalogTypes()
  if(!password&&current()){const options=await editorOptions(form,readonly.value,current,true);if(current()&&JSON.stringify(options)!==JSON.stringify(openedOptions))needsReload.value=true}
 }
 const {failed:refreshFailed}=useInventoryRefresh(refresh=>readList(true,refresh),computed(()=>dialogOpen.value||passwordOpen.value),{allowed:canRead,reset:resetAccess},{probe:probeEditor,paused:computed(()=>loading.value||saving.value||deleting.value||!!statusBusy.value||exporting.value||editLoading.value||rolesLoading.value||uncertain.value||metalMutation.value||typeMaintenanceOpen.value)})
@@ -270,8 +255,8 @@ watch(dialogOpen,open=>{if(!open&&!saving.value){++editEpoch;++roleEpoch;editLoa
 onBeforeUnmount(()=>{disposed=true;++editEpoch;++roleEpoch;++sequence;++operationEpoch})
 async function factoryChanged(){if(saving.value||uncertain.value)return;if(kind!=='staff'){
  const epoch=editEpoch,ticket=++roleEpoch,factory=form.factoryId,account=identity(),current=()=>!disposed&&epoch===editEpoch&&ticket===roleEpoch&&account===identity()&&factory===form.factoryId
- if(kind==='product'){catalogTypeEpoch++;form[catalogTypeKey]=undefined;if(kind==='product')categoryChanged();catalogTypeOptions.value=[];catalogTypesLoaded.value=false;catalogTypesBusy.value=false;catalogTypeError.value='';void loadCatalogTypes()}
- form.productIds=[];form.metalTypeId=undefined;form.processType=undefined;form.processes=[];form.storageConfiguration=kind==='product'?{steps:[]}:undefined;routeMaterials.value=[];products.value=[];processes.value=[];metalRules.value=[];metalOptions.value=[];editTypeOptions.value=[];cancelPreview();rolesLoading.value=true
+ if(kind==='product'){form.productType=undefined;categoryChanged()}
+ form.productIds=[];form.metalTypeId=undefined;form.processType=undefined;form.processes=[];form.storageConfiguration=kind==='product'?{steps:[]}:form.storageConfiguration;products.value=[];processes.value=[];routeMaterials.value=[];metalRules.value=[];metalOptions.value=[];editTypeOptions.value=[];cancelPreview();rolesLoading.value=true
  try{const opts=await editorOptions(form,false,current);if(current()){products.value=opts.products;processes.value=opts.processes;routeMaterials.value=(opts as any).materials??[];metalRules.value=opts.rules;editTypeOptions.value=opts.types;openedOptions=JSON.parse(JSON.stringify(opts))}}finally{if(current())rolesLoading.value=false}return}
 const epoch=editEpoch,ticket=++roleEpoch,factory=form.factoryId,account=identity(),current=()=>!disposed&&epoch===editEpoch&&ticket===roleEpoch&&account===identity()&&sessionCurrent()&&factory===form.factoryId;form.roleIds=[];roles.value=[];rolesLoading.value=true;try{const result=factory?(await masterOptions('roles',{factoryId:factory},current)).data:[];if(current()){roles.value=result;openedOptions.roles=JSON.parse(JSON.stringify(result))}}finally{if(current())rolesLoading.value=false}}
 async function openEditor(row?:MasterRow,view=false){
@@ -283,18 +268,20 @@ async function openEditor(row?:MasterRow,view=false){
   if(!row&&kind==='staff')draft.password='12345678'
   if(!row&&['product','line','material','process'].includes(kind))draft.factoryId=listFactory.value
   for(const field of ['productIds','roleIds','menuIds'] as const)if(draft[field])draft[field]=draft[field]!.map(String)
+  if(kind==='product'&&draft.processes)draft.processes=draft.processes.map(s=>({...s,processId:s.processId==null?'':String(s.processId)}))
+  if(kind==='product'&&draft.storageConfiguration?.steps)draft.storageConfiguration={...draft.storageConfiguration,steps:draft.storageConfiguration.steps.map((s:any)=>({...s,processId:s.processId==null?'':String(s.processId),outputMaterialId:s.outputMaterialId==null||s.outputMaterialId===''?s.outputMaterialId:String(s.outputMaterialId)}))}
   const opts=await editorOptions(draft,view,valid)
   if(!view&&['line','staff','role','product','material','process'].includes(kind)&&!isAdmin.value)draft.factoryId=opts.factories[0]?.id
   if(!valid())return
-  readonly.value=view;reset();Object.assign(form,draft);originalCatalogType.value=draft[catalogTypeKey];originalDimensions.value={...(draft.dimensions??{})};originalProduct.value={...draft,dimensions:{...(draft.dimensions??{})}};factories.value=opts.factories;products.value=opts.products;processes.value=opts.processes;routeMaterials.value=(opts as any).materials??[];roles.value=opts.roles;menus.value=opts.menus;metalRules.value=opts.rules??[];editTypeOptions.value=opts.types
-  openedId=draft.id??'';openedVersion=draft.version;openedOptions=JSON.parse(JSON.stringify(opts));dialogOpen.value=true;if(kind==='product'&&!view)void loadCatalogTypes();await nextTick();if(valid()){treeRef.value?.setCheckedKeys(form.menuIds??[]);formRef.value?.clearValidate()}
+  readonly.value=view;reset();Object.assign(form,draft);if(kind==='product'&&!form.storageConfiguration)form.storageConfiguration={steps:(form.processes??[]).map((s,i)=>({processId:s.processId,sequenceNo:i+1,measurementMode:s.measurementMode||'PIECE'}))};originalDimensions.value={...(draft.dimensions??{})};originalProduct.value={...draft,dimensions:{...(draft.dimensions??{})}};factories.value=opts.factories;products.value=opts.products;processes.value=opts.processes;routeMaterials.value=(opts as any).materials??[];roles.value=opts.roles;menus.value=opts.menus;metalRules.value=opts.rules??[];editTypeOptions.value=opts.types
+  openedId=draft.id??'';openedVersion=draft.version;openedOptions=JSON.parse(JSON.stringify(opts));dialogOpen.value=true;await nextTick();if(valid()){formRef.value?.clearValidate()}
  }catch{if(valid()){reset();editError.value=true}}finally{if(valid())editLoading.value=false}
 }
 async function openAdd(){await openEditor()}
 async function openRecord(row:MasterRow,view=false){await openEditor(row,view)}
 function moveStep(index:number,direction:number){if(readonly.value||saving.value)return;const list=form.processes!;if(index+direction<0||index+direction>=list.length)return;[list[index],list[index+direction]]=[list[index+direction],list[index]]}
-async function submit(){if(typeMaintenanceOpen.value)return;if(kind==='product'&&!catalogTypeReady.value)return;if(needsReload.value||uncertain.value||saving.value||editLoading.value||rolesLoading.value||!dialogOpen.value||readonly.value||!can(`${config.permission}:${form.id?'edit':'add'}`))return;const epoch=editEpoch,account=identity(),current=()=>!disposed&&epoch===editEpoch&&account===identity()&&can(`${config.permission}:${openedId?'edit':'add'}`)&&dialogOpen.value;saving.value=true;try{if(!await formRef.value?.validate().catch(()=>false)||!current()||needsReload.value||String(form.id??'')!==openedId)return;if(kind==='product'){if(form.dimensions?.outerDiameter&&Number(form.dimensions.outerDiameter)<=Number(form.dimensions.innerDiameter)){ElMessage.error('外径必须大于内径');return}const steps=form.processes??[];if(steps.some(s=>!s.processId||!decimalOk(s.loss)||(s.lossUnit!=='G_PER_PIECE'&&Number(s.loss)>100))||new Set(steps.map(s=>s.processId)).size!==steps.length){ElMessage.error('请选择不重复工序并填写0至100的损耗百分比');return}}
- const payload=JSON.parse(JSON.stringify(form)) as Partial<MasterRow>;delete payload.createBy;delete payload.createTime;delete payload.updateTime;delete payload.factoryName;delete payload.roleNames;delete payload.productNames;if(kind==='product'){delete payload.specification;delete payload.category;delete payload.volume;delete payload.weight}if(kind==='material'){payload.name=payload.name?.trim();delete payload.materialType;delete payload.materialCategory;}if(kind==='line'&&!payload.factoryId)payload.factoryId=null;if(kind==='role')payload.menuIds=treeRef.value?.getCheckedKeys().map(String)??[];for(const key of ['volume','purity','weight'] as const)if(payload[key]==='')payload[key]=null;const added=!openedId;if(openedId)payload.version=openedVersion;await masterSave(config.endpoint,payload,current);if(!current())return;ElMessage.success(added?'添加成功':'修改成功');dialogOpen.value=false;if(added)query.pageNum=['process','material'].includes(kind)?Math.max(1,Math.ceil((total.value+1)/query.pageSize)):1;await load()}catch(error:any){if(current()){uncertain.value=!!error?.isAxiosError&&(!error.response||error.response.status>=500);if(/版本|重新加载|刷新/.test(error?.message??''))needsReload.value=true;applyFieldErrors(formRef.value,error)}}finally{if(!disposed&&epoch===editEpoch&&account===identity())saving.value=false}}
+async function submit(){if(typeMaintenanceOpen.value)return;if(kind==='product'&&!productTypeReady.value)return;if(needsReload.value||uncertain.value||saving.value||editLoading.value||rolesLoading.value||!dialogOpen.value||readonly.value||!can(`${config.permission}:${form.id?'edit':'add'}`))return;const epoch=editEpoch,account=identity(),current=()=>!disposed&&epoch===editEpoch&&account===identity()&&can(`${config.permission}:${openedId?'edit':'add'}`)&&dialogOpen.value;saving.value=true;try{if(!await formRef.value?.validate().catch(()=>false)||!current()||needsReload.value||String(form.id??'')!==openedId)return;if(kind==='product'){if(form.dimensions?.outerDiameter&&Number(form.dimensions.outerDiameter)<=Number(form.dimensions.innerDiameter)){ElMessage.error('外径必须大于内径');return}const steps=form.processes??[];const route=form.storageConfiguration?.steps??[];if(!steps.length||steps.length!==route.length||steps.some(s=>!s.processId||!decimalOk(s.loss)||(s.lossUnit!=='G_PER_PIECE'&&Number(s.loss)>100))||new Set(steps.map(s=>s.processId)).size!==steps.length){ElMessage.error('请选择不重复工序并填写0至100的损耗百分比');return}if(route.some((s:any)=>!s.outputCategory||!s.measurementMode||s.outputCategory==='RAW'&&(!s.outputMaterialId||!s.outputForm))){ElMessage.error('请补齐各工序产出类别与计量配置');return}steps.forEach((s,i)=>{s.measurementMode=route[i].measurementMode||s.measurementMode})}
+ const payload=JSON.parse(JSON.stringify(form)) as Partial<MasterRow>;delete payload.createBy;delete payload.createTime;delete payload.updateTime;delete payload.factoryName;delete payload.roleNames;delete payload.productNames;if(kind==='product'){delete payload.specification;delete payload.category;delete payload.volume;delete payload.weight;if(payload.storageConfiguration){const cfg={...payload.storageConfiguration};delete cfg.locked;delete cfg.materials;payload.storageConfiguration=cfg}}if(kind==='material'){payload.name=payload.name?.trim();delete payload.materialType;delete payload.materialCategory;}if(kind==='line'&&!payload.factoryId)payload.factoryId=null;if(kind==='role'){if(!treeRef.value){ElMessage.error('权限列表尚未就绪，请关闭后重试');return}payload.menuIds=treeRef.value.getCheckedKeys().map(String);}for(const key of ['volume','purity','weight'] as const)if(payload[key]==='')payload[key]=null;const added=!openedId;if(openedId)payload.version=openedVersion;await masterSave(config.endpoint,payload,current);if(!current())return;ElMessage.success(added?'添加成功':'修改成功');dialogOpen.value=false;if(added)query.pageNum=['process','material'].includes(kind)?Math.max(1,Math.ceil((total.value+1)/query.pageSize)):1;await load()}catch(error:any){if(current()){uncertain.value=!!error?.isAxiosError&&(!error.response||error.response.status>=500);if(/版本|重新加载|刷新/.test(error?.message??''))needsReload.value=true;applyFieldErrors(formRef.value,error)}}finally{if(!disposed&&epoch===editEpoch&&account===identity())saving.value=false}}
 function mutationCurrent(permission:string){const round=++operationEpoch,account=identity();return()=>!disposed&&round===operationEpoch&&account===identity()&&can(permission)}
 async function remove(targets:MasterRow[]){if(deleting.value||saving.value||statusBusy.value||uncertain.value||!targets.length||!can(`${config.permission}:remove`))return;const ids=targets.map(r=>r.id),current=mutationCurrent(`${config.permission}:remove`);deleting.value=true;try{await ElMessageBox.confirm(`确认删除选中的${ids.length}条记录？`,'删除确认',{type:'warning',confirmButtonText:'确定',cancelButtonText:'取消'});if(!current())return;await masterRemove(config.endpoint,ids,current);if(!current())return;ElMessage.success('删除成功');query.pageNum=Math.min(query.pageNum,Math.max(1,Math.ceil((total.value-ids.length)/query.pageSize)));await load()}catch{}finally{if(current())deleting.value=false}}
 async function changeStatus(row:MasterRow,value:unknown){if(statusBusy.value||saving.value||deleting.value||uncertain.value||!can(`${config.permission}:edit`))return;const current=mutationCurrent(`${config.permission}:edit`),payload={id:row.id,version:row.version,status:String(value)};statusBusy.value=row.id;try{await masterAction(config.endpoint,'changeStatus',payload,current);if(current())await load()}catch{}finally{if(current())statusBusy.value=''}}

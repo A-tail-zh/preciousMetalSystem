@@ -14,8 +14,6 @@ import com.ruoyi.metal.service.TypeManagementService;
 public class TypeManagementController {
     private final TypeManagementService service;
     public TypeManagementController(TypeManagementService service){this.service=service;}
-    @GetMapping("/product/formula-options")
-    public AjaxResult formulas(){return AjaxResult.success(service.formulas());}
     @GetMapping("/{kind}/list")
     public TableDataInfo list(@PathVariable String kind,@RequestParam(required=false) @Positive Long factoryId,@RequestParam(defaultValue="") @Size(max=100) String name,@RequestParam(defaultValue="1") @Min(1) int pageNum,@RequestParam(defaultValue="16") @Min(1) @Max(64) int pageSize){var p=service.list(kind,factoryId,name,pageNum,pageSize);var result=new TableDataInfo(p.rows(),p.total());result.setCode(200);result.setMsg("查询成功");return result;}
     @GetMapping("/{kind}/{id}")

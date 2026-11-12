@@ -56,7 +56,7 @@ const usePermissionStore = defineStore(
         const rewriteRoutes=filterAsyncRouter(rdata,false,true)
         const defaultRoutes=filterAsyncRouter(defaultData)
         for(const route of dynamicRoutes){
-          if('name' in route&&route.name&&router.hasRoute(route.name as string))router.removeRoute(route.name as string)
+          if(route.name&&router.hasRoute(route.name as string))router.removeRoute(route.name as string)
         }
         const asyncRoutes=filterDynamicRoutes(dynamicRoutes)
         asyncRoutes.forEach(route=>router.addRoute(route))

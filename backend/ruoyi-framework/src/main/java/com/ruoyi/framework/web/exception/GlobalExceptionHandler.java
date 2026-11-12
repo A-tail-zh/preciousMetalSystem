@@ -3,6 +3,7 @@ package com.ruoyi.framework.web.exception;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
@@ -96,6 +97,22 @@ public class GlobalExceptionHandler
     {
         log.warn("登录校验未通过：{}", e.getCode());
         return AjaxResult.error(e.getMessage());
+    }
+
+    /**
+     * 数据库外键等完整性约束，避免落到通用“联系管理员”提示。
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public AjaxResult handleDataIntegrityViolation(DataIntegrityViolationException e, HttpServletRequest request)
+    {
+        String requestURI = request.getRequestURI();
+        String cause = e.getMostSpecificCause() == null ? "" : String.valueOf(e.getMostSpecificCause().getMessage());
+        log.error("请求地址'{}',发生数据完整性异常.", requestURI, e);
+        if (cause.contains("metal_production_order") && cause.contains("production_line_id"))
+            return AjaxResult.error(HttpStatus.CONFLICT, "产线仍被生产工单（含已删除）历史引用，不能删除");
+        if (cause.contains("foreign key") || cause.contains("Cannot delete or update a parent row"))
+            return AjaxResult.error(HttpStatus.CONFLICT, "资料仍被其他业务引用，不能删除");
+        return AjaxResult.error("系统处理失败，请稍后重试或联系管理员");
     }
 
     /**

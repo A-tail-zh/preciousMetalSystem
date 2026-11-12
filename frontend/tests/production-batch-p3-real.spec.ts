@@ -1,0 +1,30 @@
+import {test,expect,type Page,type Locator} from '@playwright/test'
+import {readFileSync} from 'node:fs'
+const envPath=process.env.P3_REAL_ENV
+test.skip(!envPath,'Set P3_REAL_ENV to run against a newly isolated P3 application')
+test.afterEach(async({page})=>{const password=page.getByPlaceholder('密码',{exact:true});if(await password.count())await password.fill('',{timeout:1000}).catch(()=>{})})
+const environment=()=>{
+ if(!envPath)throw Error('P3_REAL_ENV is required for isolated real-backend UI verification')
+ const value=JSON.parse(readFileSync(envPath,'utf8').replace(/^\uFEFF/,''))
+ if(value.isolatedDatabase!==true)throw Error('Real UI verification requires an explicitly isolated database environment')
+ return value
+}
+async function choose(page:Page,scope:Locator|Page,label:string,option:string){const picker=scope.getByRole('combobox',{name:label,exact:true});await expect(picker).toBeEnabled();await picker.press('ArrowDown');const id=await picker.getAttribute('aria-controls');await page.locator(`[id="${id}"]`).getByRole('option',{name:option,exact:true}).click()}
+async function openOrder(page:Page){
+ const env=environment(),captchaResponse=page.waitForResponse(r=>r.url().includes('/captchaImage'));await page.goto('/login');const captcha=await (await captchaResponse).json();if(captcha.captchaEnabled!==false)throw Error('Isolated browser login requires captcha disabled');await expect(page.getByPlaceholder('验证码',{exact:true})).toHaveCount(0);await page.getByPlaceholder('账号',{exact:true}).fill(env.username);await page.getByPlaceholder('密码',{exact:true}).fill(env.password);const loginResponse=page.waitForResponse(r=>/\/login$/.test(new URL(r.url()).pathname)&&r.request().method()==='POST');await page.getByRole('button',{name:/登\s*录/,exact:true}).click();const login=await (await loginResponse).json();expect(login.code,login.msg).toBe(200);await expect(page).not.toHaveURL(/\/login/,{timeout:15000})
+ await page.goto('/metal/production-order');await choose(page,page,'所属工厂',env.factoryName);await page.getByRole('row').filter({hasText:env.orderNumber}).getByRole('button',{name:'查看',exact:true}).click();const flow=page.getByRole('dialog',{name:'生产工单完整流程',exact:true});await expect(flow).toBeVisible();const panel=flow.locator('.production-batches');await expect(panel.getByRole('heading',{name:'生产批次',exact:true})).toBeVisible({timeout:10000});return {env,panel}
+}
+test('isolated real login and UI plan split preserve30/70 targets',async({page},testInfo)=>{
+ const {env,panel}=await openOrder(page);const source=panel.getByRole('row').filter({hasText:env.planBatchNumber});await source.getByRole('button',{name:'拆分',exact:true}).click();const d=page.getByRole('dialog',{name:'拆分生产批次',exact:true})
+ for(const [index,value] of [[1,30],[2,70]]){const input=d.getByRole('spinbutton',{name:`结果${index}计划件数`,exact:true});await input.fill(String(value));await input.blur()}
+ await d.getByRole('textbox',{name:'拆合原因',exact:true}).fill('P3隔离浏览器验收：100件计划拆30/70');await expect(d.getByRole('button',{name:'确认拆分',exact:true})).toBeDisabled()
+ const previewResponse=page.waitForResponse(r=>r.url().includes('/metal/production-batches/splits/preview')&&r.request().method()==='POST');await d.getByRole('button',{name:'预览分配',exact:true}).click();expect((await (await previewResponse).json()).code).toBe(200);await expect(d.getByRole('button',{name:'确认拆分',exact:true})).toBeEnabled()
+ const submitResponse=page.waitForResponse(r=>/\/metal\/production-batches\/splits$/.test(new URL(r.url()).pathname)&&r.request().method()==='POST');await d.getByRole('button',{name:'确认拆分',exact:true}).click();const submitted=await (await submitResponse).json();expect(submitted.code).toBe(200);expect(submitted.data.results.map((r:any)=>r.plannedQuantity)).toEqual([30,70]);await expect(d).not.toBeVisible()
+ await testInfo.attach('isolated-plan-split-result',{body:JSON.stringify({sourceBatchId:submitted.data.source.batchId,resultBatchIds:submitted.data.results.map((r:any)=>r.batchId),plannedQuantities:[30,70],mockedBusinessApi:false}),contentType:'application/json'})
+ const screenshot=testInfo.outputPath('plan-split-success.png');await page.screenshot({path:screenshot,fullPage:true});await testInfo.attach('plan-split-success',{path:screenshot,contentType:'image/png'})
+})
+test('isolated completed30/70 real merge preview is read-only and edits require another preview',async({page},testInfo)=>{
+ const {env,panel}=await openOrder(page);await panel.getByRole('row').filter({hasText:env.mergeBatchNumbers[0]}).getByRole('button',{name:'合并',exact:true}).click();const d=page.getByRole('dialog',{name:'合并生产批次',exact:true});const picker=d.getByRole('combobox',{name:'参与合并批次',exact:true});await expect(picker).toBeEnabled();await picker.press('ArrowDown');const list=await picker.getAttribute('aria-controls');await page.locator(`[id="${list}"]`).getByRole('option').filter({hasText:env.mergeBatchNumbers[1]}).click();await d.getByRole('textbox',{name:'拆合原因',exact:true}).click();await d.getByRole('textbox',{name:'拆合原因',exact:true}).fill('P3隔离浏览器验收：工序二完成30/70合批预览')
+ const previewResponse=page.waitForResponse(r=>r.url().includes('/metal/production-batches/merges/preview')&&r.request().method()==='POST');await d.getByRole('button',{name:'预览分配',exact:true}).click();const response=await (await previewResponse).json();expect(response.code).toBe(200);expect(response.data.allowed).toBe(true);expect(response.data.plannedQuantity).toBe(100);await expect(d.getByRole('button',{name:'确认合并',exact:true})).toBeEnabled();const screenshot=testInfo.outputPath('merge-preview-success.png');await page.screenshot({path:screenshot,fullPage:true});await testInfo.attach('merge-preview-success',{path:screenshot,contentType:'image/png'});await d.getByRole('textbox',{name:'拆合原因',exact:true}).fill('修改说明后必须重新预览');await expect(d.getByRole('button',{name:'确认合并',exact:true})).toBeDisabled()
+ await testInfo.attach('isolated-merge-preview-result',{body:JSON.stringify({plannedQuantity:response.data.plannedQuantity,completedStepIds:response.data.completedStepIds,mockedBusinessApi:false,submitted:false}),contentType:'application/json'})
+})

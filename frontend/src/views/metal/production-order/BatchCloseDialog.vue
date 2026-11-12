@@ -1,14 +1,14 @@
 <template>
- <el-dialog v-model="visible" title="结清加工批次" width="600px" append-to-body :close-on-click-modal="false" :before-close="close">
-  <el-alert v-if="result" title="批次已结清" type="success" :closable="false"/>
-  <el-alert v-else-if="operation.error.value" :title="operation.pending.value?'结清结果待核实':operation.error.value" type="error" :closable="false"/>
-  <template v-if="result"><el-descriptions :column="2" border><el-descriptions-item v-for="c in columns" :key="c.key" :label="c.label">{{result[c.key]??'—'}}</el-descriptions-item></el-descriptions><el-alert v-if="refreshFailed" title="批次已结清，流程刷新失败，请重试" type="warning" :closable="false"/><el-button v-if="refreshFailed" :loading="refreshing" @click="reload">刷新流程</el-button></template>
-  <p v-else>确认已实物核对批次 {{batch?.number||batch?.id}}，所有产出、余料和回收均已登记？服务端将核验全部单据与物料平衡。</p>
+ <el-dialog v-model="visible" title="结束本工序" width="600px" append-to-body :close-on-click-modal="false" :before-close="close">
+  <el-alert v-if="result" title="本工序已结束" type="success" :closable="false"/>
+  <el-alert v-else-if="operation.error.value" :title="operation.pending.value?'工序结束结果待核实':operation.error.value" type="error" :closable="false"/>
+  <template v-if="result"><el-descriptions :column="2" border><el-descriptions-item v-for="c in columns" :key="c.key" :label="c.label">{{result[c.key]??'—'}}</el-descriptions-item></el-descriptions><el-alert v-if="refreshFailed" title="本工序已结束，流程刷新失败，请重试" type="warning" :closable="false"/><el-button v-if="refreshFailed" :loading="refreshing" @click="reload">刷新流程</el-button></template>
+  <p v-else>确认已核对加工记录 {{batch?.number||batch?.id}}，所有产出、余料和回收均已登记？请核对本工序的物料平衡。</p>
   <el-button v-if="operation.error.value&&!operation.pending.value&&!result" @click="documents">查看关联仓储单据</el-button>
   <template #footer>
    <el-button :disabled="operation.busy.value||!!operation.pending.value" @click="close()">{{result?'关闭':'取消'}}</el-button>
    <template v-if="operation.pending.value&&!operation.busy.value"><el-button type="primary" @click="operation.verify">核实结果</el-button><el-button v-if="operation.notFound.value" @click="operation.retry">重试原请求</el-button></template>
-   <el-button v-else-if="!result" type="primary" :loading="operation.busy.value" :disabled="!!operation.pending.value" @click="submit">{{operation.busy.value?'正在结清':'已核对，结清'}}</el-button>
+   <el-button v-else-if="!result" type="primary" :loading="operation.busy.value" :disabled="!!operation.pending.value" @click="submit">{{operation.busy.value?'正在结束':'已核对，结束工序'}}</el-button>
   </template>
  </el-dialog>
 </template>

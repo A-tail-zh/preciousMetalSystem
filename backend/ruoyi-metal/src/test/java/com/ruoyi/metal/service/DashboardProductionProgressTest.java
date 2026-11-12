@@ -29,16 +29,21 @@ class DashboardProductionProgressTest {
  @Test @EnabledIfEnvironmentVariable(named="TEST_DASHBOARD_JDBC_URL",matches=".+")
  void mysqlProgressCountsPostedOutputsAcrossOpenAndClosedBatches() throws Exception {
   try(var connection=DriverManager.getConnection(System.getenv("TEST_DASHBOARD_JDBC_URL"),System.getenv("TEST_DASHBOARD_DB_USER"),System.getenv("TEST_DASHBOARD_DB_PASSWORD"))){
+   assertTrue(connection.getMetaData().getURL().matches("jdbc:mysql://127\\.0\\.0\\.1:3323/production_batch_p[234]_[0-9]{8}_[a-f0-9]{10}(?:\\?.*)?"),"Only an isolated batch schema may run this fixture");
    var jdbc=new JdbcTemplate(new SingleConnectionDataSource(connection,true));
    jdbc.execute("CREATE TEMPORARY TABLE metal_production_order(id BIGINT PRIMARY KEY,order_no VARCHAR(32),factory_id BIGINT,factory_name VARCHAR(100),status VARCHAR(30),flow_version INT,deleted INT,create_time DATETIME)");
    jdbc.execute("CREATE TEMPORARY TABLE metal_production_order_item(id BIGINT PRIMARY KEY,order_id BIGINT,sequence_no INT,quantity INT,product_snapshot JSON)");
    jdbc.execute("CREATE TEMPORARY TABLE metal_production_order_step(id BIGINT PRIMARY KEY,item_id BIGINT,sequence_no INT,process_name VARCHAR(100),measurement_mode VARCHAR(10),output_category VARCHAR(10))");
-   jdbc.execute("CREATE TEMPORARY TABLE metal_production_execution(id BIGINT PRIMARY KEY,factory_id BIGINT,order_id BIGINT,order_item_id BIGINT,order_step_id BIGINT,status VARCHAR(10),output_quantity BIGINT)");
+   jdbc.execute("CREATE TEMPORARY TABLE metal_production_execution(id BIGINT PRIMARY KEY,factory_id BIGINT,order_id BIGINT,order_item_id BIGINT,order_step_id BIGINT,status VARCHAR(24),output_quantity BIGINT)");
+   jdbc.execute("CREATE TEMPORARY TABLE metal_production_execution_event(id BIGINT PRIMARY KEY,factory_id BIGINT,execution_id BIGINT,event_type VARCHAR(10),quantity BIGINT,reversed INT)");
    jdbc.execute("INSERT INTO metal_production_order VALUES (1,'A',7,'Factory A','IN_PROGRESS',1,0,'2026-11-09'),(2,'B',7,'Factory A','CREATED',1,0,'2026-11-08'),(3,'C',7,'Factory A','COMPLETED',1,0,'2026-11-09'),(4,'D',7,'Factory A','EXCEPTION_COMPLETED',1,0,'2026-11-09'),(5,'E',7,'Factory A','CREATED',1,1,'2026-11-09'),(6,'F',8,'Factory B','IN_PROGRESS',1,0,'2026-11-09'),(7,'G',7,'Factory A','CREATED',0,0,'2026-11-07')");
    jdbc.execute("INSERT INTO metal_production_order_item VALUES (11,1,1,100,JSON_OBJECT('name','Silver rod','specification','10mm')),(12,1,2,200,JSON_OBJECT('name','Silver ring')),(21,2,1,100,JSON_OBJECT('name','Unstarted')),(71,7,1,50,JSON_OBJECT('name','Legacy'))");
    jdbc.execute("INSERT INTO metal_production_order_step VALUES (111,11,1,'First','PIECE','SEMI'),(112,11,2,'Final','PIECE','PRODUCT'),(121,12,1,'Smelting','WEIGHT','RAW'),(122,12,2,'Final ring','PIECE','PRODUCT'),(211,21,1,'Unstarted step','PIECE','PRODUCT')");
    jdbc.execute("INSERT INTO metal_production_execution VALUES (1,7,1,11,111,'OPEN',30),(2,7,1,11,111,'CLOSED',20),(3,7,1,11,112,'OPEN',10),(4,7,1,12,121,'CLOSED',0),(5,7,1,12,122,'OPEN',7)");
    jdbc.execute("INSERT INTO metal_production_execution VALUES (6,7,1,11,111,'CANCELLED',1000),(7,8,1,11,111,'OPEN',1000)");
+   jdbc.execute("UPDATE metal_production_execution SET status='SPLIT_TRANSFERRED',output_quantity=999 WHERE id=1");
+   jdbc.execute("INSERT INTO metal_production_execution VALUES (8,7,1,11,111,'CLOSED',700)");
+   jdbc.execute("INSERT INTO metal_production_execution_event VALUES (1,7,1,'OUTPUT',30,0),(2,7,2,'OUTPUT',20,1),(3,7,3,'OUTPUT',10,0),(4,7,4,'OUTPUT',0,0),(5,7,5,'OUTPUT',7,0),(6,7,6,'OUTPUT',1000,0),(7,8,7,'OUTPUT',1000,0),(8,7,8,'OUTPUT',70,0),(9,7,1,'INPUT',1000,0)");
    var scope=mock(FactoryScope.class);when(scope.currentFactory()).thenReturn(7L);
    var service=new DashboardService(jdbc,scope,null);
    var result=service.productionProgress(null,1,10);
@@ -50,7 +55,7 @@ class DashboardProductionProgressTest {
    var orders=rows(result,"rows");assertEquals(List.of("A","B","G"),orders.stream().map(o->o.get("orderNo")).toList());
    var products=rows(orders.get(0),"products");assertEquals(2,products.size());
    assertEquals("10",products.get(0).get("completedQuantity"));assertEquals("7",products.get(1).get("completedQuantity"));
-   assertEquals("50",rows(products.get(0),"steps").get(0).get("completedQuantity"));
+   assertEquals("100",rows(products.get(0),"steps").get(0).get("completedQuantity"));
    assertEquals("WEIGHT",rows(products.get(1),"steps").get(0).get("measurementMode"));
    assertEquals("0",rows(orders.get(1),"products").get(0).get("completedQuantity"));
    assertEquals(0,orders.get(2).get("flowVersion"));

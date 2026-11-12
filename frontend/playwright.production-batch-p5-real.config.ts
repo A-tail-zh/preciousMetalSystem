@@ -1,0 +1,2 @@
+import {defineConfig} from '@playwright/test'
+export default defineConfig({testDir:'./tests',testMatch:'production-batch-p5-real.spec.ts',workers:1,timeout:180000,use:{baseURL:'http://127.0.0.1:5269',viewport:{width:1600,height:1100},launchOptions:{channel:'chrome'}},outputDir:'../.runtime/production-batch-p5-20261112/real-ui-results',reporter:[['list'],['json',{outputFile:'../.runtime/production-batch-p5-20261112/playwright-real-results.json'}]]})

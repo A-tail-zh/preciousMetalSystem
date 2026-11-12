@@ -7,6 +7,14 @@ import com.ruoyi.common.exception.ServiceException;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 class StorageOrderServiceTest {
+ @Test void productionDraftRequiresBatchBeforeReadingOrWriting() throws Exception {
+  var method=StorageOrderService.class.getDeclaredMethod("validate",long.class,Map.class,List.class,boolean.class);method.setAccessible(true);
+  for(String type:List.of("PROCESS_RAW_IN","SEMI_IN","PRODUCT_IN","RAW_RETURN","RECOVERY_RETURN")){
+   var error=assertThrows(java.lang.reflect.InvocationTargetException.class,()->method.invoke(service,7L,new HashMap<>(Map.of("type",type)),List.of(),false));
+   assertInstanceOf(ServiceException.class,error.getCause());assertTrue(error.getCause().getMessage().contains("加工批次"));
+  }
+  verifyNoInteractions(jdbc);
+ }
  @Test void headerNamesAreBatchedAndReplaceUntrustedDisplayValues(){
   when(jdbc.queryForList("SELECT id,order_no FROM metal_production_order WHERE factory_id=? AND id IN (?,?)",7L,10L,99L)).thenReturn(List.of(Map.of("id",10L,"order_no","GD10")));
   when(jdbc.queryForList("SELECT user_id,nick_name,user_name FROM sys_user WHERE (factory_id=? OR user_id=1) AND user_id IN (?,?,?,?)",7L,1L,20L,21L,99L)).thenReturn(List.of(Map.of("user_id",1L,"nick_name","admin","user_name","admin"),Map.of("user_id",20L,"nick_name","仓管甲","user_name","account20"),Map.of("user_id",21L,"nick_name"," ","user_name","account21")));

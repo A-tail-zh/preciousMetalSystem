@@ -3,10 +3,9 @@
   <el-form class="business-filter-form" @submit.prevent="apply">
    <el-form-item v-for="field in fields" :key="field.key" class="filter-field">
     <el-autocomplete v-if="!field.options&&!field.remote" v-model="draft[field.key]" clearable :disabled="needsFactory" :aria-label="field.label" :placeholder="field.label" :fetch-suggestions="(keyword:string,callback:SuggestionCallback)=>{void suggest(field,keyword,callback)}" :trigger-on-focus="false" :debounce="300" @keydown.enter.capture="textEnter($event)"/>
-    <el-select v-else v-model="draft[field.key]" clearable filterable :aria-label="field.label" :remote="!!field.remote" :remote-method="(keyword:string)=>search(field,keyword)" :loading="busy[field.key]" :disabled="field.disabled||(needsFactory&&field.key!=='factoryId')" :no-data-text="['material','product'].includes(kind)&&field.key===catalogTypeKey?(catalogTypeError||'本厂暂无'+catalogLabel+'，请先在类型管理中添加'):'无数据'" :placeholder="field.label" @visible-change="v=>v&&(field.key==='processType'?emit('refresh-process-types'):field.key==='metalTypeId'?loadMetals():['material','product'].includes(kind)&&field.key===catalogTypeKey?loadCatalogTypes():field.remote&&search(field,keywords[field.key]??''))" @change="field.key==='factoryId'&&factoryChanged()">
+    <el-select v-else v-model="draft[field.key]" clearable filterable :aria-label="field.label" :remote="!!field.remote" :remote-method="(keyword:string)=>search(field,keyword)" :loading="busy[field.key]" :disabled="field.disabled||(needsFactory&&field.key!=='factoryId')" no-data-text="无数据" :placeholder="field.label" @visible-change="v=>v&&(field.key==='processType'?emit('refresh-process-types'):field.key==='metalTypeId'?loadMetals():field.remote&&search(field,keywords[field.key]??''))" @change="field.key==='factoryId'&&factoryChanged()">
      <el-option v-for="option in field.options??choices[field.key]??[]" :key="option.id" :label="option.name" :value="option.id"/>
-     <template v-if="['material','product'].includes(kind)&&field.key===catalogTypeKey&&catalogTypeError" #footer><el-button link type="primary" @click="loadCatalogTypes">重试加载{{catalogLabel}}</el-button></template>
-     <template v-else-if="more[field.key]" #footer><el-button link type="primary" @click="search(field,keywords[field.key]??'',true)">加载更多</el-button></template>
+     <template v-if="more[field.key]" #footer><el-button link type="primary" @click="search(field,keywords[field.key]??'',true)">加载更多</el-button></template>
     </el-select>
    </el-form-item>
    <el-form-item class="filter-date"><el-date-picker :disabled="needsFactory" v-model="range" :aria-label="kind==='warehouse-order'?'单据日期':'创建日期'" type="daterange" value-format="YYYY-MM-DD" popper-class="filter-toolbar-date-panel" start-placeholder="开始日期" end-placeholder="结束日期"/></el-form-item>
@@ -32,17 +31,7 @@ const props=defineProps<{kind:string;allowExport?:boolean;exporting?:boolean;ord
 const emit=defineEmits<{apply:[Record<string,string>];export:[Record<string,string>];factory:[string];'refresh-process-types':[]}>()
 const factoryScoped=computed(()=>['factory','product','line','material','process','customer'].includes(props.kind))
 const needsFactory=computed(()=>factoryScoped.value&&!(props.kind==='factory'&&permission.isAdmin.value)&&!draft.factoryId)
-const catalogTypeKey=computed(()=>props.kind==='product'?'productType':'materialType')
-const catalogLabel=computed(()=>props.kind==='product'?'产品类型':'物料类型')
-const metalOptions=ref<Option[]>([]),catalogTypeOptions=ref<Option[]>([]),catalogTypeError=ref('')
-let catalogTypeEpoch=0
-async function loadCatalogTypes(){
- if(props.kind!=='product'||!draft.factoryId||!session())return
- const ticket=++catalogTypeEpoch,account=identity(),factory=draft.factoryId,current=()=>session()&&ticket===catalogTypeEpoch&&account===identity()&&factory===draft.factoryId
- busy[catalogTypeKey.value]=true;catalogTypeError.value=''
- try{const result:any=await request({url:'/metal/options/'+(props.kind==='product'?'product-types':'material-types'),params:{factoryId:factory},isContextCurrent:current,quiet:true});if(current())catalogTypeOptions.value=result.data.map((o:Option)=>({id:o.name,name:o.name}))}
- catch(error:any){if(current()){catalogTypeOptions.value=[];catalogTypeError.value=error.message||catalogLabel.value+'加载失败，请重试'}}finally{if(current())busy[catalogTypeKey.value]=false}
-}
+const metalOptions=ref<Option[]>([])
 const user=useUserStore(),permission=useActionPermission()
 let metalEpoch=0,factoryEpoch=0,disposed=false
 const identity=()=>JSON.stringify([user.sessionReady,user.token,String(user.id),[...user.permissions].sort()])
@@ -58,7 +47,7 @@ async function initializeFactory(){
  try{const r:any=await request({url:'/metal/options/factories',isContextCurrent:current});if(!current())return;draft.factoryId=r.data[0]?.id??'';factoryChanged();applied.value=values();emit('apply',{...applied.value})}catch{}
 }
 function resetContext(){
- factoryEpoch++;metalEpoch++;catalogTypeEpoch++;catalogTypeOptions.value=[];catalogTypeError.value='';metalOptions.value=[];cancelSuggestions()
+ factoryEpoch++;metalEpoch++;metalOptions.value=[];cancelSuggestions()
  for(const key of Object.keys(epochs)){epochs[key]++;busy[key]=false;choices[key]=[];more[key]=false}
  for(const key of Object.keys(draft))delete draft[key]
  range.value=[];applied.value={};emit('factory','');emit('apply',{});void initializeFactory()
@@ -73,7 +62,7 @@ const fields=computed<Field[]>(()=>{
  case 'inventory':return [...(props.orderKind==='RAW'?[text('code','物料编码'),select('materialType','物料类型',['粉料','金属料','未处理料']),text('specification','规格型号'),text('companyName','客户公司 / 工厂自有')]:[text('name','产品名称'),select('productType','产品类型',productTypes),text('metalTypeName','金属类型'),...(props.orderKind==='SEMI'?[text('sourceProcessName','来源工序')]:[text('specification','规格型号')]),text('companyName','客户公司名称')]),remote('warehouseId','仓库','warehouses'),...(permission.isAdmin.value?[remote('factoryId','工厂','factories')]:[])]
  case 'customer':return [...(permission.isAdmin.value?[remote('factoryId','所属工厂','factories')]:[]),text('name','客户名称'),text('companyName','客户公司名称'),text('contactName','联络人名称'),text('contactPhone','联络人电话')]
  case 'factory':return [text('name','工厂名称'),text('address','详细地址')]
- case 'product':return [...(permission.isAdmin.value?[remote('factoryId','所属工厂','factories')]:[]),text('code','产品编号'),text('name','产品名称'),{key:'metalTypeId',label:'金属类型',options:metalOptions.value},{key:'productType',label:'产品类型',options:catalogTypeOptions.value,disabled:!draft.factoryId}]
+ case 'product':return [...(permission.isAdmin.value?[remote('factoryId','所属工厂','factories')]:[]),text('code','产品编号'),text('name','产品名称'),{key:'metalTypeId',label:'金属类型',options:metalOptions.value},select('productType','产品类型',productTypes)]
  case 'material':return [...(permission.isAdmin.value?[remote('factoryId','所属工厂','factories')]:[]),text('code','物料编码'),text('name','物料名称'),{key:'materialForm',label:'材料形态',options:[{id:'POWDER',name:'粉状'},{id:'UNTREATED',name:'未处理料'},{id:'METAL',name:'金属料'}]},text('specification','规格型号'),{key:'metalTypeId',label:'金属类型',options:metalOptions.value}]
  case 'process':return [...(permission.isAdmin.value?[remote('factoryId','所属工厂','factories')]:[]),text('name','工序名称'),{key:'processType',label:'工序类型',options:props.processTypeOptions??[]}]
  case 'line':return [...(permission.isAdmin.value?[remote('factoryId','所属工厂','factories')]:[]),text('code','产线编号'),text('name','产线名称'),remote('productId','关联产品','products')]
@@ -92,13 +81,13 @@ async function suggest(field:Field,keyword:string,callback:SuggestionCallback){
 }
 function textEnter(event:KeyboardEvent){const input=event.target as HTMLInputElement;if(input.getAttribute('aria-activedescendant'))return;apply()}
 watch(()=>draft.factoryId,()=>cancelSuggestions())
-onBeforeUnmount(()=>{disposed=true;catalogTypeEpoch++;metalEpoch++;factoryEpoch++;cancelSuggestions()})
+onBeforeUnmount(()=>{disposed=true;metalEpoch++;factoryEpoch++;cancelSuggestions()})
 function values(){const result=Object.fromEntries(Object.entries(draft).filter(([,v])=>v!=null&&String(v).trim()!=='').map(([k,v])=>[k,String(v).trim()]));if(range.value?.length===2){result.startDate=range.value[0];result.endDate=range.value[1]}return result}
 const canonical=(v:Record<string,string>)=>JSON.stringify(Object.entries(v).sort(([a],[b])=>a.localeCompare(b)))
-function apply(){if(needsFactory.value)return;if(props.kind==='process'&&draft.processType&&!props.processTypeOptions?.some(o=>String(o.id)===draft.processType)){ElMessage.warning('请选择当前工厂有效的工序类型');return;}const next=values();if(props.kind==='product'&&next[catalogTypeKey.value]&&(busy[catalogTypeKey.value]||catalogTypeError.value||!catalogTypeOptions.value.some(o=>o.id===next[catalogTypeKey.value]))){ElMessage.warning('请加载并选择当前工厂有效的'+catalogLabel.value);return;}for(const field of fields.value){const value=next[field.key],max=['orderNo','workOrderNo'].includes(field.key)?64:500;if(value&&value.length>max){ElMessage.warning(field.label+'最多'+max+'个字符');return}}if(next.startDate&&next.endDate&&next.startDate>next.endDate){ElMessage.warning('开始日期不能晚于结束日期');return}applied.value={...next};emit('apply',{...next})}
+function apply(){if(needsFactory.value)return;if(props.kind==='process'&&draft.processType&&!props.processTypeOptions?.some(o=>String(o.id)===draft.processType)){ElMessage.warning('请选择当前工厂有效的工序类型');return;}const next=values();if(props.kind==='product'&&next.productType&&!productTypes.includes(next.productType)){ElMessage.warning('请选择有效的产品类型');return;}for(const field of fields.value){const value=next[field.key],max=['orderNo','workOrderNo'].includes(field.key)?64:500;if(value&&value.length>max){ElMessage.warning(field.label+'最多'+max+'个字符');return}}if(next.startDate&&next.endDate&&next.startDate>next.endDate){ElMessage.warning('开始日期不能晚于结束日期');return}applied.value={...next};emit('apply',{...next})}
 function reset(){const own=!permission.isAdmin.value?draft.factoryId:undefined;Object.keys(draft).forEach(k=>delete draft[k]);if(own)draft.factoryId=own;range.value=[];factoryChanged();applied.value=values();emit('apply',{...applied.value})}
 function exportCurrent(){if(canonical(values())!==canonical(applied.value)){ElMessage.warning('筛选条件已修改，请先点击查询');return}emit('export',{...applied.value})}
-function factoryChanged(){if(factoryScoped.value){for(const key of Object.keys(draft))if(key!=='factoryId')delete draft[key];range.value=[];cancelSuggestions()}emit('factory',draft.factoryId??'');if(props.kind==='product'){catalogTypeEpoch++;catalogTypeOptions.value=[];catalogTypeError.value='';busy[catalogTypeKey.value]=false;delete draft[catalogTypeKey.value];delete draft.materialCategory;void loadCatalogTypes()}metalEpoch++;metalOptions.value=[];delete draft.metalTypeId;delete draft.processType;delete draft.productId;void loadMetals();for(const field of fields.value.filter(f=>['roles','warehouses','people','products'].includes(f.remote??''))){delete draft[field.key];choices[field.key]=[];more[field.key]=false;epochs[field.key]=(epochs[field.key]??0)+1}if(factoryScoped.value){applied.value=values();emit('apply',{...applied.value})}}
+function factoryChanged(){if(factoryScoped.value){for(const key of Object.keys(draft))if(key!=='factoryId')delete draft[key];range.value=[];cancelSuggestions()}emit('factory',draft.factoryId??'');if(props.kind==='product')delete draft.productType;metalEpoch++;metalOptions.value=[];delete draft.metalTypeId;delete draft.processType;delete draft.productId;void loadMetals();for(const field of fields.value.filter(f=>['roles','warehouses','people','products'].includes(f.remote??''))){delete draft[field.key];choices[field.key]=[];more[field.key]=false;epochs[field.key]=(epochs[field.key]??0)+1}if(factoryScoped.value){applied.value=values();emit('apply',{...applied.value})}}
 async function search(field:Field,keyword:string,append=false){if(!field.remote)return;const key=field.key,current=epochs[key]=(epochs[key]??0)+1;busy[key]=true;const pageNum=append?(pages[key]??1)+1:1;keywords[key]=keyword;try{const response=await request({url:'/metal/filter-options/'+field.remote,params:{module:props.kind,keyword,pageNum,factoryId:factoryScoped.value&&key==='factoryId'?undefined:draft.factoryId}}) as unknown as {rows:Option[];hasMore:boolean};if(current!==epochs[key])return;const selected=choices[key]?.find(o=>o.id===draft[key]);const merged=append?[...(choices[key]??[]),...response.rows]:response.rows;if(selected&&!merged.some(o=>o.id===selected.id))merged.unshift(selected);choices[key]=merged;more[key]=response.hasMore;pages[key]=pageNum}catch{}finally{if(current===epochs[key])busy[key]=false}}
 watch(()=>props.orderKind,()=>{delete draft.type;delete applied.value.type;emit('apply',{...applied.value})})
 function removeProcessType(id:string){

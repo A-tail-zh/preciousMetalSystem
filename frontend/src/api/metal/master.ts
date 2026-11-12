@@ -6,11 +6,12 @@ export interface MasterRow {
   materialForm?: string; classificationLocked?: boolean; materialType?: string; materialCategory?:string|null; specification?: string; category?: string; dimensions?: Record<string,string>
   volume?: string | null; purity?: string | null; weight?: string | null
   processes?: {processId:string; loss:string;lossUnit?:"PERCENT"|"G_PER_PIECE"; processName?:string;measurementMode?:'PIECE'|'WEIGHT'}[]
+  storageConfiguration?: Record<string,any>
   factoryId?:string | null; factoryName?:string | null; productIds?:string[]; productNames?:string[]
   phonenumber?:string; nickName?:string; roleIds?:string[]; roleNames?:string[]; password?:string
   roleName?:string; roleSort?:number; menuIds?:string[]; status?:string
 }
-export interface Option {id:string; name:string; materialCategory?:string|null; processTypeName?:string; parentId?:string; perms?:string; children?:Option[]}
+export interface Option {id:string; name:string; materialCategory?:string|null; processTypeName?:string; semanticCode?:string; parentId?:string; perms?:string; children?:Option[]}
 export function masterList(path:string,params:{pageNum:number;pageSize:number},isContextCurrent?:()=>boolean,background=false):Promise<{rows:MasterRow[];total:number}>{return request({url:`${path}/list`,method:'get',params,isContextCurrent,quiet:background})}
 export function masterDetail(path:string,id:string,editing=false,isContextCurrent?:()=>boolean,background=false):Promise<{data:MasterRow}>{return request({url:`${path}/${id}${editing?'/edit-context':''}`,method:'get',isContextCurrent,quiet:background})}
 export function masterSave(path:string,data:Partial<MasterRow>,isContextCurrent?:()=>boolean){return request({url:path,method:data.id?'put':'post',data,isContextCurrent})}

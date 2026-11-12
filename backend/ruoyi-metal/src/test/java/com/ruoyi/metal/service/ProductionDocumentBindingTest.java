@@ -15,6 +15,8 @@ class ProductionDocumentBindingTest {
     private final ProductionExecutionService service=new ProductionExecutionService(jdbc,mock(FactoryScope.class));
     private Map<String,Object> execution(String category) {
         var e=new HashMap<String,Object>(Map.of("id",6L,"order_id",7L,"order_item_id",22L,"order_step_id",23L,"processor_id",81L,"status","OPEN","output_category",category));
+        e.put("batch_id",88L);
+        when(jdbc.queryForList(startsWith("SELECT lifecycle FROM metal_production_batch"),eq(9L),eq(88L))).thenReturn(List.of(Map.of("lifecycle","ACTIVE")));
         when(jdbc.queryForList(startsWith("SELECT e.*"),eq(6L),eq(9L))).thenReturn(List.of(e));
         when(jdbc.queryForList(startsWith("SELECT * FROM metal_production_order"),eq(7L),eq(9L))).thenReturn(List.of(Map.of("flow_version",1,"status","IN_PROGRESS")));
         return e;
@@ -23,12 +25,19 @@ class ProductionDocumentBindingTest {
         return new HashMap<>(Map.of("type",type,"orderId","7","executionId","6","orderItemId","","orderStepId","","processorId",""));
     }
 
-    @ParameterizedTest @ValueSource(strings={"RAW:PROCESS_RAW_IN","SEMI:SEMI_IN","PRODUCT:PRODUCT_IN"})
+    @ParameterizedTest @ValueSource(strings={"RAW:PROCESS_RAW_IN","SEMI:SEMI_IN","SEMI:PROCESS_RAW_IN","PRODUCT:PRODUCT_IN"})
     void missingLegacyLinksAreDerivedFromFrozenBatch(String value) {
         var pair=value.split(":");execution(pair[0]);var doc=document(pair[1]);
         service.prepareDocument(9L,doc);
         assertEquals("22",doc.get("orderItemId"));assertEquals("23",doc.get("orderStepId"));assertEquals("81",doc.get("processorId"));
         verify(jdbc,never()).update(anyString(),any(Object[].class));
+    }
+
+    @Test void rawAlternativeIsLimitedToSemiOutputAndDoesNotAllowOtherReceiptTypes() {
+        for(String category:List.of("RAW","SEMI","PRODUCT"))for(String type:List.of("PROCESS_RAW_IN","SEMI_IN","PRODUCT_IN")){
+            boolean expected=category.equals("SEMI")?!type.equals("PRODUCT_IN"):category.equals("RAW")?type.equals("PROCESS_RAW_IN"):type.equals("PRODUCT_IN");
+            assertEquals(expected,ProductionExecutionService.receiptTypeAllowed(category,type),category+":"+type);
+        }
     }
 
     @Test void missingOrderIdCanUseLegacyProductionOrderId() {

@@ -6,6 +6,19 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import static org.junit.jupiter.api.Assertions.*;
 
 class LegacyBusinessRetirementConfigTest {
+    @Test void rejectsUnmappedRetiredMethodsBeforeTheyReachTheServlet() throws Exception {
+        var guard=new LegacyBusinessRetirementConfig();
+        for(String prefix:new String[]{"work-order","warehouse","warehouse-order","inventory","acid-wash","process-batch","warehouse-flows","route-skip-permits"})for(String method:new String[]{"GET","POST","PUT","DELETE"}){
+            String path="/metal/"+prefix+"/__unmapped_probe__";var request=new MockHttpServletRequest(method,path);request.setServletPath(path);var response=new MockHttpServletResponse();var calls=new java.util.concurrent.atomic.AtomicInteger();
+            guard.doFilter(request,response,(req,res)->calls.incrementAndGet());assertEquals(503,response.getStatus());assertEquals(0,calls.get());
+        }
+    }
+    @Test void filterKeepsNewReadWriteAndHistoricalReportNamespacesOpen() throws Exception {
+        var guard=new LegacyBusinessRetirementConfig();
+        for(String path:new String[]{"/metal/production-batches","/metal/production-order/1/executions","/metal/storage-orders","/metal/storage-inventory","/metal/work-report/list","/metal/warehouse-other"})for(String method:new String[]{"GET","POST"}){
+            var request=new MockHttpServletRequest(method,path);request.setServletPath(path);var calls=new java.util.concurrent.atomic.AtomicInteger();guard.doFilter(request,new MockHttpServletResponse(),(req,res)->calls.incrementAndGet());assertEquals(1,calls.get(),path);
+        }
+    }
     @Test void blocksReadsWritesAndExportsBeforeBusinessExecution() throws Exception {
         var guard = new LegacyBusinessRetirementConfig();
         for (String path : new String[]{"/metal/work-order", "/metal/work-order/1/partial-close",

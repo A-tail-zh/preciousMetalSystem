@@ -27,10 +27,14 @@ public final class WorkOrderReferences {
     }
 
     /**
-     * 检查产线是否存在历史工单，阻止物理删除。
+     * 检查产线是否存在有效历史工单或未删除生产工单，阻止物理删除。
+     * 已逻辑删除的生产工单保留 line_name 快照；删除产线前由 LineService 释放其外键。
      */
     public static void lineDelete(JdbcTemplate jdbc, Long id) {
-        deny(jdbc, "SELECT work_order_id FROM metal_work_order WHERE production_line_id=? FOR UPDATE", id, "产线存在历史工单，不能物理删除");
+        deny(jdbc, "SELECT work_order_id FROM metal_work_order WHERE production_line_id=? AND del_flag='0' FOR UPDATE", id, "产线被工单引用，不能删除");
+        var active = jdbc.queryForList("SELECT order_no FROM metal_production_order WHERE production_line_id=? AND deleted=0 LIMIT 1 FOR UPDATE", id);
+        if (!active.isEmpty())
+            throw new ServiceException("产线已被生产工单引用，不能删除：" + active.get(0).get("order_no"), 409);
     }
 
     /**

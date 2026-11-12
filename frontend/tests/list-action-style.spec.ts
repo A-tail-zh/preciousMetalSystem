@@ -94,7 +94,7 @@ for(const width of [1920,1440,768,390])test(`各业务列表按钮范围与配�
   await expect(buttons.first(),`${path} 应有列表按钮`).toBeVisible()
   const colors=await buttons.evaluateAll(nodes=>nodes.map(node=>({classes:node.className,text:node.textContent?.trim(),color:getComputedStyle(node).backgroundColor})))
   for(const button of colors){
-   const expected=(['添加','新增','添加工序类型','增加报价'].includes(button.text??'')||(path==='quotation'&&button.text==='下载'))?'rgb(103, 194, 58)':['编辑','修改','库存调整'].includes(button.text??'')?'rgb(238, 155, 88)':button.text==='删除'?'rgb(245, 108, 108)':['重置','返回'].includes(button.text??'')?'rgb(255, 255, 255)':'rgb(64, 158, 255)'
+   const expected=(['添加','新增','维护工序类型','增加报价'].includes(button.text??'')||(path==='quotation'&&button.text==='下载'))?'rgb(103, 194, 58)':['编辑','修改','库存调整'].includes(button.text??'')?'rgb(238, 155, 88)':button.text==='删除'?'rgb(245, 108, 108)':['重置','返回'].includes(button.text??'')?'rgb(255, 255, 255)':'rgb(64, 158, 255)'
    expect(button.color,`${path}: ${button.classes}`).toBe(expected)
   }
   for(const button of await page.locator('main .el-table .el-button').all())await expect(button).toHaveClass(/list-action/)

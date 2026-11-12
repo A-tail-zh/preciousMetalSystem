@@ -1,0 +1,13 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import {execFileSync} from 'node:child_process';
+import assert from 'node:assert/strict';
+const envFile=process.env.P5_ADOPTION_ENV_FILE;
+assert(envFile,'Set P5_ADOPTION_ENV_FILE to the new isolated private environment file');
+const env={...process.env,...JSON.parse(fs.readFileSync(envFile,'utf8'))};
+const root=path.resolve('.runtime/production-batch-legacy-adoption-20261112');
+const build=path.join(root,'adoption-build');fs.mkdirSync(build,{recursive:true});
+const cp=[build,path.resolve('backend/ruoyi-metal/target/classes'),path.resolve('backend/ruoyi-common/target/classes'),fs.readFileSync('.runtime/production-batch-p4-20261112/test-classpath.txt','utf8').trim()].join(path.delimiter);
+const sources=['ProductionBatchLegacyAdoptionService','ProductionExecutionService','ProductionSourceBalances','ProductionBatchService','ProductionBatchMaterialService'].map(n=>`backend/ruoyi-metal/src/main/java/com/ruoyi/metal/service/${n}.java`);
+execFileSync('javac',['-encoding','UTF-8','-cp',cp,'-d',build,'tools/ProductionBatchLegacyAdoption.java',...sources],{env,stdio:'inherit'});
+execFileSync('java',['-cp',cp,'com.ruoyi.metal.service.ProductionBatchLegacyAdoption',...process.argv.slice(2)],{env,stdio:'inherit'});

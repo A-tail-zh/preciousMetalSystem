@@ -40,7 +40,7 @@ import com.ruoyi.common.exception.ServiceException;
   }
   scope.lockFactories(List.of(row.getFactoryId()));scope.menuGrants(row.getMenuIds());
   var menuIds=new ArrayList<>(row.getMenuIds());
-  var typeMenus=jdbc.queryForList("SELECT menu_id,parent_id FROM sys_menu WHERE perms IN ('metal:metal-type:list','metal:product-type:list','metal:material-type:list') AND status='0'");
+  var typeMenus=jdbc.queryForList("SELECT menu_id,parent_id FROM sys_menu WHERE perms IN ('metal:metal-type:list','metal:material-type:list','metal:process-type:list') AND status='0'");
   for(var menu:typeMenus)if(menuIds.contains(((Number)menu.get("menu_id")).longValue())){Long parent=((Number)menu.get("parent_id")).longValue();if(!menuIds.contains(parent))menuIds.add(parent);}
   row.setMenuIds(menuIds);
   if(old==null)row.setRoleKey("factory_"+UUID.randomUUID().toString().replace("-",""));else row.setRoleKey(old.getRoleKey());

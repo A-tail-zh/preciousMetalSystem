@@ -5,6 +5,18 @@ const cents=(v:unknown)=>{const s=String(v??'0');if(!/^\d+(?:\.\d{1,2})?$/.test(
 export const weightText=(v:bigint)=>`${v/100n}.${String(v%100n).padStart(2,'0')}`
 const min=(a:bigint,b:bigint)=>a<b?a:b
 const numericText=(v:unknown)=>String(v??'').trim().replace(/(\.\d*?)0+$/,'$1').replace(/\.$/,'')
+export function stockSliceChoices(stocks:Row[]):Row[]{
+ return stocks.flatMap(stock=>!Array.isArray(stock.stockSlices)?[stock]:stock.stockSlices.map((slice:Row)=>({
+  ...stock,stockSliceId:String(slice.stockSliceId),sliceVersion:slice.sliceVersion,stockVersion:stock.version,sourceBatchId:slice.sourceBatchId,
+  netWeight:slice.weight,quantity:slice.quantity,
+  availableWeight:weightText(min(cents(stock.availableWeight??stock.netWeight),cents(slice.availableWeight??slice.weight))),
+  availableQuantity:String(min(BigInt(stock.availableQuantity??stock.quantity??0),BigInt(slice.availableQuantity??slice.quantity??0))),
+  ownerships:(slice.owners||[]).map((owner:Row)=>{const total=(stock.ownerships||[]).find((row:Row)=>String(row.ownerId)===String(owner.ownerId));return {
+   ...total,...owner,availableWeight:weightText(min(cents(total?.availableWeight??total?.weight),cents(owner.availableWeight??owner.weight))),
+   availableQuantity:String(min(BigInt(total?.availableQuantity??total?.quantity??0),BigInt(owner.availableQuantity??owner.quantity??0)))
+  }})
+ })))
+}
 export function stockGroups(stocks:Row[],type:string,customerId?:string):StockGroup[]{
  const groups=new Map<string,StockGroup>()
  for(const stock of stocks){
@@ -19,7 +31,7 @@ export function stockGroups(stocks:Row[],type:string,customerId?:string):StockGr
    const quantity=mode==='PIECE'?min(BigInt(stock.availableQuantity??stock.quantity??0),BigInt(owner.availableQuantity??owner.quantity??0)):0n
    if(weight<=0n||mode==='PIECE'&&quantity<=0n)continue
    const lineage=type==='PRODUCTION_OUT'&&stock.category==='SEMI'?[stock.originOrderId||identity.originOrderId,identity.originItemId]:[]
-   const key=JSON.stringify([stock.factoryId,stock.warehouseId,ownerId,stock.category,String(reference),String(identity.metalTypeId??''),String(identity.specification??'').trim(),numericText(identity.purity),identity.form,mode,identity.unit,(identity.completedProcessIds||[]).map(String),...lineage])
+   const key=JSON.stringify([stock.factoryId,stock.warehouseId,ownerId,stock.category,String(reference),String(identity.metalTypeId??''),String(identity.specification??'').trim(),numericText(identity.purity),identity.form,mode,identity.unit,(identity.completedProcessIds||[]).map(String),...lineage,String(stock.sourceBatchId??'')])
    let group=groups.get(key)
    if(!group){group={key,ownerId,ownerName:ownerId==='0'?'工厂自有':owner.ownerName||`客户#${ownerId}`,companyName:owner.companyName||'',category:stock.category,code:identity.code||stock.code||'',name:identity.name||identity.materialType||stock.name||stock.materialType||'',measurementMode:mode,weight:0n,quantity:0n,members:[]};groups.set(key,group)}
    group.weight+=weight;group.quantity+=quantity;group.members.push({stock,weight,quantity})
@@ -56,7 +68,7 @@ export function splitStockGroup(group:StockGroup,line:Row,newId:()=>string):Row[
  for(const key of ['grossWeight','impurity'])if(String(line[key]??'').trim())optional[key]=distribute(cents(line[key]),selected.map(s=>s.weight))
  const selectionGroupId=line.selectionGroupId||line.localId
  return selected.map(({member,weight,quantity},index)=>{
-  const stock=member.stock,id=newId(),result:Row={...line,localId:id,reservationLineId:id,stockId:String(stock.id),materialId:stock.materialId,productId:stock.productId,batchNo:stock.batchNo,category:stock.category,measurementMode:group.measurementMode,netWeight:weightText(weight),quantity:piece?String(quantity):null,allocations:[{ownerId:group.ownerId,weight:weightText(weight),quantity:piece?String(quantity):0}],selectionGroupId,selectionKey:group.key,selectionOwnerName:group.ownerName,selectionCompanyName:group.companyName,selectionOwnerId:group.ownerId}
+  const stock=member.stock,id=newId(),result:Row={...line,localId:id,reservationLineId:id,stockId:String(stock.id),stockSliceId:stock.stockSliceId,sliceVersion:stock.sliceVersion,stockVersion:stock.stockVersion,sourceBatchId:stock.sourceBatchId,materialId:stock.materialId,productId:stock.productId,batchNo:stock.batchNo,category:stock.category,measurementMode:group.measurementMode,netWeight:weightText(weight),quantity:piece?String(quantity):null,allocations:[{ownerId:group.ownerId,weight:weightText(weight),quantity:piece?String(quantity):0}],selectionGroupId,selectionKey:group.key,selectionOwnerName:group.ownerName,selectionCompanyName:group.companyName,selectionOwnerId:group.ownerId}
   delete result.id
   for(const key of Object.keys(optional))result[key]=weightText(optional[key][index])
   return result

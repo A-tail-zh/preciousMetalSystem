@@ -25,6 +25,27 @@ async function setup(page:Page,mode:'maintain'|'readonly'='maintain'){
   await route.fulfill({json:r})});
  await page.goto('/metal/process');await expect(page.locator('.master-table')).toBeVisible();return{options,writes}
 }
+test('process page maintains types with create edit and delete',async({page})=>{
+ test.setTimeout(60000)
+ const state=await setup(page);
+ await page.getByRole('button',{name:'维护工序类型',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'维护工序类型'});
+ await dialog.getByPlaceholder('请输入工序类型名称').fill('快捷打磨');
+ await dialog.getByRole('button',{name:'添加',exact:true}).click();
+ await expect.poll(()=>state.options.some(o=>o.name==='快捷打磨')).toBeTruthy();
+ await page.getByRole('button',{name:'维护工序类型',exact:true}).click();
+ await expect(dialog.getByRole('cell',{name:'快捷打磨',exact:true})).toBeVisible();
+ await dialog.getByRole('button',{name:'编辑',exact:true}).click();
+ const editDialog=page.getByRole('dialog',{name:'编辑工序类型'});
+ await expect(editDialog).toBeVisible();
+ await editDialog.getByPlaceholder('请输入工序类型名称').fill('精磨');
+ await editDialog.getByRole('button',{name:'保存',exact:true}).click();
+ await expect.poll(()=>state.writes.some(w=>w.method==='PUT'&&w.name==='精磨')).toBeTruthy();
+ await expect(dialog.getByRole('cell',{name:'精磨',exact:true})).toBeVisible();
+ await dialog.getByRole('row').filter({hasText:'精磨'}).getByRole('button',{name:'删除',exact:true}).click();
+ await page.locator('.el-message-box').getByRole('button',{name:'删除',exact:true}).click();
+ await expect.poll(()=>state.writes.some(w=>w.method==='DELETE'&&String(w.version)==='1')).toBeTruthy();
+})
 test('process list permission alone hides type maintenance button',async({page})=>{
  await setup(page,'readonly');
  await expect(page.getByRole('button',{name:'维护工序类型',exact:true})).toHaveCount(0);
@@ -41,7 +62,7 @@ test('process editor keeps type selector and inline maintenance together',async(
  const select=await editor.locator('.material-type-control .el-select').boundingBox(),bounds=await button.boundingBox()
  expect(select).toBeTruthy();expect(bounds).toBeTruthy();expect(Math.abs(select!.y+select!.height/2-bounds!.y-bounds!.height/2)).toBeLessThan(1)
  await button.click();const maintenance=page.getByRole('dialog',{name:'维护工序类型',exact:true})
- await maintenance.getByRole('textbox').fill('表单新增类型');await maintenance.getByRole('button',{name:'确定',exact:true}).click()
+ await maintenance.getByRole('textbox').fill('表单新增类型');await maintenance.getByRole('button',{name:'添加',exact:true}).click()
  await expect.poll(()=>state.options.some(o=>o.name==='表单新增类型')).toBe(true)
  await expect(editor.getByRole('textbox',{name:/工序名称$/})).toHaveValue('草稿工序')
  await editor.getByRole('combobox',{name:/工序类型$/}).press('ArrowDown')

@@ -12,12 +12,13 @@ import static org.mockito.ArgumentMatchers.*;
 
 class StorageLedgerServiceTest {
     static class InboundLedger extends StorageLedgerService {
-        final String category;
-        InboundLedger(String category){super(mock(JdbcTemplate.class),mock(FactoryScope.class));this.category=category;}
+        final String category,materialForm;
+        InboundLedger(String category){this(category,"METAL");}
+        InboundLedger(String category,String materialForm){super(mock(JdbcTemplate.class),mock(FactoryScope.class));this.category=category;this.materialForm=materialForm;}
         @Override Map<String,Object> one(String sql,Object...args){
             assertEquals(1L,args[args.length-1],"Every source lookup remains factory scoped");
             if(sql.contains("metal_production_order_step"))return Map.of("product_id",7,"order_id",8,"output_category",category,"measurement_mode","PIECE","product_snapshot","{\"metalTypeId\":9,\"name\":\"产品\",\"purity\":\"99.123456\"}","process_name","工序");
-            if(sql.contains("metal_material m"))return Map.of("material_id",6,"metal_type_id",9,"measurement_mode","WEIGHT","material_form","METAL");
+            if(sql.contains("metal_material m"))return Map.of("material_id",6,"metal_type_id",9,"measurement_mode","WEIGHT","material_form",materialForm);
             return Map.of("name","金属","warehouse_id",2);
         }
     }
@@ -33,7 +34,8 @@ class StorageLedgerServiceTest {
                 var input=productionReceipt(category);input.put("materialId",6);input.remove("purity");
                 input.put("productionIdentity",Map.of("originOrderId","8","originStepId","3","sourceExecutionId","4","completedProcessIds",List.of("5"),"form","METAL"));
                 if(!shape.equals("missing"))input.put("purity",shape.equals("null")?null:shape.equals("empty")?"":"  ");
-                var normalized=new InboundLedger(category).normalizeInbound(1,type,input);
+                if(type.equals("CUSTOMER_IN"))input.remove("productionIdentity");
+                var normalized=new InboundLedger(category,type.equals("CUSTOMER_IN")?"UNTREATED":"METAL").normalizeInbound(1,type,input);
                 assertNull(normalized.get("purity"));assertNull(((Map<?,?>)normalized.get("identity")).get("purity"));
                 if(key==null)key=(String)normalized.get("identityKey");else assertEquals(key,normalized.get("identityKey"));
             }
@@ -72,6 +74,8 @@ class StorageLedgerServiceTest {
         @Override Map<String,Object> one(String sql,Object...args){return Map.of("warehouse_id",1);}
         @Override Map<String,Object> stock(long f,long id){return Map.of("id",id,"warehouse_id",1,"measurement_mode",mode,"identity_key","key","identity_snapshot","{}","category","RAW");}
         @Override long insert(String sql,Object...args){if(sql.startsWith("INSERT INTO metal_storage_debt("))debts.add(args);return debts.size()+1;}
+        @Override void bindSlice(long e,long f,long s,Map<String,Object> input){}
+        @Override Long boundSlice(long e,long f){return null;}
         @Override void ownership(long e,long f,long s,long o,BigDecimal w,long q,String r){}
         @Override void physical(long e,long f,long s,BigDecimal w,long q,String r){}
         @Override void entry(long e,long f,long s,Long o,String l,BigDecimal w,long q,String r){}
