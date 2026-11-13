@@ -33,6 +33,37 @@ test('new production issue excludes completed and exception-completed orders',as
  await expect(page.getByRole('option',{name:'GD74已结清待完工',exact:true})).toHaveCount(0)
 })
 
+for(const [tab,type,label] of [
+ ['出库单','原材料提料出库','关联原工单（可选）'],
+ ['入库单','加工原材料入库','生产工单'],
+ ['还库单','原样余料还库','生产工单'],
+ ['还库单','回收料还库','生产工单']
+])test(type+' hides completed work orders and their source documents',async({page,baseURL})=>{
+ const {dialog:out}=await setup(page,baseURL!,false,0,false)
+ await out.getByRole('button',{name:'取消',exact:true}).click()
+ await page.getByRole('dialog',{name:'确认关闭',exact:true}).getByRole('button',{name:'放弃',exact:true}).click()
+ await page.route('**/metal/storage-orders/options?**',route=>route.fulfill({json:{code:200,data:{
+  productionOrders:[{id:'71',number:'GD71',status:'IN_PROGRESS'},{id:'72',number:'GD72',status:'COMPLETED'},{id:'73',number:'GD73',status:'EXCEPTION_COMPLETED'}],
+  sourceOutboundOrders:[{id:'55',number:'OUT55',orderId:'71',available:true},{id:'56',number:'OUT56',orderId:'72',available:true},{id:'57',number:'OUT57',orderId:'73',available:true}]
+ }}}))
+ await page.getByRole('tab',{name:tab,exact:true}).click()
+ await page.getByRole('button',{name:'添加',exact:true}).click()
+ const dialog=page.getByRole('dialog',{name:'添加'+tab,exact:true})
+ await choose(page,dialog,'单据类型',type)
+ const picker=dialog.getByRole('combobox',{name:label,exact:true})
+ await picker.press('ArrowDown')
+ await expect(page.getByRole('option',{name:'GD71',exact:true})).toBeVisible()
+ await expect(page.getByRole('option',{name:/GD7[23]/})).toHaveCount(0)
+ await picker.fill('GD72')
+ await expect(page.getByRole('option',{name:/GD7[23]/})).toHaveCount(0)
+ await picker.press('Escape')
+ if(tab!=='出库单'){
+  await dialog.getByRole('combobox',{name:'原出库单',exact:true}).press('ArrowDown')
+  await expect(page.getByRole('option',{name:'OUT55',exact:true})).toBeVisible()
+  await expect(page.getByRole('option',{name:/OUT5[67]/})).toHaveCount(0)
+ }
+})
+
 test('first issue automatically creates processing without plan, and switching releases it',async({page,baseURL})=>{
  const {writes,dialog,line}=await setup(page,baseURL!);await line.getByRole('button',{name:'确认',exact:true}).click();await expect(line).toBeHidden();const reserve=writes.find(w=>w.p==='/metal/storage-orders/reservations');expect(reserve.data).toMatchObject({executionMode:'NEW',orderId:'71',orderItemId:'81',orderStepId:'2',processorId:'9'});expect(reserve.data.executionId).toBeUndefined()
  expect(reserve.data.plannedQuantity).toBeUndefined();await expect(dialog.getByText('本次领料已建立加工记录，继续添加物料沿用本次加工。',{exact:true})).toHaveCount(0)

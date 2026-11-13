@@ -1,8 +1,8 @@
 import {test,expect,type Page} from '@playwright/test'
 import {stockSliceChoices,stockGroups,splitStockGroup} from '../src/views/metal/storage-orders/stock-groups'
 
-async function fixture(page:Page,baseURL:string,count=1,failFirst=false){
- const writes:string[]=[],pages:number[]=[];let failed=false
+async function fixture(page:Page,baseURL:string,count=1,failFirst=false,multipleProducts=false){
+ const writes:string[]=[],pages:number[]=[];let failed=false,flowReads=0
  const order={id:'7',number:'GD-P2',orderNo:'GD-P2',version:0,status:'IN_PROGRESS',factoryId:'101',factoryName:'本厂',processingType:'DIRECT_CUSTOM',customerSnapshot:'{}'}
  const rows=Array.from({length:count},(_,index)=>({id:String(1011+index),number:`PB-${String(index+1).padStart(2,'0')}`,orderId:'7',orderItemId:'31',plannedQuantity:null,lifecycle:'ACTIVE',version:0}))
  await page.context().addCookies([{name:'Admin-Token',value:'p2-read-only-mock',url:baseURL}])
@@ -12,7 +12,12 @@ async function fixture(page:Page,baseURL:string,count=1,failFirst=false){
   if(path==='/getInfo')response={code:200,user:{userId:1,userName:'admin'},roles:['admin'],permissions:['*:*:*']}
   else if(path==='/metal/options/factories')response.data=[{id:'101',name:'本厂'}]
   else if(path==='/metal/production-order/list')response={code:200,rows:[{...order,factory:'本厂'}],total:1}
-  else if(path==='/metal/production-order/7/flow')response.data={order,items:[{id:'31',product:{name:'金环'},quantity:100,steps:[]}],executions:[],documents:[],events:[]}
+  else if(path==='/metal/production-order/7/flow'){
+   const completedQuantity=[0,12,0][flowReads++]??0
+   const items=[{id:'31',product:{name:'金环'},quantity:100,completedQuantity,steps:[]}]
+   if(multipleProducts)items.push({id:'32',product:{name:'银环'},quantity:25,completedQuantity:3,steps:[]})
+   response.data={order:{...order,processingType:'MATERIAL_CUSTOM'},items,executions:[],documents:[],events:[]}
+  }
   else if(path==='/metal/production-order/7/report')response.data={executions:[],orderTotals:{},notices:[]}
   else if(path==='/metal/production-batches/list'){
    if(failFirst&&!failed){failed=true;await route.fulfill({json:{code:500,msg:'批次读取失败'}});return}
@@ -26,6 +31,25 @@ async function fixture(page:Page,baseURL:string,count=1,failFirst=false){
  const flow=page.getByRole('dialog',{name:'生产工单完整流程',exact:true}),panel=flow.locator('.production-batches');await expect(panel.getByRole('heading',{name:'生产批次',exact:true})).toBeVisible()
  return {panel,flow,writes,pages}
 }
+
+test('flow summary shows the product before its confirmed and planned quantities',async({page,baseURL})=>{
+ const {flow}=await fixture(page,baseURL!)
+ await expect(flow.locator('.el-descriptions tr').filter({hasText:'生产产品'})).toHaveText(/客户联系方式\s*生产产品金环生产个数已确认 0 件 \/ 计划 100 件/)
+})
+
+test('flow summary matches each product and updates the confirmed count on refresh',async({page,baseURL})=>{
+ const {flow,writes}=await fixture(page,baseURL!,1,false,true)
+ const first=flow.locator('.el-descriptions tr').filter({hasText:'金环'})
+ const second=flow.locator('.el-descriptions tr').filter({hasText:'银环'})
+ await expect(first).toContainText('已确认 0 件 / 计划 100 件')
+ await expect(second).toContainText('已确认 3 件 / 计划 25 件')
+ await flow.getByRole('button',{name:'刷新流程',exact:true}).click()
+ await expect(first).toContainText('已确认 12 件 / 计划 100 件')
+ await expect(second).toContainText('已确认 3 件 / 计划 25 件')
+ await flow.getByRole('button',{name:'刷新流程',exact:true}).click()
+ await expect(first).toContainText('已确认 0 件 / 计划 100 件')
+ expect(writes).toEqual([])
+})
 
 test('automatic batch panel shows processing facts without any manual batch operation',async({page,baseURL})=>{
  const f=await fixture(page,baseURL!)

@@ -27,6 +27,21 @@ class ProductionCompletionTest {
    else{assertTrue(assertThrows(ServiceException.class,()->service.complete(10L,body)).getMessage().contains("成品数量"));verify(jdbc,never()).update(startsWith("UPDATE metal_production_order SET status='COMPLETED'"),anyLong());}
   }finally{SecurityContextHolder.clearContext();}
  }
+ @Test void flowAddsConfirmedQuantitiesInProductSequence(){
+  var jdbc=mock(JdbcTemplate.class);
+  var scope=mock(FactoryScope.class);
+  when(scope.isAdmin()).thenReturn(true);
+  when(scope.resolveFactory(9L)).thenReturn(9L);
+  when(jdbc.queryForList(startsWith("SELECT * FROM metal_production_order WHERE"),eq(10L),eq(9L))).thenReturn(List.of(Map.of("status","IN_PROGRESS")));
+  when(jdbc.queryForList(contains("product_snapshot AS CHAR"),eq(10L))).thenReturn(List.of(
+    new LinkedHashMap<>(Map.of("id","32","quantity",100,"product","{}")),
+    new LinkedHashMap<>(Map.of("id","31","quantity",25,"product","{}"))));
+  when(jdbc.queryForList(startsWith("SELECT CAST(i.id AS CHAR) orderItemId"),eq(10L))).thenReturn(List.of(
+    Map.of("orderItemId","31","completedQuantity",3),Map.of("orderItemId","32","completedQuantity",0)));
+  var items=StorageSupport.maps(new ProductionExecutionService(jdbc,scope).flow(10L,9L).get("items"));
+  assertEquals(List.of("32","31"),items.stream().map(item->item.get("id")).toList());
+  assertEquals(List.of(0,3),items.stream().map(item->item.get("completedQuantity")).toList());
+ }
  @Test void shortageStillCannotComplete(){verifyCompletion(List.of(quantity(11,10)),false);}
  @Test void exactPlanCanComplete(){verifyCompletion(List.of(quantity(11,11)),true);}
  @Test void surplusCanCompleteWithoutChangingPlan(){verifyCompletion(List.of(quantity(11,13)),true);}

@@ -15,6 +15,18 @@ class StorageOrderServiceTest {
   }
   verifyNoInteractions(jdbc);
  }
+ @Test void staleRawOutboundOrderIsRejectedOnSaveAndSubmit() throws Exception {
+  var method=StorageOrderService.class.getDeclaredMethod("validate",long.class,Map.class,List.class,boolean.class);method.setAccessible(true);
+  for(String status:List.of("COMPLETED","EXCEPTION_COMPLETED")){
+   when(jdbc.queryForList("SELECT customer_id,status,deleted FROM metal_production_order WHERE id=? AND factory_id=?",10L,7L))
+    .thenReturn(List.of(Map.of("customer_id",8L,"status",status,"deleted",0)));
+   for(boolean submitting:new boolean[]{false,true}){
+    var doc=new HashMap<String,Object>(Map.of("type","RAW_OUT","orderId","10"));
+    var error=assertThrows(java.lang.reflect.InvocationTargetException.class,()->method.invoke(service,7L,doc,List.of(),submitting));
+    assertEquals("工单已完工，请重新选择",assertInstanceOf(ServiceException.class,error.getCause()).getMessage());
+   }
+  }
+ }
  @Test void headerNamesAreBatchedAndReplaceUntrustedDisplayValues(){
   when(jdbc.queryForList("SELECT id,order_no FROM metal_production_order WHERE factory_id=? AND id IN (?,?)",7L,10L,99L)).thenReturn(List.of(Map.of("id",10L,"order_no","GD10")));
   when(jdbc.queryForList("SELECT user_id,nick_name,user_name FROM sys_user WHERE (factory_id=? OR user_id=1) AND user_id IN (?,?,?,?)",7L,1L,20L,21L,99L)).thenReturn(List.of(Map.of("user_id",1L,"nick_name","admin","user_name","admin"),Map.of("user_id",20L,"nick_name","仓管甲","user_name","account20"),Map.of("user_id",21L,"nick_name"," ","user_name","account21")));
