@@ -30,6 +30,18 @@
 
 ![新增仓库表单，展示工厂、仓库名称、显示顺序和状态](docs/screenshots/warehouse-editor.png)
 
+### 仓储工单
+
+![仓储工单列表，展示生产出库和复验状态](docs/screenshots/storage-documents.png)
+
+### 出库物料清单
+
+![出库物料明细，展示申报和复验净重](docs/screenshots/storage-materials.png)
+
+### 报价覆盖产品
+
+![按产品展示每月报价单数量](docs/screenshots/quotation-coverage.png)
+
 ### 登录页
 
 ![贵金属加工系统登录页](docs/screenshots/login.png)
