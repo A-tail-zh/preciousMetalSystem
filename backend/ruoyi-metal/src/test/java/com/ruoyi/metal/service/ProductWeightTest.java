@@ -16,7 +16,7 @@ class ProductWeightTest {
         when(rules.metalName(any())).thenReturn("铱");
         when(rules.pi(any())).thenReturn(new BigDecimal("3.14"));when(rules.volumeRuleForMetal(any())).thenReturn(Map.of("piValue","3.14","curvedBottomFactor","1.03"));
         when(rules.rule(any())).thenReturn(density==null?Map.of():Map.of("density",density));
-        return new ProductService(mock(ProductMapper.class),FactoryCatalogTestFixtures.scope(),FactoryCatalogTestFixtures.productTypes(mock(JdbcTemplate.class)),rules);
+        return new ProductService(mock(ProductMapper.class),FactoryCatalogTestFixtures.scope(),FactoryCatalogTestFixtures.productTypes(mock(JdbcTemplate.class)),rules,mock(StorageConfigurationService.class));
     }
     private ProductRecord product() {
         var row=new ProductRecord();row.setFactoryId(7L);row.setCategory("铱环");row.setProductType("环");row.setMetalTypeId(1L);row.setCalculationVersion(2);

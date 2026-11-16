@@ -18,7 +18,7 @@ class ProductSpecificationTest {
  }
  private ProductService service(ProductMapper mapper) {
   var rules=mock(QuoteRuleService.class);var rule=new QuoteRule();rule.setPiValue(new BigDecimal("3.141593"));when(rules.get()).thenReturn(rule);when(rules.metalName(any())).thenReturn("铱");when(rules.pi(any())).thenReturn(rule.getPiValue());when(rules.volumeRuleForMetal(any())).thenReturn(Map.of("piValue","3.14","curvedBottomFactor","1.03"));
-  return new ProductService(mapper,FactoryCatalogTestFixtures.scope(),FactoryCatalogTestFixtures.productTypes(mock(JdbcTemplate.class)),rules);
+  return new ProductService(mapper,FactoryCatalogTestFixtures.scope(),FactoryCatalogTestFixtures.productTypes(mock(JdbcTemplate.class)),rules,mock(StorageConfigurationService.class));
  }
  @Test void allCategoriesIncludeEveryDimensionInFixedOrderWithinStorageLimit() {
   var expected=Map.of("铱坩埚弧底","内径0.2cm；内高0.2cm；壁厚0.2cm；底厚0.2cm；R高度0.2cm",

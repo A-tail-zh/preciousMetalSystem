@@ -11,21 +11,28 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class DensityProductFillTest {
- @Test void fillsOnlyScopedMissingWeightsUsingExistingRoundedVolumeAndVersions(){
-  var jdbc=mock(JdbcTemplate.class);var service=new QuoteRuleService(jdbc,mock(FactoryScope.class));
-  when(jdbc.queryForList(anyString(),eq(7L),eq(9L))).thenReturn(List.of(Map.of("product_id",11L,"product_code","P11","volume",new BigDecimal("0.034567"),"version",3)));
+ private QuoteRuleService service(JdbcTemplate jdbc){return new QuoteRuleService(jdbc,mock(FactoryScope.class)){
+  @Override public String metalName(Long id){return "合成金属";}
+  @Override public BigDecimal pi(Long id){return new BigDecimal("3.14");}
+ };}
+ private com.ruoyi.metal.catalog.MetalQuoteRule rule(String density){return new com.ruoyi.metal.catalog.MetalQuoteRule(9L,new BigDecimal(density),BigDecimal.ONE,BigDecimal.ONE,BigDecimal.ONE,BigDecimal.ONE,0);}
+ @Test void changingDensityOnlyUpdatesTheRuleAndDoesNotRewriteProductWeights(){
+  var jdbc=mock(JdbcTemplate.class);var service=service(jdbc);
   try(var security=mockStatic(SecurityUtils.class)){
+   security.when(SecurityUtils::getUserId).thenReturn(1L);security.when(()->SecurityUtils.isAdmin(1L)).thenReturn(true);
    security.when(SecurityUtils::getUsername).thenReturn("tester");
-   var result=service.fillMissingProductWeights(7L,9L,new BigDecimal("22.65"));
-   assertEquals("0.68",result.get(0).get("weight"));assertNull(result.get(0).get("previousWeight"));
-   verify(jdbc).queryForList("SELECT product_id,product_code,volume,version FROM metal_product WHERE factory_id=? AND metal_type_id=? AND del_flag='0' AND theoretical_weight IS NULL AND volume>0 ORDER BY product_id FOR UPDATE",7L,9L);
-   verify(jdbc).update("UPDATE metal_product SET theoretical_weight=?,version=version+1,update_by=?,update_time=NOW() WHERE factory_id=? AND metal_type_id=? AND product_id=? AND del_flag='0' AND theoretical_weight IS NULL",new BigDecimal("0.68"),"tester",7L,9L,11L);
+   service.update(rule("22.65"));
+   verify(jdbc).update(startsWith("INSERT INTO metal_type_quote_rule"),eq(9L),eq(new BigDecimal("22.65")),eq(new BigDecimal("3.14")),eq(new BigDecimal("1.00")),eq(new BigDecimal("1.00")),eq(new BigDecimal("1.00")),eq(new BigDecimal("1.00")),eq(1),eq("tester"));
+   verify(jdbc,never()).queryForList(contains("metal_product"),any(Object[].class));
+   verify(jdbc,never()).update(contains("metal_product"),any(Object[].class));
   }
  }
- @Test void overflowIdentifiesProductAndDoesNotWriteInvalidValue(){
-  var jdbc=mock(JdbcTemplate.class);var service=new QuoteRuleService(jdbc,mock(FactoryScope.class));
-  when(jdbc.queryForList(anyString(),eq(7L),eq(9L))).thenReturn(List.of(Map.of("product_id",11L,"product_code","BIG","volume",new BigDecimal("99999999999999"),"version",0)));
-  assertTrue(assertThrows(ServiceException.class,()->service.fillMissingProductWeights(7,9,new BigDecimal("99"))).getMessage().contains("BIG"));verify(jdbc,never()).update(anyString(),any(Object[].class));
+ @Test void overflowingDensityIsRejectedBeforeAnyWrite(){
+  var jdbc=mock(JdbcTemplate.class);var service=service(jdbc);
+  try(var security=mockStatic(SecurityUtils.class)){
+   security.when(SecurityUtils::getUserId).thenReturn(1L);security.when(()->SecurityUtils.isAdmin(1L)).thenReturn(true);
+   assertThrows(ServiceException.class,()->service.update(rule("999999999999999")));verify(jdbc,never()).update(anyString(),any(Object[].class));
+  }
  }
  @Test void productionCandidatesExcludeFinishedButOtherUsesKeepThem(){
   var jdbc=mock(JdbcTemplate.class);var scope=mock(FactoryScope.class);var ledger=mock(StorageLedgerService.class);

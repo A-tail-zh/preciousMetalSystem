@@ -71,12 +71,22 @@ class ProductionBatchServiceTest {
         verify(jdbc,never()).update(any(PreparedStatementCreator.class),any(KeyHolder.class));
     }
 
-    @Test void pieceFirstStageCannotCreateUnstartableIdentityWithoutPlan(){
+    @Test void pieceFirstStageCanFreezeRouteWithoutInferringAPlan() throws Exception {
         orderAndItem();var body=createBody();body.put("plannedQuantity",null);
         when(jdbc.queryForList("SELECT product_id,CAST(product_snapshot AS CHAR) product_snapshot FROM metal_production_order_item WHERE id=? FOR UPDATE",11L)).thenReturn(List.of(Map.of("product_id",12L,"product_snapshot","{}")));
         when(jdbc.queryForList(startsWith("SELECT id,process_id,process_name,sequence_no,"),eq(11L))).thenReturn(List.of(Map.of("id",21L,"process_id",22L,"sequence_no",1,"process_snapshot","{}","measurement_mode","PIECE")));
-        assertTrue(assertThrows(ServiceException.class,()->service.create(body)).getMessage().contains("计件工序"));
-        verify(jdbc,never()).update(any(PreparedStatementCreator.class),any(KeyHolder.class));
+        when(jdbc.queryForObject(startsWith("SELECT value FROM metal_storage_sequence"),eq(Integer.class),any(java.time.LocalDate.class))).thenReturn(1);
+        when(jdbc.queryForList(contains("FROM metal_production_batch WHERE factory_id=? AND id=?"),eq(7L),eq(100L))).thenReturn(List.of(Map.of("number","PB-SYNTHETIC")));
+        var key=new java.util.concurrent.atomic.AtomicLong(100);
+        doAnswer(call->{call.getArgument(1,KeyHolder.class).getKeyList().add(Map.of("id",key.getAndAdd(100)));return 1;}).when(jdbc).update(any(PreparedStatementCreator.class),any(KeyHolder.class));
+        var result=service.create(body);assertEquals("100",result.get("batchId"));assertEquals(true,result.get("committed"));
+        var inserts=org.mockito.ArgumentCaptor.forClass(PreparedStatementCreator.class);
+        verify(jdbc,times(2)).update(inserts.capture(),any(KeyHolder.class));
+        var connection=mock(java.sql.Connection.class);var statement=mock(java.sql.PreparedStatement.class);
+        when(connection.prepareStatement(anyString(),eq(java.sql.Statement.RETURN_GENERATED_KEYS))).thenReturn(statement);
+        inserts.getAllValues().get(0).createPreparedStatement(connection);
+        verify(statement).setObject(6,null);
+        verify(statement).setObject(eq(5),argThat(snapshot->snapshot.toString().contains("PIECE")));
     }
 
     @Test void originalSuccessReplaysWithoutRevalidatingChangedOrder(){

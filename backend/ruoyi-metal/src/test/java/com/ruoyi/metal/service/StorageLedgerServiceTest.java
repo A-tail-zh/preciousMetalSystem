@@ -11,6 +11,20 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 
 class StorageLedgerServiceTest {
+    @Test void identifiersAcceptBoundaryWhitespaceAndKeepFactoryZero(){
+        for(String whitespace:List.of(" ","\t","\r\n"," \t\r\n")){
+            assertEquals(StorageSupport.id(whitespace+"9202"+whitespace),StorageLedgerService.id(whitespace+"9202"+whitespace));
+            assertEquals(0,StorageLedgerService.id(whitespace+"0"+whitespace));
+            assertEquals(Long.MAX_VALUE,StorageLedgerService.id(whitespace+Long.MAX_VALUE+whitespace));
+        }
+        assertEquals(9202,StorageLedgerService.id(9202L));
+    }
+    @Test void identifiersStillRejectEmptyMalformedNegativeAndOverflowValues(){
+        for(Object value:Arrays.asList(null,""," \t\r\n","-1","92 02","92\t02","1.0","1e3","abc","9223372036854775808")){
+            var error=assertThrows(ServiceException.class,()->StorageLedgerService.id(value));
+            assertEquals(409,error.getCode());assertEquals("标识无效",error.getMessage());
+        }
+    }
     static class InboundLedger extends StorageLedgerService {
         final String category,materialForm;
         InboundLedger(String category){this(category,"METAL");}

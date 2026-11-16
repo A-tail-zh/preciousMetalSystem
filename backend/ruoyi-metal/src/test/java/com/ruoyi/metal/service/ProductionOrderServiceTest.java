@@ -68,14 +68,14 @@ class ProductionOrderServiceTest {
         assertThrows(ServiceException.class,()->service.list(8L,1,16));assertThrows(ServiceException.class,()->service.detail(123L,8L));
         verifyNoInteractions(jdbc);
     }
-    @Test void newProductionReferencesProtectAllCatalogKinds(){
+    @Test void legacyWorkOrderReferencesStillProtectCatalogKinds(){
         JdbcTemplate jdbc=mock(JdbcTemplate.class);
-        when(jdbc.queryForList(contains("metal_production_order"),any(Object[].class))).thenReturn(List.of(Map.of("id",1L)));
+        when(jdbc.queryForList(contains("metal_work_order"),any(Object[].class))).thenReturn(List.of(Map.of("id",1L)));
         assertThrows(ServiceException.class,()->WorkOrderReferences.factory(jdbc,7L));
         assertThrows(ServiceException.class,()->WorkOrderReferences.product(jdbc,7L));
         assertThrows(ServiceException.class,()->WorkOrderReferences.process(jdbc,7L));
-        assertThrows(ServiceException.class,()->WorkOrderReferences.customer(jdbc,7L));
-        assertThrows(ServiceException.class,()->WorkOrderReferences.productionPerson(jdbc,7L));
+        assertThrows(ServiceException.class,()->WorkOrderReferences.lineMove(jdbc,7L));
+        assertThrows(ServiceException.class,()->WorkOrderReferences.person(jdbc,7L));
     }
     @Test void mutationsResolveFactoryBeforeReadingOrWriting(){
         JdbcTemplate jdbc=mock(JdbcTemplate.class);FactoryScope scope=mock(FactoryScope.class);when(scope.isAdmin()).thenReturn(true);

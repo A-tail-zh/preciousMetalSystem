@@ -23,7 +23,7 @@ public class StorageLedgerService {
     @org.springframework.beans.factory.annotation.Autowired
     public StorageLedgerService(JdbcTemplate jdbc,FactoryScope scope,StorageReservationService reservations){this.jdbc=jdbc;this.scope=scope;this.reservations=reservations;this.slices=new StorageBatchSliceService(jdbc,scope,reservations);}
     static ServiceException fail(String s){return new ServiceException(s,409);}
-    static long id(Object x){try{long n=Long.parseLong(String.valueOf(x));if(n<0)throw new IllegalArgumentException();return n;}catch(Exception e){throw fail("标识无效");}}
+    static long id(Object x){try{long n=Long.parseLong(String.valueOf(x).trim());if(n<0)throw new IllegalArgumentException();return n;}catch(Exception e){throw fail("标识无效");}}
     static String text(Object x){return x==null?"":x.toString();}
     static BigDecimal amount(Object x){String s=text(x).trim();if(!s.matches("\\d{1,18}(\\.\\d{1,2})?"))throw fail("重量须为非负数，最多两位小数");return new BigDecimal(s).setScale(2);}
     static String optionalPurity(Object value){String s=text(value).trim();if(s.isEmpty())return null;if(!s.matches("\\d{1,14}(\\.\\d{1,2})?")||new BigDecimal(s).compareTo(new BigDecimal("100"))>0)throw fail("纯度须为0至100，最多两位小数");return new BigDecimal(s).setScale(2).toPlainString();}

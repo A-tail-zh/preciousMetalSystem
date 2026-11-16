@@ -20,7 +20,7 @@ class ProductMeasurementPolicyTest {
   when(jdbc.queryForList(startsWith("SELECT process_id"),any(Object[].class))).thenReturn(List.of(Map.of("process_id",1L)));
   var rows=new ArrayList<Map<String,Object>>();for(int i=0;i<types.size();i++)rows.add(Map.of("process_id",(long)i+1,"type_name",types.get(i)));
   when(jdbc.queryForList(startsWith("SELECT p.process_id,t.type_name"),any(Object[].class))).thenReturn(rows);
-  return new ProductService(null,FactoryCatalogTestFixtures.scope(),FactoryCatalogTestFixtures.productTypes(jdbc),rules);
+  return new ProductService(null,FactoryCatalogTestFixtures.scope(),FactoryCatalogTestFixtures.productTypes(jdbc),rules,mock(StorageConfigurationService.class));
  }
  @Test void preparationAndIntermediateModesAreSavedWithoutStageNormalization(){
   var types=List.of("酸洗","融定","焊接");var p=product(types);service(types).prepare(p,null);

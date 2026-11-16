@@ -25,12 +25,12 @@ class ProductionBatchAssociationTest {
 
     @Test void emptyButActiveBatchStillPreventsOrderCompletion() throws Exception {
         var jdbc=mock(JdbcTemplate.class);
-        when(jdbc.queryForList("SELECT id FROM metal_production_batch WHERE order_id=? AND lifecycle='ACTIVE' FOR UPDATE",7L)).thenReturn(List.of(Map.of("id",12L)));
+        when(jdbc.queryForList(startsWith("SELECT b.id FROM metal_production_batch b WHERE b.order_id=? AND b.lifecycle='ACTIVE' AND NOT EXISTS"),eq(7L))).thenReturn(List.of(Map.of("id",12L)));
         var method=ProductionExecutionService.class.getDeclaredMethod("noOpenWork",long.class);
         method.setAccessible(true);
         var cause=assertThrows(InvocationTargetException.class,()->method.invoke(new ProductionExecutionService(jdbc,mock(FactoryScope.class)),7L)).getCause();
         assertInstanceOf(ServiceException.class,cause);
-        assertTrue(cause.getMessage().contains("统一生产批次"));
+        assertTrue(cause.getMessage().contains("未领料的手工计划批次"));
         verify(jdbc,never()).update(anyString(),any(Object[].class));
     }
 

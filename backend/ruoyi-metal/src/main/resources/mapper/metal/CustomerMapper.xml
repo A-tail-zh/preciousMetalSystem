@@ -43,5 +43,44 @@
         UPDATE metal_customer SET customer_name=#{name},company_name=#{companyName},address=#{address},contact_name=#{contactName},contact_phone=#{contactPhone},department=#{department},version=version+1,update_by=#{updateBy},update_time=NOW()
         WHERE customer_id=#{id} AND factory_id=#{factoryId} AND version=#{version} AND del_flag='0'
     </update>
+    <!-- The factory and customer are already locked; current reads include references committed while waiting. -->
+    <select id="hasActiveReferences" resultType="boolean">
+        SELECT EXISTS(SELECT id FROM metal_production_order
+            WHERE factory_id=#{factoryId} AND customer_id=#{id} AND deleted=0
+              AND status IN ('CREATED','IN_PROGRESS') LIMIT 1 FOR SHARE)
+        OR EXISTS(SELECT work_order_id FROM metal_work_order
+            WHERE factory_id=#{factoryId} AND customer_id=#{id} AND del_flag='0'
+              AND status&lt;&gt;'COMPLETED' LIMIT 1 FOR SHARE)
+        OR EXISTS(SELECT stock_id FROM metal_storage_ownership
+            WHERE factory_id=#{factoryId} AND owner_id=#{id} AND (weight&gt;0 OR quantity&gt;0) LIMIT 1 FOR SHARE)
+        OR EXISTS(SELECT id FROM metal_storage_debt
+            WHERE factory_id=#{factoryId} AND (creditor_id=#{id} OR debtor_id=#{id})
+              AND (remaining_weight&gt;0 OR remaining_quantity&gt;0) LIMIT 1 FOR SHARE)
+        OR EXISTS(SELECT id FROM metal_storage_document
+            WHERE factory_id=#{factoryId} AND deleted=0 AND status IN ('DRAFT','PENDING_REVIEW','RETURNED')
+              AND CAST(JSON_UNQUOTE(JSON_EXTRACT(data,'$.customerId')) AS UNSIGNED)=#{id} LIMIT 1 FOR SHARE)
+        OR EXISTS(SELECT l.id FROM metal_storage_document_line l
+            JOIN metal_storage_document d ON d.id=l.document_id AND d.factory_id=l.factory_id
+            WHERE d.factory_id=#{factoryId} AND d.deleted=0 AND d.status IN ('DRAFT','PENDING_REVIEW','RETURNED')
+              AND (CAST(JSON_UNQUOTE(JSON_EXTRACT(l.data,'$.ownerId')) AS UNSIGNED)=#{id}
+                OR CAST(JSON_UNQUOTE(JSON_EXTRACT(l.data,'$.ownerCustomerId')) AS UNSIGNED)=#{id}
+                OR CAST(JSON_UNQUOTE(JSON_EXTRACT(l.data,'$.customerId')) AS UNSIGNED)=#{id}
+                OR CAST(JSON_UNQUOTE(JSON_EXTRACT(l.data,'$.borrowOwnerId')) AS UNSIGNED)=#{id}
+                OR EXISTS(SELECT 1 FROM JSON_TABLE(l.data,'$.allocations[*]'
+                    COLUMNS(owner_id LONGTEXT PATH '$.ownerId' NULL ON ERROR)) a WHERE CAST(a.owner_id AS UNSIGNED)=#{id})
+                OR EXISTS(SELECT debt.id FROM JSON_TABLE(l.data,'$.debtAllocations[*]'
+                    COLUMNS(debt_id LONGTEXT PATH '$.debtId' NULL ON ERROR)) a
+                    JOIN metal_storage_debt debt ON debt.id=CAST(a.debt_id AS UNSIGNED) AND debt.factory_id=d.factory_id
+                    WHERE debt.creditor_id=#{id} OR debt.debtor_id=#{id})) LIMIT 1 FOR SHARE)
+        OR EXISTS(SELECT inventory_id FROM metal_inventory
+            WHERE factory_id=#{factoryId} AND customer_id=#{id} AND del_flag='0'
+              AND (net_weight&gt;0 OR quantity&gt;0) LIMIT 1 FOR SHARE)
+        OR EXISTS(SELECT c.closeout_id FROM metal_customer_residual_closeout c
+            WHERE c.factory_id=#{factoryId} AND c.customer_id=#{id} AND c.status IN ('WAITING','PARTIAL') LIMIT 1 FOR SHARE)
+        OR EXISTS(SELECT r.residual_id FROM metal_work_order_residual r
+            JOIN metal_work_order w ON w.work_order_id=r.work_order_id
+            WHERE w.factory_id=#{factoryId} AND r.customer_id=#{id} AND r.remaining_weight&gt;0
+              AND r.status='OPEN' LIMIT 1 FOR SHARE)
+    </select>
     <update id="delete">UPDATE metal_customer SET del_flag='2',version=version+1,update_by=#{actor},update_time=NOW() WHERE customer_id=#{id} AND del_flag='0'</update>
 </mapper>

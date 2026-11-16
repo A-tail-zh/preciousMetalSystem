@@ -113,12 +113,22 @@ class StorageReservationServiceTest {
   var service=new StorageReservationService(jdbc,mock(FactoryScope.class));var row=line("50.00",0,0);row.put("measurementMode","WEIGHT");row.put("reservationLineId",local);var doc=Map.<String,Object>of("type","PRODUCTION_OUT");
   for(var parts:List.of(List.<Map<String,Object>>of(),List.<Map<String,Object>>of(Map.of("ownerId","0","weight","30.00","quantity",0)),List.<Map<String,Object>>of(Map.of("ownerId","0","weight","25.00","quantity",0),Map.of("ownerId","0","weight","25.00","quantity",0)),List.<Map<String,Object>>of(Map.of("ownerId","0","weight","10.00","quantity",0),Map.of("ownerId","8","weight","10.00","quantity",0)))){row.put("allocations",parts);assertThrows(ServiceException.class,()->service.consume(1,3,doc,List.of(row)));}verify(jdbc,never()).update(contains("CONSUMED"),any(Object[].class));
  }
- @Test void productionConfirmationRequiresBatchAndUsesExistingStageValidatorBeforePersisting(){
+ @Test void productionConfirmationRequiresExecutionOrAutoBatchFieldsAndValidatesBeforePersisting(){
   var jdbc=balances(false,"100.00","0.00");
   when(jdbc.queryForList(startsWith("SELECT customer_id FROM metal_production_order"),any(Object[].class))).thenReturn(List.of(Map.of("customer_id",8)));
   when(jdbc.queryForList(startsWith("SELECT order_id,batch_id,status FROM metal_production_execution"),any(Object[].class))).thenReturn(List.of(Map.of("order_id",10,"status","OPEN")));
   var scope=mock(FactoryScope.class);when(scope.resolveFactory(1L)).thenReturn(1L);when(scope.isAdmin()).thenReturn(true);var production=mock(ProductionExecutionService.class);doThrow(new ServiceException("执行批次已经结算或阶段不匹配")).when(production).validateDocument(eq(1L),anyMap(),anyList());var service=new StorageReservationService(jdbc,scope,production);
   var body=new LinkedHashMap<String,Object>(Map.of("factoryId",1,"requestId",key(),"sessionId",key(),"reservationVersion",0,"type","PRODUCTION_OUT","orderId",10,"lines",List.of(line("10.00",0,8))));
-  try(var security=mockStatic(com.ruoyi.common.utils.SecurityUtils.class)){security.when(com.ruoyi.common.utils.SecurityUtils::getUserId).thenReturn(9L);assertThrows(ServiceException.class,()->service.replace(body));verifyNoInteractions(production);body.put("executionId",11);assertThrows(ServiceException.class,()->service.replace(body));verify(production).validateDocument(eq(1L),anyMap(),anyList());verify(jdbc,never()).update(anyString(),any(Object[].class));}
+  try(var security=mockStatic(com.ruoyi.common.utils.SecurityUtils.class)){
+   security.when(com.ruoyi.common.utils.SecurityUtils::getUserId).thenReturn(9L);
+   assertTrue(assertThrows(ServiceException.class,()->service.replace(body)).getMessage().contains("自动建批"));
+   verify(production).resolveSourceDocument(eq(1L),anyMap());
+   verify(production,never()).ensureExecutionForOutbound(eq(1L),anyMap(),anyList());
+   verify(production,never()).validateDocument(eq(1L),anyMap(),anyList());
+   body.put("executionId",11);
+   assertEquals("执行批次已经结算或阶段不匹配",assertThrows(ServiceException.class,()->service.replace(body)).getMessage());
+   verify(production).validateDocument(eq(1L),anyMap(),anyList());
+   verify(jdbc,never()).update(anyString(),any(Object[].class));
+  }
  }
 }

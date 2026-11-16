@@ -46,4 +46,9 @@ public class CustomerService extends MasterService<CustomerRecord> {
         }
         scope.lockFactories(factories);
     }
+
+    @Override protected void deletable(CustomerRecord row) {
+        if (((CustomerMapper) mapper).hasActiveReferences(row.getFactoryId(), row.getId()))
+            throw new ServiceException("客户存在未完成工单、待处理仓储、在库料权或未结欠料，不能删除", 409);
+    }
 }

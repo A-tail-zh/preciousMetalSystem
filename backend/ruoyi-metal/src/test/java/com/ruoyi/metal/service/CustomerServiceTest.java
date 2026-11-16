@@ -74,6 +74,14 @@ class CustomerServiceTest {
         var row=existing(9,7);when(mapper.detail(9L)).thenReturn(row);when(mapper.lock(9L)).thenReturn(row);
         service.delete(new Long[]{9L,9L});verify(mapper).delete(9L,"customer-tester");
     }
+    @Test void referencedCustomerPreventsTheWholeBatchDeletion() {
+        var first=existing(9,7);var second=existing(10,7);
+        when(mapper.detail(9L)).thenReturn(first);when(mapper.detail(10L)).thenReturn(second);
+        when(mapper.lock(9L)).thenReturn(first);when(mapper.lock(10L)).thenReturn(second);
+        when(mapper.hasActiveReferences(7L,10L)).thenReturn(true);
+        assertEquals(409,assertThrows(ServiceException.class,()->service.delete(new Long[]{9L,10L})).getCode());
+        verify(mapper,never()).delete(anyLong(),anyString());
+    }
     @Test void invalidDeletionDoesNotReachMapper() {
         for(Long[] ids:Arrays.asList(null,new Long[0],new Long[]{0L},new Long[]{null},new Long[101]))assertThrows(ServiceException.class,()->service.delete(ids));verifyNoInteractions(mapper);
     }

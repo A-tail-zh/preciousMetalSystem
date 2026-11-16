@@ -51,14 +51,14 @@ class QuoteReviewFixTest {
     }
     @Test void previewPreparationAndQuotationAllRejectZeroVolume() {
         var dimensions=Map.of("length","0.01","width","0.01","height","0.01");
-        var rules=configuredRules("22.65");var products=new ProductService(null,FactoryCatalogTestFixtures.scope(),FactoryCatalogTestFixtures.productTypes(org.mockito.Mockito.mock(org.springframework.jdbc.core.JdbcTemplate.class)),rules);
+        var rules=configuredRules("22.65");var products=new ProductService(null,FactoryCatalogTestFixtures.scope(),FactoryCatalogTestFixtures.productTypes(org.mockito.Mockito.mock(org.springframework.jdbc.core.JdbcTemplate.class)),rules,org.mockito.Mockito.mock(StorageConfigurationService.class));
         assertThrows(com.ruoyi.common.exception.ServiceException.class,()->products.preview(new com.ruoyi.metal.catalog.ProductCalculationRequest(1L,"方形盖",dimensions)));
         var product=new com.ruoyi.metal.catalog.ProductRecord();product.setFactoryId(7L);product.setMetalTypeId(1L);product.setProductType("方形盖");product.setDimensions(dimensions);
         assertThrows(com.ruoyi.common.exception.ServiceException.class,()->products.prepare(product,null));
         assertThrows(com.ruoyi.common.exception.ServiceException.class,()->rules.calculate(new CalculationRequest(null,dimensions,1000000,1L,"方形盖","SHORTAGE_CUSTOM",null,null,"0")));
     }
     @Test void previewAndPreparationStillAllowAnUnconfiguredDensity() {
-        var dimensions=Map.of("length","1","width","1","height","1");var rules=configuredRules(null);var products=new ProductService(null,FactoryCatalogTestFixtures.scope(),FactoryCatalogTestFixtures.productTypes(org.mockito.Mockito.mock(org.springframework.jdbc.core.JdbcTemplate.class)),rules);
+        var dimensions=Map.of("length","1","width","1","height","1");var rules=configuredRules(null);var products=new ProductService(null,FactoryCatalogTestFixtures.scope(),FactoryCatalogTestFixtures.productTypes(org.mockito.Mockito.mock(org.springframework.jdbc.core.JdbcTemplate.class)),rules,org.mockito.Mockito.mock(StorageConfigurationService.class));
         var preview=products.preview(new com.ruoyi.metal.catalog.ProductCalculationRequest(1L,"方形盖",dimensions));
         assertEquals("1.00",preview.get("volume"));assertNull(preview.get("weight"));
         var product=new com.ruoyi.metal.catalog.ProductRecord();product.setFactoryId(7L);product.setMetalTypeId(1L);product.setProductType("方形盖");product.setDimensions(dimensions);products.prepare(product,null);

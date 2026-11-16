@@ -12,7 +12,7 @@ class ProductVersionCompatibilityTest {
         var rules=mock(QuoteRuleService.class);when(rules.metalName(1L)).thenReturn("铱");
         when(rules.volumeRuleForMetal(any())).thenReturn(Map.of("piValue","3.14","curvedBottomFactor","1.03","version",0));
         when(rules.rule(1L)).thenReturn(Map.of("density","22.65"));
-        return new ProductService(null,FactoryCatalogTestFixtures.scope(),FactoryCatalogTestFixtures.productTypes(mock(JdbcTemplate.class)),rules);
+        return new ProductService(null,FactoryCatalogTestFixtures.scope(),FactoryCatalogTestFixtures.productTypes(mock(JdbcTemplate.class)),rules,mock(StorageConfigurationService.class));
     }
     ProductRecord legacy(){var r=new ProductRecord();r.setFactoryId(7L);r.setId(42L);r.setCalculationVersion(1);r.setMetalTypeId(1L);r.setProductType("环");r.setCategory("铱环");r.setDimensions(Map.of("outerDiameter","4","innerDiameter","2","height","1.234567"));r.setVolume(new BigDecimal("11.234567"));r.setWeight(new BigDecimal("77.123456"));return r;}
     @Test void legacyNonGeometryEditPreservesAllStoredGeometry(){var old=legacy();var form=legacy();form.setName("新名称");service().prepare(form,old);assertEquals(old.getDimensions(),form.getDimensions());assertEquals(old.getVolume(),form.getVolume());assertEquals(old.getWeight(),form.getWeight());}

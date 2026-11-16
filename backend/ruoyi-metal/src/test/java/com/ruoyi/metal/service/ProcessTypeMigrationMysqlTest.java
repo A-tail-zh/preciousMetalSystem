@@ -9,13 +9,20 @@ import org.springframework.jdbc.datasource.*;
 import org.springframework.transaction.support.TransactionTemplate;
 import static org.junit.jupiter.api.Assertions.*;
 
-@EnabledIfEnvironmentVariable(named="PROCESS_TYPE_TEST_JDBC_URL",matches="jdbc:mysql://127\\.0\\.0\\.1:3323/production_order_process_merge_20261110(?:\\?.*)?")
+@EnabledIfEnvironmentVariable(named="PROCESS_TYPE_TEST_JDBC_URL",matches="jdbc:mysql://127\\.0\\.0\\.1:3323/production_batch_p4_20261112_[a-f0-9]{10}(?:\\?.*)?")
 class ProcessTypeMigrationMysqlTest {
  JdbcTemplate jdbc;TransactionTemplate tx;
+ @BeforeAll static void requireEmptyIsolatedSchema(){
+  var ds=new DriverManagerDataSource(System.getenv("PROCESS_TYPE_TEST_JDBC_URL"),System.getenv("PROCESS_TYPE_TEST_USER"),System.getenv("PROCESS_TYPE_TEST_PASSWORD"));
+  var jdbc=new JdbcTemplate(ds);
+  assertEquals(3323,jdbc.queryForObject("SELECT @@port",Integer.class));
+  assertTrue(jdbc.queryForObject("SELECT DATABASE()",String.class).matches("production_batch_p4_20261112_[a-f0-9]{10}"));
+  assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE()",Integer.class),"Refuse to modify a used schema");
+ }
  @BeforeEach void setup()throws Exception{
   var ds=new DriverManagerDataSource(System.getenv("PROCESS_TYPE_TEST_JDBC_URL"),System.getenv("PROCESS_TYPE_TEST_USER"),System.getenv("PROCESS_TYPE_TEST_PASSWORD"));
   jdbc=new JdbcTemplate(ds);tx=new TransactionTemplate(new DataSourceTransactionManager(ds));
-  assertEquals("production_order_process_merge_20261110",jdbc.queryForObject("SELECT DATABASE()",String.class));assertEquals(3323,jdbc.queryForObject("SELECT @@port",Integer.class));
+  assertTrue(jdbc.queryForObject("SELECT DATABASE()",String.class).matches("production_batch_p4_20261112_[a-f0-9]{10}"));assertEquals(3323,jdbc.queryForObject("SELECT @@port",Integer.class));
   for(String table:List.of("metal_production_order_step","metal_product_process","metal_process","metal_process_type","metal_factory"))jdbc.execute("DROP TABLE IF EXISTS "+table);
   jdbc.execute("CREATE TABLE metal_factory(factory_id BIGINT PRIMARY KEY,del_flag CHAR(1) NOT NULL DEFAULT '0')");
   jdbc.execute("CREATE TABLE metal_process_type(type_id INT AUTO_INCREMENT PRIMARY KEY,factory_id BIGINT NULL,type_name VARCHAR(100) NOT NULL,version INT DEFAULT 0,create_by VARCHAR(64),update_by VARCHAR(64),create_time DATETIME DEFAULT CURRENT_TIMESTAMP,update_time DATETIME DEFAULT CURRENT_TIMESTAMP,UNIQUE(factory_id,type_name))");
@@ -45,8 +52,17 @@ class ProcessTypeMigrationMysqlTest {
    tx.executeWithoutResult(status->{jdbc.update(invalid);var before=jdbc.queryForList("SELECT * FROM metal_process_type ORDER BY type_id");assertTrue(ProcessTypeMigration.inspect(jdbc).stream().anyMatch(r->r.get("issue")!=null));assertThrows(IllegalStateException.class,()->ProcessTypeMigration.migrate(jdbc));assertEquals(before,jdbc.queryForList("SELECT * FROM metal_process_type ORDER BY type_id"));status.setRollbackOnly();});
   }
  }
- @Test void databaseRejectsDuplicateOrMisnamedBuiltinsAndFactoryInitializationIsAtomic(){
-  tx.executeWithoutResult(status->{ProcessTypeService.initializeBuiltins(jdbc,8L,"test");assertEquals(2,jdbc.queryForObject("SELECT COUNT(*) FROM metal_process_type WHERE factory_id=8",Integer.class));assertThrows(RuntimeException.class,()->jdbc.update("INSERT INTO metal_process_type(factory_id,type_name,builtin_code) VALUES(8,'伪造','ACID_WASH')"));assertThrows(RuntimeException.class,()->ProcessTypeService.initializeBuiltins(jdbc,8L,"test"));status.setRollbackOnly();});
+ @Test void databaseRejectsDuplicateOrMisnamedBuiltinsAndMigrationRollsBack(){
+  tx.executeWithoutResult(status->{
+   ProcessTypeMigration.migrate(jdbc);
+   assertEquals(2,jdbc.queryForObject("SELECT COUNT(*) FROM metal_process_type WHERE factory_id=8",Integer.class));
+   var misnamed=assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update("INSERT INTO metal_process_type(factory_id,type_name,builtin_code) VALUES(8,'伪造','ACID_WASH')"));
+   assertEquals(3819,assertInstanceOf(java.sql.SQLException.class,misnamed.getMostSpecificCause()).getErrorCode());
+   assertThrows(org.springframework.dao.DuplicateKeyException.class,()->jdbc.update("INSERT INTO metal_process_type(factory_id,type_name,builtin_code) VALUES(8,'酸洗','ACID_WASH')"));
+   ProcessTypeMigration.migrate(jdbc);
+   assertEquals(2,jdbc.queryForObject("SELECT COUNT(*) FROM metal_process_type WHERE factory_id=8",Integer.class));
+   status.setRollbackOnly();
+  });
   assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM metal_process_type WHERE factory_id=8",Integer.class));
  }
  @Test void historicalReverseReferencesBlockBuiltinConversion(){
