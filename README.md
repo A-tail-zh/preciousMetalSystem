@@ -2,6 +2,27 @@
 
 基于若依、Spring Boot、Vue 3、MySQL 和 Redis 的贵金属生产管理系统。
 
+## 运行截图
+
+截图取自实际运行的前端页面，业务内容使用演示数据。
+
+### 数据看板
+
+![数据看板，展示生产进度、金属损耗与预警](docs/screenshots/dashboard.png)
+
+### 生产工单管理
+
+![生产工单列表，展示工单状态与客户来料净重](docs/screenshots/production-orders.png)
+
+### 仓库管理
+
+![仓库管理页面，展示原料库、半成品库和成品库](docs/screenshots/warehouse.png)
+
+### 登录页
+
+![贵金属加工系统登录页](docs/screenshots/login.png)
+
+
 ## 功能
 
 - 工厂、产线、产品、物料、工序、人员及角色管理。
