@@ -1,0 +1,31 @@
+ruoyi:
+  name: 贵金属加工系统
+  profile: ${UPLOAD_PATH:./uploads}
+spring:
+  datasource:
+    druid:
+      master:
+        url: ${MYSQL_URL:jdbc:mysql://localhost:3306/heavy_metal?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+        username: ${MYSQL_USER:heavy_metal}
+        password: ${MYSQL_PASSWORD}
+      statViewServlet:
+        enabled: false
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+  flyway:
+    enabled: true
+    # Use a dedicated JDBC connection: Druid invalidates Flyway's optional
+    # performance_schema capability probe when the project account lacks access.
+    url: ${MYSQL_URL:jdbc:mysql://localhost:3308/heavy_metal?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    user: ${MYSQL_USER:heavy_metal}
+    password: ${MYSQL_PASSWORD}
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+    clean-disabled: true
+    placeholders:
+      adminPasswordHash: ${ADMIN_PASSWORD_HASH}
+token:
+  secret: ${TOKEN_SECRET}

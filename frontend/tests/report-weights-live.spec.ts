@@ -1,0 +1,14 @@
+import {test,expect} from '@playwright/test';
+import {warehouseFixture} from '../../tools/warehouse-test-fixture.mjs';
+import {api,ok,detail} from '../../tools/local-test-client.mjs';
+test('报工列表及详情拆分还库和产出，半成品及成品计算不变',async({page,context})=>{
+ test.skip(process.env.LIVE_WAREHOUSE!=='1','需要本地后端');test.setTimeout(90000);const f=await warehouseFixture();
+ try{
+ const incoming=await f.post('RAW_IN',[{category:'RAW',referenceId:f.mat1,netWeight:'400',quantity:0}]);const stock=(await detail('/metal/warehouse-order',incoming,f.admin)).lines[0].inventoryId;const batch=await f.createBatch(f.processA,5);const out=await f.post('PRODUCTION_OUT',[{inventoryId:stock,netWeight:'300',quantity:0}],{batchId:batch});const source=(await detail('/metal/warehouse-order',out,f.admin)).lines[0].id;await f.post('RAW_RETURN',[{sourceLineId:source,netWeight:'100',quantity:0}],{batchId:batch});const semiDoc=await f.post('SEMI_IN',[{category:'SEMI',referenceId:f.productA,netWeight:'200',quantity:5}],{batchId:batch,settle:true,completedQuantity:5});
+ const second=await f.createBatch(f.processB,5),semi=(await detail('/metal/warehouse-order',semiDoc,f.admin)).lines[0].inventoryId;await f.post('PRODUCTION_OUT',[{inventoryId:semi,netWeight:'200',quantity:5}],{batchId:second});await f.post('FINISHED_IN',[{category:'FINISHED',referenceId:f.productA,netWeight:'190',quantity:5}],{batchId:second,settle:true,completedQuantity:5});
+ const reports=ok(await api('/metal/work-report/list?factoryId='+f.factoryA,f.admin)).rows;const finished=reports.find((r:any)=>r.batchId===second);expect(finished.rawReturnedWeight).toBe('0.000000');expect(finished.outputWeight).toBe('190.000000');expect(finished.lossWeight).toBe('10.000000');
+ await context.addCookies([{name:'Admin-Token',value:f.admin,url:'http://127.0.0.1:5173'}]);await page.goto('/metal/work-report');const table=page.locator('.warehouse-table');await expect(table.getByRole('columnheader',{name:'原料还库净重(g)',exact:true})).toBeVisible();await expect(table.getByRole('columnheader',{name:'半成品／成品产出净重(g)',exact:true})).toBeVisible();await expect(table.getByRole('columnheader',{name:'回料净重(g)',exact:true})).toHaveCount(0);
+ const row=table.locator('.el-table__body .el-table__row').filter({hasText:f.work.orderNo}).filter({hasText:f.prefix+'粉料'});await expect(row).toHaveCount(1);const headers=await table.locator('.el-table__header th .cell').allTextContents();for(const [header,value] of [['领料净重(g)','300.000000'],['原料还库净重(g)','100.000000'],['半成品／成品产出净重(g)','200.000000'],['损耗重量(g)','0.000000']])await expect(row.locator('td').nth(headers.indexOf(header))).toHaveText(value);
+ await row.getByRole('button',{name:'查看',exact:true}).click();const dialog=page.getByRole('dialog',{name:'查看报工',exact:true});await expect(dialog.locator('.detail-info')).toContainText('原料还库净重(g)：100.000000');await expect(dialog.locator('.detail-info')).toContainText('半成品／成品产出净重(g)：200.000000');
+ }finally{await f.cleanup();}
+});

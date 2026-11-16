@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.metal.mapper.CustomerMapper">
+    <resultMap id="Record" type="com.ruoyi.metal.catalog.CustomerRecord">
+        <id property="id" column="customer_id"/>
+        <result property="name" column="customer_name"/>
+        <result property="companyName" column="company_name"/>
+        <result property="address" column="address"/>
+        <result property="contactName" column="contact_name"/>
+        <result property="contactPhone" column="contact_phone"/>
+        <result property="department" column="department"/>
+        <result property="factoryId" column="factory_id"/>
+        <result property="factoryName" column="factory_name"/>
+        <result property="version" column="version"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+    <sql id="select">SELECT c.*,f.factory_name FROM metal_customer c JOIN metal_factory f ON f.factory_id=c.factory_id AND f.del_flag='0' WHERE c.del_flag='0'</sql>
+    <select id="list" resultMap="Record">
+        <include refid="select"/><if test="factoryId != null"> AND c.factory_id=#{factoryId}</if> ORDER BY c.customer_id DESC
+    </select>
+    <select id="listFiltered" resultMap="Record">
+        <include refid="select"/>
+        <if test="factoryId != null"> AND c.factory_id=#{factoryId}</if>
+        <if test="q.factoryId != null"> AND c.factory_id=#{q.factoryId}</if>
+        <if test="q.name != null"> AND c.customer_name LIKE #{q.namePattern} ESCAPE '!'</if>
+        <if test="q.companyName != null"> AND c.company_name LIKE #{q.companyNamePattern} ESCAPE '!'</if>
+        <if test="q.contactName != null"> AND c.contact_name LIKE #{q.contactNamePattern} ESCAPE '!'</if>
+        <if test="q.contactPhone != null"> AND c.contact_phone LIKE #{q.contactPhonePattern} ESCAPE '!'</if>
+        <if test="q.startTime != null"> AND c.create_time &gt;=#{q.startTime}</if>
+        <if test="q.endExclusive != null"> AND c.create_time &lt;#{q.endExclusive}</if>
+        ORDER BY c.customer_id DESC
+    </select>
+    <select id="detail" resultMap="Record"><include refid="select"/> AND c.customer_id=#{id}</select>
+    <select id="lock" resultMap="Record"><include refid="select"/> AND c.customer_id=#{id} FOR UPDATE</select>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="customer_id">
+        INSERT INTO metal_customer(factory_id,customer_name,company_name,address,contact_name,contact_phone,department,create_by,update_by)
+        VALUES(#{factoryId},#{name},#{companyName},#{address},#{contactName},#{contactPhone},#{department},#{createBy},#{updateBy})
+    </insert>
+    <update id="update">
+        UPDATE metal_customer SET customer_name=#{name},company_name=#{companyName},address=#{address},contact_name=#{contactName},contact_phone=#{contactPhone},department=#{department},version=version+1,update_by=#{updateBy},update_time=NOW()
+        WHERE customer_id=#{id} AND factory_id=#{factoryId} AND version=#{version} AND del_flag='0'
+    </update>
+    <update id="delete">UPDATE metal_customer SET del_flag='2',version=version+1,update_by=#{actor},update_time=NOW() WHERE customer_id=#{id} AND del_flag='0'</update>
+</mapper>

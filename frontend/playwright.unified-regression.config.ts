@@ -1,0 +1,7 @@
+import {defineConfig} from '@playwright/test'
+export default defineConfig({
+ testDir:'./tests',workers:1,timeout:30000,
+ testMatch:['work-order-report-summary-race.spec.ts','work-order-list-session.spec.ts','work-order-form-session.spec.ts','work-order-factory-dropdown.spec.ts','work-order-empty-sections.spec.ts','work-order-customer-loss.spec.ts','work-order-card-height.spec.ts','warning-handler.spec.ts','role-permission-tree.spec.ts','role-permission-labels.spec.ts','warehouse-work-order-context.spec.ts','warehouse-reversal-lifecycle.spec.ts','warehouse-order-open-race.spec.ts','warehouse-list-race.spec.ts','warehouse-handover-recovery.spec.ts','warehouse-handover-recovery-ui.spec.ts','warehouse-flow.spec.ts','warehouse-editor-race.spec.ts','warehouse-detail-race.spec.ts','semi-flow-ui.spec.ts','raw-inventory-customers.spec.ts','raw-customer-create.spec.ts','measurement-policy-ui.spec.ts','multi-warehouse-outbound.spec.ts','multi-warehouse-inbound.spec.ts','inventory-detail-refresh.spec.ts','inventory-adjustment.spec.ts','factory.spec.ts','factory-permission-hints.spec.ts','customer.spec.ts','customer-route-refresh.spec.ts','master-crud.spec.ts'],
+ use:{baseURL:process.env.TEST_FRONTEND_BASE_URL||'http://127.0.0.1:5197',viewport:{width:1440,height:1000},launchOptions:{channel:'chrome'},screenshot:'only-on-failure'},
+ outputDir:'../.runtime/unified-production-20261103/affected-regression',reporter:[['list'],['json',{outputFile:'../.runtime/unified-production-20261103/affected-regression.json'}]]
+})

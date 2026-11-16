@@ -1,0 +1,26 @@
+{
+  "image": "iridium-rod-solid.png",
+  "width": 1536,
+  "height": 1024,
+  "unit": "cm",
+  "coordinateOrigin": "top-left",
+  "note": "Inner value-box coordinates at original resolution; scale coordinates with image and center fitted text.",
+  "fields": [
+    {
+      "key": "diameter",
+      "label": "直径",
+      "x": 1134,
+      "y": 462,
+      "width": 252,
+      "height": 64
+    },
+    {
+      "key": "length",
+      "label": "长度",
+      "x": 1134,
+      "y": 625,
+      "width": 252,
+      "height": 64
+    }
+  ]
+}
